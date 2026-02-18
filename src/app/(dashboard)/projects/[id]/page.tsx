@@ -39,6 +39,10 @@ import {
   KeyRound,
   ChevronDown,
   ChevronUp,
+  BarChart2,
+  TrendingUp,
+  Activity,
+  Zap,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -73,7 +77,17 @@ interface ProjectDetail {
 }
 
 type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO';
-type Tab = 'overview' | 'env' | 'settings' | 'advanced';
+type Tab = 'overview' | 'env' | 'settings' | 'advanced' | 'analytics';
+
+interface AnalyticsData {
+  totalDeployments: number;
+  deploysThisWeek: number;
+  successRate: number | null;
+  avgBuildMs: number | null;
+  liveSinceMs: number | null;
+  deploysByDay: { date: string; total: number; succeeded: number; failed: number }[];
+  recentBuildTimes: { createdAt: string; durationMs: number; status: string }[];
+}
 
 const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO'];
 const POLL_INTERVAL_MS = 2500;
@@ -150,6 +164,20 @@ function formatDuration(ms: number): string {
   const min = Math.floor(sec / 60);
   const remainSec = sec % 60;
   return `${min}m ${remainSec}s`;
+}
+
+function formatShortDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00'); // noon to avoid UTC-offset day-shift
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatLiveDuration(ms: number): string {
+  const days = Math.floor(ms / (24 * 60 * 60 * 1000));
+  if (days > 0) return `${days}d`;
+  const hours = Math.floor(ms / (60 * 60 * 1000));
+  if (hours > 0) return `${hours}h`;
+  const minutes = Math.floor(ms / (60 * 1000));
+  return `${Math.max(minutes, 1)}m`;
 }
 
 function ElapsedTimer({ since }: { since: string }): React.ReactElement {
@@ -301,11 +329,6 @@ function DeploymentLogs({ deployment, projectId }: { deployment: Deployment; pro
       >
         {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
         {open ? 'Hide logs' : 'View logs'}
-        {deployment.commitHash && (
-          <span className="ml-1 font-mono text-muted-foreground/70">
-            &middot; {deployment.commitHash.slice(0, 7)}
-          </span>
-        )}
       </button>
 
       {open && (
@@ -333,18 +356,25 @@ function DeploymentLogs({ deployment, projectId }: { deployment: Deployment; pro
 function DeploymentRow({
   deployment,
   projectId,
+  branch,
+  isDeployInProgress,
   onRetried,
 }: {
   deployment: Deployment;
   projectId: string;
+  branch: string;
+  isDeployInProgress: boolean;
   onRetried: () => void;
 }): React.ReactElement {
   const isInProgress = deployment.status === 'QUEUED' || deployment.status === 'BUILDING';
   const isFinished = deployment.status === 'DEPLOYED' || deployment.status === 'FAILED';
   const isFailed = deployment.status === 'FAILED';
+  const canRedeploy = deployment.status === 'DEPLOYED' || deployment.status === 'CANCELLED';
 
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
+  const [redeploying, setRedeploying] = useState(false);
+  const [redeployError, setRedeployError] = useState<string | null>(null);
 
   const buildDuration =
     isFinished && deployment.startedAt && deployment.completedAt
@@ -372,6 +402,24 @@ function DeploymentRow({
     }
   };
 
+  const handleRedeploy = async (): Promise<void> => {
+    setRedeployError(null);
+    setRedeploying(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/deploy`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setRedeployError(data?.error?.message ?? 'Redeploy failed');
+      } else {
+        onRetried();
+      }
+    } catch {
+      setRedeployError('Something went wrong');
+    } finally {
+      setRedeploying(false);
+    }
+  };
+
   return (
     <div className="border rounded-lg overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-3">
@@ -387,7 +435,7 @@ function DeploymentRow({
             </span>
             <StatusBadge status={deployment.status} />
           </div>
-          <div className="flex items-center gap-2 mt-0.5">
+          <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
             <p className="text-xs text-muted-foreground">
               {formatRelative(deployment.createdAt)} &middot; {formatDate(deployment.createdAt)}
             </p>
@@ -401,12 +449,23 @@ function DeploymentRow({
                 &middot; {formatDuration(buildDuration)}
               </span>
             )}
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              &middot; <GitBranch className="h-3 w-3" />{branch}
+            </span>
+            {deployment.commitHash && (
+              <span className="text-xs font-mono text-muted-foreground">
+                &middot; {deployment.commitHash.slice(0, 7)}
+              </span>
+            )}
           </div>
           {isInProgress && deployment.status === 'BUILDING' && (
             <BuildProgress currentStep={deployment.buildStep} />
           )}
           {retryError && (
             <p className="text-xs text-destructive mt-1">{retryError}</p>
+          )}
+          {redeployError && (
+            <p className="text-xs text-destructive mt-1">{redeployError}</p>
           )}
         </div>
         {isFailed && (
@@ -424,8 +483,284 @@ function DeploymentRow({
             )}
           </Button>
         )}
+        {canRedeploy && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 h-7 px-2 text-xs"
+            onClick={() => { void handleRedeploy(); }}
+            disabled={redeploying || isDeployInProgress}
+            title={isDeployInProgress ? 'A deployment is already in progress' : 'Redeploy from latest commit'}
+          >
+            {redeploying ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              'Redeploy'
+            )}
+          </Button>
+        )}
       </div>
       <DeploymentLogs deployment={deployment} projectId={projectId} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Analytics components
+// ---------------------------------------------------------------------------
+
+function StatCard({
+  label,
+  value,
+  icon,
+  sub,
+}: {
+  label: string;
+  value: string | number;
+  icon: React.ReactNode;
+  sub?: string;
+}): React.ReactElement {
+  return (
+    <Card>
+      <CardContent className="pt-5 pb-4">
+        <div className="flex items-center gap-2 text-muted-foreground mb-2">
+          {icon}
+          <p className="text-xs uppercase tracking-wide">{label}</p>
+        </div>
+        <p className="text-2xl font-bold">{value}</p>
+        {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function FrequencyChart({
+  days,
+}: {
+  days: { date: string; total: number; succeeded: number; failed: number }[];
+}): React.ReactElement {
+  const maxCount = Math.max(...days.map((d) => d.total), 1);
+  return (
+    <div>
+      <div className="flex items-end gap-0.5 sm:gap-1 h-20">
+        {days.map((day) => {
+          const heightPct = day.total > 0 ? Math.max((day.total / maxCount) * 100, 8) : 0;
+          const barColor =
+            day.total === 0
+              ? ''
+              : day.failed === 0
+                ? 'bg-green-500'
+                : day.succeeded === 0
+                  ? 'bg-destructive'
+                  : 'bg-yellow-500';
+          return (
+            <div key={day.date} className="flex-1 relative group flex flex-col justify-end h-full">
+              {day.total > 0 ? (
+                <div
+                  className={cn('w-full rounded-t-sm transition-opacity group-hover:opacity-70', barColor)}
+                  style={{ height: `${heightPct}%` }}
+                />
+              ) : (
+                <div className="w-full bg-border rounded-sm" style={{ height: '2px' }} />
+              )}
+              {day.total > 0 && (
+                <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center z-10 bg-popover border rounded px-2 py-1 text-xs whitespace-nowrap shadow pointer-events-none">
+                  <span className="font-medium">{formatShortDate(day.date)}</span>
+                  <span>{day.total} deploy{day.total !== 1 ? 's' : ''}</span>
+                  {day.succeeded > 0 && <span className="text-green-600">{day.succeeded} ok</span>}
+                  {day.failed > 0 && <span className="text-destructive">{day.failed} failed</span>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex gap-0.5 sm:gap-1 mt-1">
+        {days.map((day, i) => (
+          <div key={day.date} className="flex-1 text-center">
+            {(i === 0 || i === 6 || i === 13) && (
+              <span className="text-xs text-muted-foreground">{formatShortDate(day.date)}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BuildTimeChart({
+  builds,
+}: {
+  builds: { createdAt: string; durationMs: number; status: string }[];
+}): React.ReactElement {
+  const maxMs = Math.max(...builds.map((b) => b.durationMs), 1);
+  return (
+    <div className="flex items-end gap-0.5 sm:gap-1 h-20">
+      {builds.map((build, i) => {
+        const heightPct = Math.max((build.durationMs / maxMs) * 100, 8);
+        const isOk = build.status === 'DEPLOYED';
+        return (
+          <div key={i} className="flex-1 relative group flex flex-col justify-end h-full">
+            <div
+              className={cn(
+                'w-full rounded-t-sm transition-opacity group-hover:opacity-70',
+                isOk ? 'bg-green-500' : 'bg-destructive'
+              )}
+              style={{ height: `${heightPct}%` }}
+            />
+            <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center z-10 bg-popover border rounded px-2 py-1 text-xs whitespace-nowrap shadow pointer-events-none">
+              <span className="font-medium">{formatDuration(build.durationMs)}</span>
+              <span className={isOk ? 'text-green-600' : 'text-destructive'}>
+                {build.status.toLowerCase()}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function AnalyticsPanel({ projectId }: { projectId: string }): React.ReactElement {
+  const [data, setData] = useState<AnalyticsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/projects/${projectId}/analytics`)
+      .then((res) => res.json())
+      .then((json: { success: boolean; data?: AnalyticsData; error?: { message: string } }) => {
+        if (json.success && json.data) setData(json.data);
+        else setError(json.error?.message ?? 'Failed to load analytics');
+      })
+      .catch(() => setError('Failed to load analytics'))
+      .finally(() => setLoading(false));
+  }, [projectId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Analytics</CardTitle>
+          <CardDescription>{error ?? 'Failed to load'}</CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  const successPct =
+    data.successRate !== null ? `${Math.round(data.successRate * 100)}%` : '—';
+  const avgBuild = data.avgBuildMs !== null ? formatDuration(data.avgBuildMs) : '—';
+
+  return (
+    <div className="space-y-6">
+      {/* Summary stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard
+          label="Total deploys"
+          value={data.totalDeployments}
+          icon={<Rocket className="h-3.5 w-3.5" />}
+        />
+        <StatCard
+          label="This week"
+          value={data.deploysThisWeek}
+          icon={<Activity className="h-3.5 w-3.5" />}
+        />
+        <StatCard
+          label="Success rate"
+          value={successPct}
+          icon={<TrendingUp className="h-3.5 w-3.5" />}
+          sub={data.successRate !== null ? `${Math.round(data.successRate * 100)}% of finished builds` : undefined}
+        />
+        <StatCard
+          label="Avg build"
+          value={avgBuild}
+          icon={<Zap className="h-3.5 w-3.5" />}
+          sub="for successful deploys"
+        />
+      </div>
+
+      {/* Live since */}
+      {data.liveSinceMs !== null && (
+        <Card>
+          <CardContent className="pt-5 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="h-2.5 w-2.5 rounded-full bg-green-500 shrink-0 animate-pulse" />
+              <div>
+                <p className="text-sm font-medium">Live for {formatLiveDuration(data.liveSinceMs)}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Last successful deployment completed {formatLiveDuration(data.liveSinceMs)} ago
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Deploy frequency */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Deploy frequency</CardTitle>
+          <CardDescription>Deployments per day over the last 14 days</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FrequencyChart days={data.deploysByDay} />
+          <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-green-500" />
+              All succeeded
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-yellow-500" />
+              Mixed
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-destructive" />
+              All failed
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Build time trend */}
+      {data.recentBuildTimes.length > 0 ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Build time trend</CardTitle>
+            <CardDescription>
+              Duration of the last {data.recentBuildTimes.length} finished build{data.recentBuildTimes.length !== 1 ? 's' : ''}, oldest to newest
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BuildTimeChart builds={data.recentBuildTimes} />
+            <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-green-500" />
+                Succeeded
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-destructive" />
+                Failed
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Build time trend</CardTitle>
+            <CardDescription>No finished builds in the last 30 days.</CardDescription>
+          </CardHeader>
+        </Card>
+      )}
     </div>
   );
 }
@@ -436,6 +771,7 @@ function DeploymentRow({
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" /> },
+  { key: 'analytics', label: 'Analytics', icon: <BarChart2 className="h-4 w-4" /> },
   { key: 'env', label: 'Environment', icon: <KeyRound className="h-4 w-4" /> },
   { key: 'settings', label: 'Settings', icon: <Settings className="h-4 w-4" /> },
   { key: 'advanced', label: 'Advanced', icon: <Terminal className="h-4 w-4" /> },
@@ -443,12 +779,13 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
 
 function Sidebar({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void }): React.ReactElement {
   return (
-    <nav className="flex flex-row gap-1 lg:flex-col lg:gap-0.5 lg:w-48 lg:shrink-0">
+    <nav className="flex flex-row flex-wrap gap-1 lg:flex-col lg:flex-nowrap lg:gap-0.5 lg:w-48 lg:shrink-0">
       {TABS.map(({ key, label, icon }) => (
         <button
           key={key}
           type="button"
           onClick={() => onSelect(key)}
+          aria-label={label}
           className={cn(
             'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors text-left',
             'hover:bg-muted',
@@ -458,7 +795,7 @@ function Sidebar({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void
           )}
         >
           {icon}
-          {label}
+          <span className="hidden sm:inline">{label}</span>
         </button>
       ))}
     </nav>
@@ -957,6 +1294,55 @@ function OverviewPanel({
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [localIP, setLocalIP] = useState<string | null>(null);
 
+  // Pagination state for deployment history
+  const DEPLOYMENTS_PAGE_SIZE = 5;
+  const [extraDeployments, setExtraDeployments] = useState<Deployment[]>([]);
+  const [deploymentTotal, setDeploymentTotal] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+
+  // Reset extra deployments when the project is refreshed (first deployment ID changes)
+  const firstDeploymentId = project.deployments[0]?.id;
+  const prevFirstDeploymentIdRef = useRef<string | undefined>(firstDeploymentId);
+  useEffect(() => {
+    if (prevFirstDeploymentIdRef.current !== firstDeploymentId) {
+      prevFirstDeploymentIdRef.current = firstDeploymentId;
+      setExtraDeployments([]);
+      setDeploymentTotal(null);
+    }
+  }, [firstDeploymentId]);
+
+  const allDeployments = [...project.deployments, ...extraDeployments];
+  const hasMoreDeployments =
+    deploymentTotal !== null
+      ? allDeployments.length < deploymentTotal
+      : project.deployments.length >= DEPLOYMENTS_PAGE_SIZE;
+
+  const loadMoreDeployments = async (): Promise<void> => {
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    try {
+      const res = await fetch(
+        `/api/projects/${project.id}/deployments?skip=${allDeployments.length}&limit=${DEPLOYMENTS_PAGE_SIZE}`
+      );
+      const data = await res.json() as {
+        success: boolean;
+        data?: { deployments: Deployment[]; total: number };
+        error?: { message: string };
+      };
+      if (!res.ok) {
+        setLoadMoreError(data?.error?.message ?? 'Failed to load more');
+      } else if (data.data) {
+        setExtraDeployments((prev) => [...prev, ...data.data!.deployments]);
+        setDeploymentTotal(data.data.total);
+      }
+    } catch {
+      setLoadMoreError('Failed to load more deployments');
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   const framework =
     project.type === 'STATIC' || project.type === 'NODEJS' || project.type === 'NEXTJS' || project.type === 'DJANGO'
       ? project.type
@@ -1132,12 +1518,15 @@ function OverviewPanel({
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">Deployments</CardTitle>
             <span className="text-xs text-muted-foreground">
-              {project.deployments.length} deployment{project.deployments.length !== 1 ? 's' : ''}
+              {deploymentTotal !== null
+                ? `${allDeployments.length} of ${deploymentTotal}`
+                : allDeployments.length}{' '}
+              deployment{(deploymentTotal ?? allDeployments.length) !== 1 ? 's' : ''}
             </span>
           </div>
         </CardHeader>
         <CardContent>
-          {project.deployments.length === 0 ? (
+          {allDeployments.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <Rocket className="h-8 w-8 text-muted-foreground/40 mb-2" />
               <p className="text-sm text-muted-foreground">No deployments yet</p>
@@ -1147,9 +1536,36 @@ function OverviewPanel({
             </div>
           ) : (
             <div className="space-y-2">
-              {project.deployments.map((deployment) => (
-                <DeploymentRow key={deployment.id} deployment={deployment} projectId={project.id} onRetried={onRetried} />
+              {allDeployments.map((deployment) => (
+                <DeploymentRow
+                  key={deployment.id}
+                  deployment={deployment}
+                  projectId={project.id}
+                  branch={project.branch}
+                  isDeployInProgress={isInProgress}
+                  onRetried={onRetried}
+                />
               ))}
+              {hasMoreDeployments && (
+                <div className="pt-1">
+                  {loadMoreError && (
+                    <p className="text-xs text-destructive mb-1">{loadMoreError}</p>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-xs text-muted-foreground"
+                    onClick={() => { void loadMoreDeployments(); }}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore ? (
+                      <><Loader2 className="mr-2 h-3 w-3 animate-spin" />Loading…</>
+                    ) : (
+                      'Load more'
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
@@ -1281,7 +1697,7 @@ export default function ProjectDetailPage(): React.ReactElement {
           </Button>
           <div className="min-w-0">
             <div className="flex items-center gap-2.5">
-              <h2 className="text-2xl font-bold truncate">{project.name}</h2>
+              <h2 className="text-xl sm:text-2xl font-bold truncate">{project.name}</h2>
               <FrameworkLogo framework={framework} size={22} />
             </div>
             <p className="text-sm text-muted-foreground mt-1">
@@ -1317,6 +1733,9 @@ export default function ProjectDetailPage(): React.ReactElement {
               onDeploy={handleDeploy}
               onRetried={fetchProject}
             />
+          )}
+          {activeTab === 'analytics' && (
+            <AnalyticsPanel projectId={project.id} />
           )}
           {activeTab === 'env' && (
             <EnvVarsPanel projectId={project.id} />

@@ -14,7 +14,7 @@ export default function DashboardLayout({
         </h1>
         <DashboardNav />
       </header>
-      <main className="p-6">{children}</main>
+      <main className="p-4 sm:p-6">{children}</main>
     </div>
   );
 }

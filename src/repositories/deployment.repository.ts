@@ -6,7 +6,8 @@ export type DeploymentWithProject = Deployment & { project: Project };
 export interface IDeploymentRepository {
   findById(id: string): Promise<Deployment | null>;
   findByIdWithProject(id: string): Promise<DeploymentWithProject | null>;
-  findByProjectId(projectId: string, limit?: number): Promise<Deployment[]>;
+  findByProjectId(projectId: string, limit?: number, skip?: number): Promise<Deployment[]>;
+  countByProjectId(projectId: string): Promise<number>;
   create(data: { projectId: string; status?: string }): Promise<Deployment>;
   update(id: string, data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'buildLog' | 'commitHash' | 'startedAt' | 'completedAt'>>): Promise<Deployment>;
   /** Clear subdomain on other deployments of this project so the given deployment can claim it (avoids unique constraint). */
@@ -41,12 +42,17 @@ export class DeploymentRepository implements IDeploymentRepository {
     });
   }
 
-  async findByProjectId(projectId: string, limit = 10): Promise<Deployment[]> {
+  async findByProjectId(projectId: string, limit = 10, skip = 0): Promise<Deployment[]> {
     return prisma.deployment.findMany({
       where: { projectId },
       orderBy: { createdAt: 'desc' },
       take: limit,
+      skip,
     });
+  }
+
+  async countByProjectId(projectId: string): Promise<number> {
+    return prisma.deployment.count({ where: { projectId } });
   }
 
   async create(data: { projectId: string; status?: string }): Promise<Deployment> {
