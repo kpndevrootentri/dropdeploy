@@ -15,7 +15,8 @@ model User {
   email        String   @unique
   passwordHash String   @map("password_hash")
 
-  projects Project[]
+  projects  Project[]
+  auditLogs AuditLog[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -36,7 +37,9 @@ model Project {
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  deployments Deployment[]
+  deployments          Deployment[]
+  environmentVariables EnvironmentVariable[]
+  auditLogs            AuditLog[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -74,6 +77,50 @@ enum ProjectType {
   NODEJS
   NEXTJS
   DJANGO
+}
+
+model EnvironmentVariable {
+  id             String          @id @default(cuid())
+  key            String
+  encryptedValue String          @map("encrypted_value") @db.Text
+  iv             String
+  authTag        String          @map("auth_tag")
+  environment    EnvEnvironment  @default(ALL)
+
+  projectId String  @map("project_id")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([projectId, key, environment])
+  @@index([projectId])
+  @@map("environment_variables")
+}
+
+enum EnvEnvironment {
+  DEVELOPMENT
+  STAGING
+  PRODUCTION
+  ALL
+}
+
+model AuditLog {
+  id        String @id @default(cuid())
+  action    String // ENV_CREATED, ENV_UPDATED, ENV_DELETED
+  targetKey String @map("target_key")
+
+  userId    String  @map("user_id")
+  user      User    @relation(fields: [userId], references: [id])
+
+  projectId String  @map("project_id")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([projectId])
+  @@index([userId])
+  @@map("audit_logs")
 }
 
 enum DeploymentStatus {

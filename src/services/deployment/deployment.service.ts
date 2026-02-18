@@ -1,8 +1,11 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { deploymentRepository, type IDeploymentRepository } from '@/repositories/deployment.repository';
 import { projectRepository, type IProjectRepository } from '@/repositories/project.repository';
 import { deploymentQueueAdapter, type IDeploymentQueue } from '@/lib/queue';
 import { dockerService, type DockerService } from '@/services/docker';
 import { gitService, type IGitService } from '@/services/git';
+import { envVarService, type EnvironmentVariableService } from '@/services/env-var';
 import { NotFoundError } from '@/lib/errors';
 import type { Deployment } from '@prisma/client';
 
@@ -12,7 +15,8 @@ export class DeploymentService {
     private readonly projectRepo: IProjectRepository,
     private readonly queue: IDeploymentQueue,
     private readonly docker: DockerService,
-    private readonly git: IGitService
+    private readonly git: IGitService,
+    private readonly envVar: EnvironmentVariableService,
   ) { }
 
   /**
@@ -110,14 +114,31 @@ export class DeploymentService {
         project.branch,
       );
 
+      // Resolve env vars: split into build args (NEXT_PUBLIC_*) and runtime env
+      const allEnvVars = await this.envVar.resolveForDeployment(project.id);
+      const buildArgs: Record<string, string> = {};
+      const runtimeEnv: Record<string, string> = {};
+      for (const [key, value] of Object.entries(allEnvVars)) {
+        if (key.startsWith('NEXT_PUBLIC_') && project.type === 'NEXTJS') {
+          buildArgs[key] = value;
+        } else {
+          runtimeEnv[key] = value;
+        }
+      }
+
       await this.deploymentRepo.update(deploymentId, { buildStep: 'BUILDING_IMAGE' });
-      const imageName = await this.docker.buildImage(project, workDir);
+      const secretValues = Object.values(runtimeEnv);
+      const imageName = await this.docker.buildImage(project, workDir, buildArgs, secretValues);
+
+      // Clean up build artifacts from work directory
+      await this.cleanBuildArtifacts(workDir);
 
       await this.deploymentRepo.update(deploymentId, { buildStep: 'STARTING' });
       const containerPort = await this.docker.runContainer(
         imageName,
         project.type,
         `dropdeploy-${project.slug}`,
+        runtimeEnv,
       );
 
       await this.deploymentRepo.clearSubdomainForOtherDeployments(
@@ -142,6 +163,33 @@ export class DeploymentService {
       throw err;
     }
   }
+  /**
+   * Remove generated Dockerfile and any .env files from the work directory
+   * after Docker build to prevent secrets lingering on disk.
+   */
+  private async cleanBuildArtifacts(workDir: string): Promise<void> {
+    const filesToClean = ['Dockerfile', '.dockerignore'];
+    for (const file of filesToClean) {
+      try {
+        await fs.promises.unlink(path.join(workDir, file));
+      } catch {
+        // File may not exist — that's fine
+      }
+    }
+
+    // Remove any .env* files that the repo might contain
+    try {
+      const entries = await fs.promises.readdir(workDir);
+      for (const entry of entries) {
+        if (entry.startsWith('.env')) {
+          await fs.promises.unlink(path.join(workDir, entry));
+        }
+      }
+    } catch {
+      // Non-critical — log and continue
+      console.warn('[DeploymentService] Failed to clean .env files from workDir');
+    }
+  }
 }
 
 export const deploymentService = new DeploymentService(
@@ -149,6 +197,7 @@ export const deploymentService = new DeploymentService(
   projectRepository,
   deploymentQueueAdapter,
   dockerService,
-  gitService
+  gitService,
+  envVarService,
 );
 

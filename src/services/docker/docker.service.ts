@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Project } from '@prisma/client';
 import { getConfig } from '@/lib/config';
-import { DOCKERFILE_TEMPLATES, CONTAINER_PORTS, type DockerfileProjectType } from './dockerfile.templates';
+import { DOCKERFILE_TEMPLATES, CONTAINER_PORTS, type DockerfileProjectType, injectNextPublicBuildArgs } from './dockerfile.templates';
 import { patchNextConfig } from './nextjs-config-patcher';
 
 export interface DockerServiceConfig {
@@ -31,22 +31,36 @@ export class DockerService {
 
   /**
    * Returns Dockerfile content for the given project type.
+   * For NEXTJS projects, injects ARG/ENV lines for NEXT_PUBLIC_* build args.
    */
-  getDockerfileForProject(project: Project): string {
+  getDockerfileForProject(project: Project, buildArgKeys: string[] = []): string {
     const key =
       project.type in DOCKERFILE_TEMPLATES ? project.type : 'STATIC';
-    return DOCKERFILE_TEMPLATES[key as keyof typeof DOCKERFILE_TEMPLATES];
+    let template = DOCKERFILE_TEMPLATES[key as keyof typeof DOCKERFILE_TEMPLATES];
+    if (key === 'NEXTJS') {
+      template = injectNextPublicBuildArgs(template, buildArgKeys);
+    }
+    return template;
   }
 
   /**
    * Writes Dockerfile to context path, then builds image using dockerode.
    * Context path must contain cloned repo files.
+   * buildArgs are passed as Docker build args (used for NEXT_PUBLIC_* vars).
    */
-  async buildImage(project: Project, contextPath: string): Promise<string> {
+  async buildImage(
+    project: Project,
+    contextPath: string,
+    buildArgs: Record<string, string> = {},
+    secretValues: string[] = [],
+  ): Promise<string> {
     const imageName = `dropdeploy/${project.slug}:latest`;
-    const dockerfile = this.getDockerfileForProject(project);
+    const dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs));
     const dockerfilePath = path.join(contextPath, 'Dockerfile');
     await fs.promises.writeFile(dockerfilePath, dockerfile, 'utf8');
+
+    // Write .dockerignore to prevent .env files from leaking into image
+    await this.writeDockerignore(contextPath);
 
     // Patch Next.js config to skip lint/type errors during build
     if (project.type === 'NEXTJS') {
@@ -56,8 +70,14 @@ export class DockerService {
     console.log('[docker] Building image:', imageName);
     const stream = await this.docker.buildImage(
       { context: contextPath, src: ['.'] },
-      { t: imageName }
+      {
+        t: imageName,
+        ...(Object.keys(buildArgs).length > 0 ? { buildargs: buildArgs } : {}),
+      },
     );
+
+    // Build a scrubber to redact secret values from build output
+    const scrub = this.buildScrubber(secretValues);
 
     // Collect build output for diagnostics
     const buildLog: string[] = [];
@@ -71,10 +91,11 @@ export class DockerService {
           }
           const buildError = output?.find((o) => o.error ?? o.errorDetail);
           if (buildError) {
-            const msg =
+            const msg = scrub(
               buildError.error ??
               buildError.errorDetail?.message ??
-              'Docker build failed';
+              'Docker build failed',
+            );
             const tail = buildLog.slice(-20).join('');
             reject(new Error(`${msg}\n\nBuild output (last 20 lines):\n${tail}`));
             return;
@@ -83,7 +104,7 @@ export class DockerService {
         },
         (event: { stream?: string; error?: string }) => {
           if (event.stream) {
-            buildLog.push(event.stream);
+            buildLog.push(scrub(event.stream));
           }
         }
       );
@@ -105,7 +126,12 @@ export class DockerService {
    * Creates and starts a container from the image; returns the host port.
    * Static projects expose 80, Node/Next expose 3000.
    */
-  async runContainer(imageName: string, projectType: string, containerName?: string): Promise<number> {
+  async runContainer(
+    imageName: string,
+    projectType: string,
+    containerName?: string,
+    envVars: Record<string, string> = {},
+  ): Promise<number> {
     try {
       await this.docker.getImage(imageName).inspect();
     } catch {
@@ -131,9 +157,15 @@ export class DockerService {
     const containerPort = CONTAINER_PORTS[projectType as DockerfileProjectType] ?? 3000;
     const hostPort = await this.findAvailablePort();
 
+    // Convert env vars to Docker format: ["KEY=value", ...]
+    const envArray = Object.entries(envVars).map(
+      ([key, value]) => `${key}=${value}`,
+    );
+
     const container = await this.docker.createContainer({
       Image: imageName,
       name: containerName,
+      Env: envArray.length > 0 ? envArray : undefined,
       ExposedPorts: { [`${containerPort}/tcp`]: {} },
       HostConfig: {
         PortBindings: {
@@ -146,6 +178,39 @@ export class DockerService {
 
     await container.start();
     return hostPort;
+  }
+
+  /**
+   * Returns a function that replaces all secret values in a string with [REDACTED].
+   * Only scrubs values that are 3+ characters to avoid false positives.
+   */
+  private buildScrubber(secretValues: string[]): (text: string) => string {
+    const meaningful = secretValues.filter((v) => v.length >= 3);
+    if (meaningful.length === 0) return (text) => text;
+
+    // Escape regex special chars and sort longest-first for greedy matching
+    const escaped = meaningful
+      .sort((a, b) => b.length - a.length)
+      .map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const pattern = new RegExp(escaped.join('|'), 'g');
+
+    return (text: string) => text.replace(pattern, '[REDACTED]');
+  }
+
+  /**
+   * Appends .env* exclusions to .dockerignore to prevent secret leakage.
+   */
+  private async writeDockerignore(contextPath: string): Promise<void> {
+    const ignorePath = path.join(contextPath, '.dockerignore');
+    const envIgnore = '\n# Prevent .env secret leakage\n.env*\n';
+    try {
+      const existing = await fs.promises.readFile(ignorePath, 'utf8');
+      if (!existing.includes('.env*')) {
+        await fs.promises.writeFile(ignorePath, existing + envIgnore, 'utf8');
+      }
+    } catch {
+      await fs.promises.writeFile(ignorePath, envIgnore.trim() + '\n', 'utf8');
+    }
   }
 
   /**

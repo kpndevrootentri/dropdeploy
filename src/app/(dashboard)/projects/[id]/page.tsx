@@ -14,6 +14,7 @@ import { FrameworkLogo, FRAMEWORK_CONFIG, getProjectUrl } from '@/components/ui/
 import { useFetchMutation } from '@/hooks/use-fetch-mutation';
 import { cn } from '@/lib/utils';
 import { ProjectTerminal } from '@/components/features/terminal';
+import { EnvVarsPanel } from '@/components/features/env-vars-panel';
 import { getLocalIP } from '@/lib/local-ip';
 import {
   ArrowLeft,
@@ -35,6 +36,7 @@ import {
   Terminal,
   Wifi,
   GitBranch,
+  KeyRound,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -67,7 +69,7 @@ interface ProjectDetail {
 }
 
 type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO';
-type Tab = 'overview' | 'settings' | 'advanced';
+type Tab = 'overview' | 'env' | 'settings' | 'advanced';
 
 const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO'];
 const POLL_INTERVAL_MS = 2500;
@@ -254,6 +256,7 @@ function DeploymentRow({ deployment }: { deployment: Deployment }): React.ReactE
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" /> },
+  { key: 'env', label: 'Environment', icon: <KeyRound className="h-4 w-4" /> },
   { key: 'settings', label: 'Settings', icon: <Settings className="h-4 w-4" /> },
   { key: 'advanced', label: 'Advanced', icon: <Terminal className="h-4 w-4" /> },
 ];
@@ -1131,6 +1134,9 @@ export default function ProjectDetailPage(): React.ReactElement {
               isInProgress={isInProgress}
               onDeploy={handleDeploy}
             />
+          )}
+          {activeTab === 'env' && (
+            <EnvVarsPanel projectId={project.id} />
           )}
           {activeTab === 'settings' && (
             <SettingsPanel
