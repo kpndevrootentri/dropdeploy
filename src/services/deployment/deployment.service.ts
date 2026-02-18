@@ -101,6 +101,35 @@ export class DeploymentService {
   }
 
   /**
+   * Retries a FAILED deployment: resets the DB record to QUEUED and re-enqueues the job.
+   */
+  async retryFailedDeployment(deploymentId: string, userId: string): Promise<Deployment> {
+    const deployment = await this.deploymentRepo.findByIdWithProject(deploymentId);
+    if (!deployment) {
+      throw new NotFoundError('Deployment');
+    }
+    if (deployment.project.userId !== userId) {
+      throw new NotFoundError('Deployment');
+    }
+    if (deployment.status !== 'FAILED') {
+      throw new ValidationError(
+        `Only FAILED deployments can be retried (current status: ${deployment.status})`
+      );
+    }
+    const updated = await this.deploymentRepo.update(deploymentId, {
+      status: 'QUEUED',
+      buildStep: null,
+      buildLog: null,
+      completedAt: null,
+    });
+    await this.queue.retryFailed(deploymentId, {
+      deploymentId,
+      projectId: deployment.projectId,
+    });
+    return updated;
+  }
+
+  /**
    * Lists deployments for a project.
    */
   async listByProjectId(projectId: string, userId: string, limit = 10): Promise<Deployment[]> {

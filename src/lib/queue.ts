@@ -28,6 +28,12 @@ export interface IDeploymentQueue {
   add(job: DeploymentJob): Promise<string>;
   /** Remove a waiting job by deploymentId. Resolves silently if the job is not found. */
   remove(deploymentId: string): Promise<void>;
+  /**
+   * Re-queue a failed job. If the job still exists in BullMQ's failed set,
+   * it is moved back to waiting via job.retry(). If it has been cleaned up,
+   * a fresh job is added with the same jobId.
+   */
+  retryFailed(deploymentId: string, fallbackJob: DeploymentJob): Promise<void>;
 }
 
 export const deploymentQueueAdapter: IDeploymentQueue = {
@@ -41,6 +47,14 @@ export const deploymentQueueAdapter: IDeploymentQueue = {
     const job = await getDeploymentQueue().getJob(deploymentId);
     if (job) {
       await job.remove();
+    }
+  },
+  async retryFailed(deploymentId: string, fallbackJob: DeploymentJob): Promise<void> {
+    const job = await getDeploymentQueue().getJob(deploymentId);
+    if (job) {
+      await job.retry('failed');
+    } else {
+      await getDeploymentQueue().add('deploy', fallbackJob, { jobId: deploymentId });
     }
   },
 };

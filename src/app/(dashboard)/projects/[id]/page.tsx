@@ -330,14 +330,47 @@ function DeploymentLogs({ deployment, projectId }: { deployment: Deployment; pro
 // DeploymentRow
 // ---------------------------------------------------------------------------
 
-function DeploymentRow({ deployment, projectId }: { deployment: Deployment; projectId: string }): React.ReactElement {
+function DeploymentRow({
+  deployment,
+  projectId,
+  onRetried,
+}: {
+  deployment: Deployment;
+  projectId: string;
+  onRetried: () => void;
+}): React.ReactElement {
   const isInProgress = deployment.status === 'QUEUED' || deployment.status === 'BUILDING';
   const isFinished = deployment.status === 'DEPLOYED' || deployment.status === 'FAILED';
+  const isFailed = deployment.status === 'FAILED';
+
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
 
   const buildDuration =
     isFinished && deployment.startedAt && deployment.completedAt
       ? new Date(deployment.completedAt).getTime() - new Date(deployment.startedAt).getTime()
       : null;
+
+  const handleRetry = async (): Promise<void> => {
+    setRetryError(null);
+    setRetrying(true);
+    try {
+      const res = await fetch(
+        `/api/projects/${projectId}/deployments/${deployment.id}/retry`,
+        { method: 'POST' }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setRetryError(data?.error?.message ?? 'Retry failed');
+      } else {
+        onRetried();
+      }
+    } catch {
+      setRetryError('Something went wrong');
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   return (
     <div className="border rounded-lg overflow-hidden">
@@ -372,7 +405,25 @@ function DeploymentRow({ deployment, projectId }: { deployment: Deployment; proj
           {isInProgress && deployment.status === 'BUILDING' && (
             <BuildProgress currentStep={deployment.buildStep} />
           )}
+          {retryError && (
+            <p className="text-xs text-destructive mt-1">{retryError}</p>
+          )}
         </div>
+        {isFailed && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 h-7 px-2 text-xs"
+            onClick={() => { void handleRetry(); }}
+            disabled={retrying}
+          >
+            {retrying ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              'Retry'
+            )}
+          </Button>
+        )}
       </div>
       <DeploymentLogs deployment={deployment} projectId={projectId} />
     </div>
@@ -894,12 +945,14 @@ function OverviewPanel({
   project,
   deployError,
   isInProgress,
+  onRetried,
 }: {
   project: ProjectDetail;
   deploying: boolean;
   deployError: string | null;
   isInProgress: boolean;
   onDeploy: () => void;
+  onRetried: () => void;
 }): React.ReactElement {
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [localIP, setLocalIP] = useState<string | null>(null);
@@ -1095,7 +1148,7 @@ function OverviewPanel({
           ) : (
             <div className="space-y-2">
               {project.deployments.map((deployment) => (
-                <DeploymentRow key={deployment.id} deployment={deployment} projectId={project.id} />
+                <DeploymentRow key={deployment.id} deployment={deployment} projectId={project.id} onRetried={onRetried} />
               ))}
             </div>
           )}
@@ -1262,6 +1315,7 @@ export default function ProjectDetailPage(): React.ReactElement {
               deployError={deployError}
               isInProgress={isInProgress}
               onDeploy={handleDeploy}
+              onRetried={fetchProject}
             />
           )}
           {activeTab === 'env' && (
