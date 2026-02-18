@@ -11,6 +11,18 @@ import { getConfig } from '@/lib/config';
 import { DOCKERFILE_TEMPLATES, CONTAINER_PORTS, type DockerfileProjectType, injectNextPublicBuildArgs } from './dockerfile.templates';
 import { patchNextConfig } from './nextjs-config-patcher';
 
+function isPortConflictError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return msg.includes('port is already allocated') || msg.includes('address already in use');
+}
+
+const CONTAINER_RESOURCES: Record<string, { memory: number; cpuShares: number }> = {
+  STATIC: { memory: 128 * 1024 * 1024,  cpuShares: 256  },
+  NODEJS: { memory: 512 * 1024 * 1024,  cpuShares: 1024 },
+  NEXTJS: { memory: 1024 * 1024 * 1024, cpuShares: 1024 },
+  DJANGO: { memory: 512 * 1024 * 1024,  cpuShares: 512  },
+};
+
 export interface DockerServiceConfig {
   socketPath?: string;
   memoryLimitBytes?: number;
@@ -56,9 +68,12 @@ export class DockerService {
     secretValues: string[] = [],
   ): Promise<string> {
     const imageName = `dropdeploy/${project.slug}:latest`;
-    const dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs));
     const dockerfilePath = path.join(contextPath, 'Dockerfile');
-    await fs.promises.writeFile(dockerfilePath, dockerfile, 'utf8');
+    const hasCustomDockerfile = await fs.promises.access(dockerfilePath).then(() => true).catch(() => false);
+    if (!hasCustomDockerfile) {
+      const dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs));
+      await fs.promises.writeFile(dockerfilePath, dockerfile, 'utf8');
+    }
 
     // Write .dockerignore to prevent .env files from leaking into image
     await this.writeDockerignore(contextPath);
@@ -73,8 +88,9 @@ export class DockerService {
       { context: contextPath, src: ['.'] },
       {
         t: imageName,
+        version: '2',  // enable BuildKit builder
         ...(Object.keys(buildArgs).length > 0 ? { buildargs: buildArgs } : {}),
-      },
+      } as Record<string, unknown>,
     );
 
     // Build a scrubber to redact secret values from build output
@@ -157,29 +173,46 @@ export class DockerService {
     }
 
     const containerPort = CONTAINER_PORTS[projectType as DockerfileProjectType] ?? 3000;
-    const hostPort = await this.findAvailablePort(excludePorts);
 
     // Convert env vars to Docker format: ["KEY=value", ...]
     const envArray = Object.entries(envVars).map(
       ([key, value]) => `${key}=${value}`,
     );
 
-    const container = await this.docker.createContainer({
-      Image: imageName,
-      name: containerName,
-      Env: envArray.length > 0 ? envArray : undefined,
-      ExposedPorts: { [`${containerPort}/tcp`]: {} },
-      HostConfig: {
-        PortBindings: {
-          [`${containerPort}/tcp`]: [{ HostPort: String(hostPort) }],
-        },
-        Memory: this.memoryLimitBytes,
-        CpuShares: this.cpuShares,
-      },
-    });
+    const resources = CONTAINER_RESOURCES[projectType] ?? {
+      memory: this.memoryLimitBytes,
+      cpuShares: this.cpuShares,
+    };
 
-    await container.start();
-    return hostPort;
+    const tried = new Set<number>(excludePorts);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const hostPort = await this.findAvailablePort([...tried]);
+      tried.add(hostPort);
+
+      const container = await this.docker.createContainer({
+        Image: imageName,
+        name: containerName,
+        Env: envArray.length > 0 ? envArray : undefined,
+        ExposedPorts: { [`${containerPort}/tcp`]: {} },
+        HostConfig: {
+          PortBindings: {
+            [`${containerPort}/tcp`]: [{ HostPort: String(hostPort) }],
+          },
+          Memory: resources.memory,
+          CpuShares: resources.cpuShares,
+        },
+      });
+
+      try {
+        await container.start();
+        return hostPort;
+      } catch (err) {
+        await container.remove().catch(() => {});
+        if (!isPortConflictError(err) || attempt >= 2) throw err;
+        console.warn(`[docker] Port ${hostPort} conflict on start, retrying (attempt ${attempt + 1})`);
+      }
+    }
+    throw new Error('Failed to start container after 3 port allocation attempts');
   }
 
   /**
@@ -217,16 +250,32 @@ export class DockerService {
 
   /**
    * Find an available host port in range 8000–9999 by probing with a TCP server.
+   * Uses a sequential scan from a random offset so concurrent workers diverge quickly.
    */
   async findAvailablePort(excludePorts: number[] = []): Promise<number> {
     const base = 8000;
     const range = 2000;
     const excluded = new Set(excludePorts);
-    for (let attempts = 0; attempts < 50; attempts++) {
-      const port = base + Math.floor(Math.random() * range);
+    const start = Math.floor(Math.random() * range);
+    for (let i = 0; i < range; i++) {
+      const port = base + ((start + i) % range);
       if (!excluded.has(port) && await this.isPortAvailable(port)) return port;
     }
-    throw new Error('No available port found in range 8000-9999 after 50 attempts');
+    throw new Error('No available port found in range 8000–9999');
+  }
+
+  /**
+   * Stops and removes a container by name. Silently ignores missing containers.
+   */
+  async stopAndRemoveContainer(containerName: string): Promise<void> {
+    try {
+      const container = this.docker.getContainer(containerName);
+      const info = await container.inspect();
+      if (info.State.Running) await container.stop();
+      await container.remove();
+    } catch {
+      // Container doesn't exist or already removed — fine
+    }
   }
 
   private isPortAvailable(port: number): Promise<boolean> {

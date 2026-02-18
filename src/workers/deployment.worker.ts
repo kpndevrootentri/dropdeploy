@@ -6,6 +6,7 @@
 
 import { Worker, type Job } from 'bullmq';
 import { getRedisConnection } from '@/lib/redis';
+import { getConfig } from '@/lib/config';
 import { deploymentService } from '@/services/deployment';
 import type { DeploymentJob } from '@/types/deployment.types';
 
@@ -29,7 +30,7 @@ function main(): void {
     processJob,
     {
       connection: getRedisConnection(),
-      concurrency: 5,
+      concurrency: getConfig().BULLMQ_CONCURRENCY,
     }
   );
 

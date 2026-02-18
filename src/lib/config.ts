@@ -18,6 +18,7 @@ const envSchema = z.object({
   PROJECTS_DIR: z.string().default(path.join(defaultBaseDir, 'projects')),
   DOCKER_DATA_DIR: z.string().default(path.join(defaultBaseDir, 'docker')),
   NGINX_CONFIG_PATH: z.string().default('/etc/nginx/sites-enabled'),
+  BULLMQ_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(5),
 });
 
 type Env = z.infer<typeof envSchema>;

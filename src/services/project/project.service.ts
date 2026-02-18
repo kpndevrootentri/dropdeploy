@@ -1,4 +1,5 @@
 import { projectRepository, type IProjectRepository } from '@/repositories/project.repository';
+import { dockerService, type DockerService } from '@/services/docker';
 import { NotFoundError } from '@/lib/errors';
 import type { CreateProjectDto, UpdateProjectDto } from '@/types/project.types';
 import type { Project } from '@prisma/client';
@@ -14,7 +15,10 @@ export type ProjectWithDeployments = Project & {
 };
 
 export class ProjectService {
-  constructor(private readonly projectRepo: IProjectRepository) {}
+  constructor(
+    private readonly projectRepo: IProjectRepository,
+    private readonly docker: DockerService,
+  ) {}
 
   async getById(id: string, userId: string): Promise<Project> {
     const project = await this.projectRepo.findById(id);
@@ -55,9 +59,10 @@ export class ProjectService {
   }
 
   async delete(id: string, userId: string): Promise<void> {
-    await this.getById(id, userId);
+    const project = await this.getById(id, userId);
+    await this.docker.stopAndRemoveContainer(`dropdeploy-${project.slug}`);
     await this.projectRepo.delete(id);
   }
 }
 
-export const projectService = new ProjectService(projectRepository);
+export const projectService = new ProjectService(projectRepository, dockerService);
