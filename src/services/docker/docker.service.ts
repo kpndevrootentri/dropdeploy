@@ -71,7 +71,15 @@ export class DockerService {
     const imageName = `dropdeploy/${project.slug}:latest`;
     const dockerfilePath = path.join(contextPath, 'Dockerfile');
     const hasCustomDockerfile = await fs.promises.access(dockerfilePath).then(() => true).catch(() => false);
-    if (!hasCustomDockerfile) {
+    if (hasCustomDockerfile) {
+      // Strip BuildKit-only directives so the classic builder doesn't choke on
+      // user-supplied Dockerfiles that contain `# syntax=...` or `--mount=...`.
+      const raw = await fs.promises.readFile(dockerfilePath, 'utf8');
+      const sanitized = this.stripBuildKitDirectives(raw);
+      if (sanitized !== raw) {
+        await fs.promises.writeFile(dockerfilePath, sanitized, 'utf8');
+      }
+    } else {
       const dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs));
       await fs.promises.writeFile(dockerfilePath, dockerfile, 'utf8');
     }
@@ -89,7 +97,6 @@ export class DockerService {
       { context: contextPath, src: ['.'] },
       {
         t: imageName,
-        version: '2',  // enable BuildKit builder
         ...(Object.keys(buildArgs).length > 0 ? { buildargs: buildArgs } : {}),
       } as Record<string, unknown>,
     );
@@ -282,6 +289,22 @@ export class DockerService {
     } catch {
       // Container doesn't exist or already removed — fine
     }
+  }
+
+  /**
+   * Removes BuildKit-only directives from a Dockerfile so the classic builder
+   * can process it.  Specifically:
+   *   • `# syntax = ...` directives (trigger remote BuildKit frontend pull)
+   *   • `--mount=...` flags on RUN instructions (BuildKit cache/secret mounts)
+   */
+  private stripBuildKitDirectives(content: string): string {
+    return content
+      .split('\n')
+      // Drop `# syntax=docker/dockerfile:...` lines
+      .filter((line) => !/^\s*#\s*syntax\s*=/i.test(line))
+      .join('\n')
+      // Strip --mount=... flags (with their trailing whitespace) from RUN lines
+      .replace(/--mount=\S+\s*/g, '');
   }
 
   private isPortAvailable(port: number): Promise<boolean> {
