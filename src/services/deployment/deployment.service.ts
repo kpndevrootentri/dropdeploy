@@ -6,6 +6,7 @@ import { deploymentQueueAdapter, type IDeploymentQueue } from '@/lib/queue';
 import { dockerService, type DockerService } from '@/services/docker';
 import { gitService, type IGitService } from '@/services/git';
 import { envVarService, type EnvironmentVariableService } from '@/services/env-var';
+import { nginxService, type INginxService } from '@/services/nginx';
 import { NotFoundError } from '@/lib/errors';
 import type { Deployment } from '@prisma/client';
 
@@ -17,6 +18,7 @@ export class DeploymentService {
     private readonly docker: DockerService,
     private readonly git: IGitService,
     private readonly envVar: EnvironmentVariableService,
+    private readonly nginx: INginxService,
   ) { }
 
   /**
@@ -134,11 +136,13 @@ export class DeploymentService {
       await this.cleanBuildArtifacts(workDir);
 
       await this.deploymentRepo.update(deploymentId, { buildStep: 'STARTING' });
+      const activePorts = await this.deploymentRepo.findActiveContainerPorts();
       const containerPort = await this.docker.runContainer(
         imageName,
         project.type,
         `dropdeploy-${project.slug}`,
         runtimeEnv,
+        activePorts,
       );
 
       await this.deploymentRepo.clearSubdomainForOtherDeployments(
@@ -146,6 +150,7 @@ export class DeploymentService {
         project.slug,
         deploymentId
       );
+      await this.deploymentRepo.clearPortForOtherDeployments(project.id, deploymentId);
 
       await this.deploymentRepo.update(deploymentId, {
         status: 'DEPLOYED',
@@ -154,6 +159,12 @@ export class DeploymentService {
         subdomain: project.slug,
         completedAt: new Date(),
       });
+
+      try {
+        await this.nginx.configureProject(project.slug, containerPort);
+      } catch (err) {
+        console.warn('[DeploymentService] Nginx config failed (non-fatal):', err);
+      }
     } catch (err) {
       await this.deploymentRepo.update(deploymentId, {
         status: 'FAILED',
@@ -199,5 +210,6 @@ export const deploymentService = new DeploymentService(
   dockerService,
   gitService,
   envVarService,
+  nginxService,
 );
 

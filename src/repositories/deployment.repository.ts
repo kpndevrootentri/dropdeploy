@@ -15,6 +15,10 @@ export interface IDeploymentRepository {
     subdomain: string,
     excludeDeploymentId: string
   ): Promise<void>;
+  /** Returns all host ports currently held by DEPLOYED deployments (used to avoid port collisions). */
+  findActiveContainerPorts(): Promise<number[]>;
+  /** Clears containerPort on all other deployments of this project (release-on-redeploy). */
+  clearPortForOtherDeployments(projectId: string, excludeDeploymentId: string): Promise<void>;
 }
 
 export class DeploymentRepository implements IDeploymentRepository {
@@ -68,6 +72,21 @@ export class DeploymentRepository implements IDeploymentRepository {
         id: { not: excludeDeploymentId },
       },
       data: { subdomain: null },
+    });
+  }
+
+  async findActiveContainerPorts(): Promise<number[]> {
+    const rows = await prisma.deployment.findMany({
+      where: { status: 'DEPLOYED', containerPort: { not: null } },
+      select: { containerPort: true },
+    });
+    return rows.map((r) => r.containerPort as number);
+  }
+
+  async clearPortForOtherDeployments(projectId: string, excludeDeploymentId: string): Promise<void> {
+    await prisma.deployment.updateMany({
+      where: { projectId, id: { not: excludeDeploymentId } },
+      data: { containerPort: null },
     });
   }
 }

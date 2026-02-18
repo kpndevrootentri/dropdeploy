@@ -4,6 +4,7 @@
 
 import Docker from 'dockerode';
 import * as fs from 'fs';
+import * as net from 'net';
 import * as path from 'path';
 import type { Project } from '@prisma/client';
 import { getConfig } from '@/lib/config';
@@ -131,6 +132,7 @@ export class DockerService {
     projectType: string,
     containerName?: string,
     envVars: Record<string, string> = {},
+    excludePorts: number[] = [],
   ): Promise<number> {
     try {
       await this.docker.getImage(imageName).inspect();
@@ -155,7 +157,7 @@ export class DockerService {
     }
 
     const containerPort = CONTAINER_PORTS[projectType as DockerfileProjectType] ?? 3000;
-    const hostPort = await this.findAvailablePort();
+    const hostPort = await this.findAvailablePort(excludePorts);
 
     // Convert env vars to Docker format: ["KEY=value", ...]
     const envArray = Object.entries(envVars).map(
@@ -214,12 +216,26 @@ export class DockerService {
   }
 
   /**
-   * Find an available host port in a range (avoids conflicts).
+   * Find an available host port in range 8000–9999 by probing with a TCP server.
    */
-  async findAvailablePort(): Promise<number> {
+  async findAvailablePort(excludePorts: number[] = []): Promise<number> {
     const base = 8000;
     const range = 2000;
-    return base + Math.floor(Math.random() * range);
+    const excluded = new Set(excludePorts);
+    for (let attempts = 0; attempts < 50; attempts++) {
+      const port = base + Math.floor(Math.random() * range);
+      if (!excluded.has(port) && await this.isPortAvailable(port)) return port;
+    }
+    throw new Error('No available port found in range 8000-9999 after 50 attempts');
+  }
+
+  private isPortAvailable(port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const server = net.createServer();
+      server.once('error', () => resolve(false));
+      server.once('listening', () => server.close(() => resolve(true)));
+      server.listen(port, '127.0.0.1');
+    });
   }
 }
 

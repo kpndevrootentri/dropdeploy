@@ -17,6 +17,7 @@ const envSchema = z.object({
   DOCKER_SOCKET: z.string().optional(),
   PROJECTS_DIR: z.string().default(path.join(defaultBaseDir, 'projects')),
   DOCKER_DATA_DIR: z.string().default(path.join(defaultBaseDir, 'docker')),
+  NGINX_CONFIG_PATH: z.string().default('/etc/nginx/sites-enabled'),
 });
 
 type Env = z.infer<typeof envSchema>;
