@@ -8,6 +8,11 @@ import * as path from 'path';
 import { simpleGit } from 'simple-git';
 import { getConfig } from '@/lib/config';
 
+export interface RepoResult {
+  workDir: string;
+  commitHash: string;
+}
+
 export interface IGitService {
   /**
    * Returns the deterministic work directory for a project.
@@ -16,9 +21,9 @@ export interface IGitService {
 
   /**
    * Clone (first time) or fetch+reset (subsequent) the repo at the given branch.
-   * Returns the work directory path.
+   * Returns the work directory path and the HEAD commit SHA.
    */
-  ensureRepo(repoUrl: string, projectSlug: string, branch: string): Promise<string>;
+  ensureRepo(repoUrl: string, projectSlug: string, branch: string): Promise<RepoResult>;
 }
 
 export class GitService implements IGitService {
@@ -30,7 +35,7 @@ export class GitService implements IGitService {
     repoUrl: string,
     projectSlug: string,
     branch: string,
-  ): Promise<string> {
+  ): Promise<RepoResult> {
     const workDir = this.getWorkDir(projectSlug);
     await fs.promises.mkdir(getConfig().PROJECTS_DIR, { recursive: true });
 
@@ -71,14 +76,18 @@ export class GitService implements IGitService {
         await git.checkoutBranch(branch, `origin/${branch}`);
       }
       await git.reset(['--hard', `origin/${branch}`]);
+
+      const commitHash = await git.revparse(['HEAD']);
+      return { workDir, commitHash: commitHash.trim() };
     } else {
       // First deploy – full clone so branch switching works immediately
       console.log(`[git] Cloning ${repoUrl} (branch: ${branch}) into ${workDir}`);
       const git = simpleGit();
       await git.clone(repoUrl, workDir, ['-b', branch]);
-    }
 
-    return workDir;
+      const commitHash = await simpleGit(workDir).revparse(['HEAD']);
+      return { workDir, commitHash: commitHash.trim() };
+    }
   }
 }
 

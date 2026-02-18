@@ -54,6 +54,7 @@ model Deployment {
   containerPort Int?             @map("container_port")
   subdomain     String?          @unique
   buildStep     String?          @map("build_step")
+  commitHash    String?          @map("commit_hash")
   startedAt     DateTime?        @map("started_at")
   completedAt   DateTime?        @map("completed_at")
 
@@ -128,4 +129,5 @@ enum DeploymentStatus {
   BUILDING
   DEPLOYED
   FAILED
+  CANCELLED
 }

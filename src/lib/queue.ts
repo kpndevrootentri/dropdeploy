@@ -26,11 +26,21 @@ export function getDeploymentQueue(): Queue<DeploymentJob> {
 
 export interface IDeploymentQueue {
   add(job: DeploymentJob): Promise<string>;
+  /** Remove a waiting job by deploymentId. Resolves silently if the job is not found. */
+  remove(deploymentId: string): Promise<void>;
 }
 
 export const deploymentQueueAdapter: IDeploymentQueue = {
   async add(job: DeploymentJob): Promise<string> {
-    const result = await getDeploymentQueue().add('deploy', job);
+    const result = await getDeploymentQueue().add('deploy', job, {
+      jobId: job.deploymentId,
+    });
     return result.id ?? '';
+  },
+  async remove(deploymentId: string): Promise<void> {
+    const job = await getDeploymentQueue().getJob(deploymentId);
+    if (job) {
+      await job.remove();
+    }
   },
 };

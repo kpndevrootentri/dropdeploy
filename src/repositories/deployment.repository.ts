@@ -8,7 +8,7 @@ export interface IDeploymentRepository {
   findByIdWithProject(id: string): Promise<DeploymentWithProject | null>;
   findByProjectId(projectId: string, limit?: number): Promise<Deployment[]>;
   create(data: { projectId: string; status?: string }): Promise<Deployment>;
-  update(id: string, data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'startedAt' | 'completedAt'>>): Promise<Deployment>;
+  update(id: string, data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'commitHash' | 'startedAt' | 'completedAt'>>): Promise<Deployment>;
   /** Clear subdomain on other deployments of this project so the given deployment can claim it (avoids unique constraint). */
   clearSubdomainForOtherDeployments(
     projectId: string,
@@ -19,6 +19,14 @@ export interface IDeploymentRepository {
   findActiveContainerPorts(): Promise<number[]>;
   /** Clears containerPort on all other deployments of this project (release-on-redeploy). */
   clearPortForOtherDeployments(projectId: string, excludeDeploymentId: string): Promise<void>;
+  /** Returns true if the project has a QUEUED or BUILDING deployment in progress. */
+  hasActiveDeployment(projectId: string): Promise<boolean>;
+  /**
+   * Marks all BUILDING deployments as FAILED with completedAt = now.
+   * Called on worker startup to clean up deployments stuck from a previous crash.
+   * Returns the number of rows updated.
+   */
+  markBuildingAsFailed(): Promise<number>;
 }
 
 export class DeploymentRepository implements IDeploymentRepository {
@@ -52,7 +60,7 @@ export class DeploymentRepository implements IDeploymentRepository {
 
   async update(
     id: string,
-    data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'startedAt' | 'completedAt'>>
+    data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'commitHash' | 'startedAt' | 'completedAt'>>
   ): Promise<Deployment> {
     return prisma.deployment.update({
       where: { id },
@@ -88,6 +96,21 @@ export class DeploymentRepository implements IDeploymentRepository {
       where: { projectId, id: { not: excludeDeploymentId } },
       data: { containerPort: null },
     });
+  }
+
+  async hasActiveDeployment(projectId: string): Promise<boolean> {
+    const count = await prisma.deployment.count({
+      where: { projectId, status: { in: ['QUEUED', 'BUILDING'] } },
+    });
+    return count > 0;
+  }
+
+  async markBuildingAsFailed(): Promise<number> {
+    const result = await prisma.deployment.updateMany({
+      where: { status: 'BUILDING' },
+      data: { status: 'FAILED', buildStep: null, completedAt: new Date() },
+    });
+    return result.count;
   }
 }
 

@@ -200,6 +200,7 @@ export class DockerService {
           },
           Memory: resources.memory,
           CpuShares: resources.cpuShares,
+          RestartPolicy: { Name: 'on-failure', MaximumRetryCount: 3 },
         },
       });
 

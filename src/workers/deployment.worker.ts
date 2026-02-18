@@ -24,7 +24,9 @@ async function processJob(job: Job<DeploymentJob>): Promise<void> {
   }
 }
 
-function main(): void {
+async function main(): Promise<void> {
+  await deploymentService.recoverStuckDeployments();
+
   const worker = new Worker<DeploymentJob>(
     QUEUE_NAME,
     processJob,
@@ -45,4 +47,7 @@ function main(): void {
   console.log('[worker] Deployment worker started');
 }
 
-main();
+main().catch((err) => {
+  console.error('[worker] Startup failed:', err);
+  process.exit(1);
+});

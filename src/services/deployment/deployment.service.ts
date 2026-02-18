@@ -7,7 +7,7 @@ import { dockerService, type DockerService } from '@/services/docker';
 import { gitService, type IGitService } from '@/services/git';
 import { envVarService, type EnvironmentVariableService } from '@/services/env-var';
 import { nginxService, type INginxService } from '@/services/nginx';
-import { NotFoundError } from '@/lib/errors';
+import { NotFoundError, ConflictError, ValidationError } from '@/lib/errors';
 import type { Deployment } from '@prisma/client';
 
 export class DeploymentService {
@@ -32,6 +32,10 @@ export class DeploymentService {
     }
     if (project.userId !== userId) {
       throw new NotFoundError('Project');
+    }
+    const active = await this.deploymentRepo.hasActiveDeployment(projectId);
+    if (active) {
+      throw new ConflictError('A deployment is already in progress for this project');
     }
     const deployment = await this.deploymentRepo.create({ projectId, status: 'QUEUED' });
     try {
@@ -72,6 +76,30 @@ export class DeploymentService {
   }
 
   /**
+   * Cancels a QUEUED deployment: removes it from the queue and marks it CANCELLED.
+   * Throws if the deployment is not in QUEUED state (already building or terminal).
+   */
+  async cancelDeployment(deploymentId: string, userId: string): Promise<Deployment> {
+    const deployment = await this.deploymentRepo.findByIdWithProject(deploymentId);
+    if (!deployment) {
+      throw new NotFoundError('Deployment');
+    }
+    if (deployment.project.userId !== userId) {
+      throw new NotFoundError('Deployment');
+    }
+    if (deployment.status !== 'QUEUED') {
+      throw new ValidationError(
+        `Only QUEUED deployments can be cancelled (current status: ${deployment.status})`
+      );
+    }
+    await this.queue.remove(deploymentId);
+    return this.deploymentRepo.update(deploymentId, {
+      status: 'CANCELLED',
+      completedAt: new Date(),
+    });
+  }
+
+  /**
    * Lists deployments for a project.
    */
   async listByProjectId(projectId: string, userId: string, limit = 10): Promise<Deployment[]> {
@@ -80,6 +108,17 @@ export class DeploymentService {
       throw new NotFoundError('Project');
     }
     return this.deploymentRepo.findByProjectId(projectId, limit);
+  }
+
+  /**
+   * Marks all BUILDING deployments as FAILED. Called once on worker startup to
+   * recover from a previous crash where builds were left in an indeterminate state.
+   */
+  async recoverStuckDeployments(): Promise<void> {
+    const count = await this.deploymentRepo.markBuildingAsFailed();
+    if (count > 0) {
+      console.warn(`[DeploymentService] Marked ${count} stuck BUILDING deployment(s) as FAILED on startup`);
+    }
   }
 
   /**
@@ -110,11 +149,12 @@ export class DeploymentService {
         startedAt,
       });
 
-      const workDir = await this.git.ensureRepo(
+      const { workDir, commitHash } = await this.git.ensureRepo(
         project.githubUrl,
         project.slug,
         project.branch,
       );
+      await this.deploymentRepo.update(deploymentId, { commitHash });
 
       // Resolve env vars: split into build args (NEXT_PUBLIC_*) and runtime env
       const allEnvVars = await this.envVar.resolveForDeployment(project.id);
