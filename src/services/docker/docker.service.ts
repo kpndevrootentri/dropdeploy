@@ -66,6 +66,7 @@ export class DockerService {
     contextPath: string,
     buildArgs: Record<string, string> = {},
     secretValues: string[] = [],
+    onLog?: (line: string) => void,
   ): Promise<string> {
     const imageName = `dropdeploy/${project.slug}:latest`;
     const dockerfilePath = path.join(contextPath, 'Dockerfile');
@@ -121,7 +122,11 @@ export class DockerService {
         },
         (event: { stream?: string; error?: string }) => {
           if (event.stream) {
-            buildLog.push(scrub(event.stream));
+            const now = new Date();
+            const ts = `[${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}]`;
+            const formatted = `${ts} ${scrub(event.stream)}`;
+            buildLog.push(formatted);
+            onLog?.(formatted);
           }
         }
       );

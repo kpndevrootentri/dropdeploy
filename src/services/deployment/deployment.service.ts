@@ -7,6 +7,7 @@ import { dockerService, type DockerService } from '@/services/docker';
 import { gitService, type IGitService } from '@/services/git';
 import { envVarService, type EnvironmentVariableService } from '@/services/env-var';
 import { nginxService, type INginxService } from '@/services/nginx';
+import { getRedisConnection } from '@/lib/redis';
 import { NotFoundError, ConflictError, ValidationError } from '@/lib/errors';
 import type { Deployment } from '@prisma/client';
 
@@ -141,6 +142,31 @@ export class DeploymentService {
     }
 
     const startedAt = new Date();
+    const redisChannel = `build:${deploymentId}`;
+    const logLines: string[] = [];
+
+    const flushLog = async (): Promise<void> => {
+      try {
+        await this.deploymentRepo.update(deploymentId, { buildLog: logLines.join('') });
+      } catch {
+        // Non-fatal: log flush failure shouldn't abort the build
+      }
+    };
+
+    let lineCount = 0;
+    const onLog = (line: string): void => {
+      logLines.push(line);
+      lineCount++;
+      // Publish to Redis fire-and-forget (subscriber connections in SSE route)
+      getRedisConnection().publish(redisChannel, line).catch(() => {});
+      if (lineCount % 30 === 0) {
+        void flushLog();
+      }
+    };
+
+    const addMarker = (text: string): void => {
+      onLog(`▶ ${text}\n`);
+    };
 
     try {
       await this.deploymentRepo.update(deploymentId, {
@@ -149,6 +175,7 @@ export class DeploymentService {
         startedAt,
       });
 
+      addMarker('Cloning...');
       const { workDir, commitHash } = await this.git.ensureRepo(
         project.githubUrl,
         project.slug,
@@ -169,13 +196,15 @@ export class DeploymentService {
       }
 
       await this.deploymentRepo.update(deploymentId, { buildStep: 'BUILDING_IMAGE' });
+      addMarker('Building image...');
       const secretValues = Object.values(runtimeEnv);
-      const imageName = await this.docker.buildImage(project, workDir, buildArgs, secretValues);
+      const imageName = await this.docker.buildImage(project, workDir, buildArgs, secretValues, onLog);
 
       // Clean up build artifacts from work directory
       await this.cleanBuildArtifacts(workDir);
 
       await this.deploymentRepo.update(deploymentId, { buildStep: 'STARTING' });
+      addMarker('Starting container...');
       const activePorts = await this.deploymentRepo.findActiveContainerPorts();
       const containerPort = await this.docker.runContainer(
         imageName,
@@ -195,10 +224,14 @@ export class DeploymentService {
       await this.deploymentRepo.update(deploymentId, {
         status: 'DEPLOYED',
         buildStep: null,
+        buildLog: logLines.join(''),
         containerPort,
         subdomain: project.slug,
         completedAt: new Date(),
       });
+
+      // Signal SSE subscribers that the build is done
+      getRedisConnection().publish(redisChannel, '__DONE__').catch(() => {});
 
       try {
         await this.nginx.configureProject(project.slug, containerPort);
@@ -209,8 +242,11 @@ export class DeploymentService {
       await this.deploymentRepo.update(deploymentId, {
         status: 'FAILED',
         buildStep: null,
+        buildLog: logLines.join(''),
         completedAt: new Date(),
       });
+      // Signal SSE subscribers that the build ended (with failure)
+      getRedisConnection().publish(redisChannel, '__DONE__').catch(() => {});
       throw err;
     }
   }

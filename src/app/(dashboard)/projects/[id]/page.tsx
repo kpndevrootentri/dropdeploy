@@ -37,6 +37,8 @@ import {
   Wifi,
   GitBranch,
   KeyRound,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -49,6 +51,8 @@ interface Deployment {
   subdomain: string | null;
   containerPort: number | null;
   buildStep: string | null;
+  buildLog: string | null;
+  commitHash: string | null;
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string;
@@ -199,10 +203,134 @@ function BuildProgress({ currentStep }: { currentStep: string | null }): React.R
 }
 
 // ---------------------------------------------------------------------------
+// DeploymentLogs
+// ---------------------------------------------------------------------------
+
+const TERMINAL_STATUSES = new Set(['DEPLOYED', 'FAILED', 'CANCELLED']);
+
+function DeploymentLogs({ deployment, projectId }: { deployment: Deployment; projectId: string }): React.ReactElement {
+  const [open, setOpen] = useState(false);
+  const [lines, setLines] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const esRef = useRef<EventSource | null>(null);
+
+  const isTerminal = TERMINAL_STATUSES.has(deployment.status);
+
+  useEffect(() => {
+    if (!open) {
+      // Clean up SSE on close
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
+      }
+      return;
+    }
+
+    setLines('');
+    setLoading(true);
+
+    if (isTerminal) {
+      // Fetch static log from REST
+      fetch(`/api/projects/${projectId}/deployments/${deployment.id}/logs`)
+        .then((res) => res.json())
+        .then((data) => {
+          setLines(data?.data?.buildLog ?? '');
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+      return;
+    }
+
+    // Active deployment — use SSE
+    const es = new EventSource(`/api/projects/${projectId}/deployments/${deployment.id}/logs/stream`);
+    esRef.current = es;
+
+    es.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data) as { type: string; log?: string; text?: string };
+        if (msg.type === 'existing' && msg.log) {
+          setLines(msg.log);
+          setLoading(false);
+        } else if (msg.type === 'line' && msg.text) {
+          setLines((prev) => prev + msg.text);
+          setLoading(false);
+        } else if (msg.type === 'done') {
+          es.close();
+          esRef.current = null;
+          setLoading(false);
+        }
+      } catch { /* ignore parse errors */ }
+    };
+
+    es.onerror = () => {
+      setLoading(false);
+      es.close();
+      esRef.current = null;
+    };
+
+    return () => {
+      es.close();
+      esRef.current = null;
+    };
+  }, [open, deployment.id, deployment.status, isTerminal, projectId]);
+
+  // Auto-scroll to bottom when new lines arrive
+  useEffect(() => {
+    if (open && bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [lines, open]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
+      }
+    };
+  }, []);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1.5 px-4 pb-2"
+      >
+        {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        {open ? 'Hide logs' : 'View logs'}
+        {deployment.commitHash && (
+          <span className="ml-1 font-mono text-muted-foreground/70">
+            &middot; {deployment.commitHash.slice(0, 7)}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="mx-4 mb-3 rounded-md bg-zinc-950 border border-zinc-800 overflow-hidden">
+          <div className="max-h-72 overflow-y-auto p-3 font-mono text-xs leading-relaxed text-zinc-300">
+            {loading && lines === '' && (
+              <span className="text-zinc-500">Loading logs…</span>
+            )}
+            {lines === '' && !loading && (
+              <span className="text-zinc-500">No log output yet.</span>
+            )}
+            <pre className="whitespace-pre-wrap break-all">{lines}</pre>
+            <div ref={bottomRef} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // DeploymentRow
 // ---------------------------------------------------------------------------
 
-function DeploymentRow({ deployment }: { deployment: Deployment }): React.ReactElement {
+function DeploymentRow({ deployment, projectId }: { deployment: Deployment; projectId: string }): React.ReactElement {
   const isInProgress = deployment.status === 'QUEUED' || deployment.status === 'BUILDING';
   const isFinished = deployment.status === 'DEPLOYED' || deployment.status === 'FAILED';
 
@@ -246,6 +374,7 @@ function DeploymentRow({ deployment }: { deployment: Deployment }): React.ReactE
           )}
         </div>
       </div>
+      <DeploymentLogs deployment={deployment} projectId={projectId} />
     </div>
   );
 }
@@ -966,7 +1095,7 @@ function OverviewPanel({
           ) : (
             <div className="space-y-2">
               {project.deployments.map((deployment) => (
-                <DeploymentRow key={deployment.id} deployment={deployment} />
+                <DeploymentRow key={deployment.id} deployment={deployment} projectId={project.id} />
               ))}
             </div>
           )}

@@ -7,7 +7,7 @@ const REDIS_PORT = parseInt(process.env.REDIS_PORT ?? '6379', 10);
  * Redis connection for BullMQ and caching.
  * Use getRedisConnection() in server/worker context only.
  */
-function createRedisConnection(): Redis {
+export function createRedisConnection(): Redis {
   return new Redis({
     host: REDIS_HOST,
     port: REDIS_PORT,
