@@ -14,11 +14,14 @@ export async function POST(
     const session = await getSession(req);
     const { id: projectId } = await params;
 
-    const deployment = await deploymentService.createDeployment(projectId, session.userId);
+    const { deployment, queued } = await deploymentService.createDeployment(projectId, session.userId);
+    const message = queued
+      ? 'Deployment queued — will start when the current build completes.'
+      : 'Deployment started.';
 
     return NextResponse.json({
       success: true,
-      data: { deploymentId: deployment.id, message: 'Deployment queued.' },
+      data: { deploymentId: deployment.id, message, queued },
     });
   } catch (error) {
     return handleApiError(error);

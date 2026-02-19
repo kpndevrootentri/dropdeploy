@@ -2,7 +2,7 @@
  * Deployment domain types (PRD-aligned).
  */
 
-export type DeploymentStatus = 'QUEUED' | 'BUILDING' | 'DEPLOYED' | 'FAILED';
+export type DeploymentStatus = 'QUEUED' | 'BUILDING' | 'DEPLOYED' | 'FAILED' | 'CANCELLED';
 
 export interface DeploymentJob {
   deploymentId: string;

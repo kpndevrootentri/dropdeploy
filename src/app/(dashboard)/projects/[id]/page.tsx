@@ -1587,6 +1587,7 @@ export default function ProjectDetailPage(): React.ReactElement {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { execute: executeDeploy, loading: deploying, error: deployError, reset: resetDeploy } = useFetchMutation();
+  const [deployMessage, setDeployMessage] = useState<string | null>(null);
 
   const fetchProject = useCallback(() => {
     fetch(`/api/projects/${params.id}`)
@@ -1647,7 +1648,12 @@ export default function ProjectDetailPage(): React.ReactElement {
       url: `/api/projects/${params.id}/deploy`,
       method: 'POST',
     }).then((result) => {
-      if (result) fetchProject();
+      if (result) {
+        fetchProject();
+        const queued = (result.data as { data?: { queued?: boolean } })?.data?.queued;
+        setDeployMessage(queued ? 'Queued — will start after current build.' : 'Deployment started.');
+        setTimeout(() => setDeployMessage(null), 4000);
+      }
     });
   }, [params.id, executeDeploy, resetDeploy, fetchProject]);
 
@@ -1705,18 +1711,23 @@ export default function ProjectDetailPage(): React.ReactElement {
             </p>
           </div>
         </div>
-        <Button
-          onClick={handleDeploy}
-          disabled={deploying || isInProgress}
-          className="shrink-0"
-        >
-          {deploying || isInProgress ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Rocket className="mr-2 h-4 w-4" />
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <Button
+            onClick={handleDeploy}
+            disabled={deploying}
+            title={isInProgress ? 'A build is running — clicking will queue a new deployment' : undefined}
+          >
+            {deploying ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Rocket className="mr-2 h-4 w-4" />
+            )}
+            {deploying ? 'Deploying…' : 'Deploy'}
+          </Button>
+          {deployMessage && (
+            <p className="text-xs text-muted-foreground">{deployMessage}</p>
           )}
-          {deploying ? 'Deploying…' : isInProgress ? 'In progress…' : 'Deploy'}
-        </Button>
+        </div>
       </div>
 
       {/* Sidebar + Content */}

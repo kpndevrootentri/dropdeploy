@@ -73,10 +73,18 @@ async function main(): Promise<void> {
 
   worker.on('completed', (job) => {
     console.log(`[worker] Job ${job.id} completed`);
+    void deploymentService.enqueueNextForProject(job.data.projectId).catch((err) =>
+      console.error('[worker] enqueueNextForProject error after completion:', err)
+    );
   });
 
   worker.on('failed', (job, err) => {
     console.error(`[worker] Job ${job?.id} failed:`, err?.message);
+    if (job?.data?.projectId) {
+      void deploymentService.enqueueNextForProject(job.data.projectId).catch((e) =>
+        console.error('[worker] enqueueNextForProject error after failure:', e)
+      );
+    }
   });
 
   const heartbeatTimer = startHeartbeat(redis);

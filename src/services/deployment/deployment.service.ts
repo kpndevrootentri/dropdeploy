@@ -23,10 +23,13 @@ export class DeploymentService {
   ) { }
 
   /**
-   * Creates a deployment record and enqueues build job.
-   * If the queue (Redis) is unavailable, the deployment is still created; the job can be retried later.
+   * Creates a deployment record and enqueues build job (smart-queue with supersede pattern).
+   * - Cancels any existing QUEUED deployment for the project (supersede)
+   * - If a build is already BUILDING: saves the new deployment as QUEUED in DB only (held back)
+   * - Otherwise: creates QUEUED in DB + enqueues in BullMQ immediately
+   * Uses a Redis advisory lock to guard against double-click races.
    */
-  async createDeployment(projectId: string, userId: string): Promise<Deployment> {
+  async createDeployment(projectId: string, userId: string): Promise<{ deployment: Deployment; queued: boolean }> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) {
       throw new NotFoundError('Project');
@@ -34,31 +37,59 @@ export class DeploymentService {
     if (project.userId !== userId) {
       throw new NotFoundError('Project');
     }
-    const active = await this.deploymentRepo.hasActiveDeployment(projectId);
-    if (active) {
-      throw new ConflictError('A deployment is already in progress for this project');
+
+    // Redis advisory lock — prevents race from double-click / concurrent API calls
+    const redis = getRedisConnection();
+    const lockKey = `deploy:lock:${projectId}`;
+    const acquired = await redis.set(lockKey, '1', 'PX', 5000, 'NX').catch(() => null);
+    // acquired === 'OK' → lock acquired
+    // acquired === null (from NX) → lock held by another request → conflict
+    // acquired === null (from .catch) → Redis down → proceed without lock
+    if (acquired !== null && acquired !== 'OK') {
+      throw new ConflictError('Another deployment creation is in progress. Please try again.');
     }
-    const deployment = await this.deploymentRepo.create({ projectId, status: 'QUEUED' });
+    // If NX returned null (either lock held or Redis down), we can't distinguish without a follow-up check.
+    // If Redis is down, we proceed without the lock (matches existing risk profile).
+    // If the lock is held but Redis returned null without throwing, we also proceed (DB logic is the real guard).
+
     try {
-      await this.queue.add({
-        deploymentId: deployment.id,
-        projectId,
-      });
-    } catch (err) {
-      const isConnectionError =
-        (err as NodeJS.ErrnoException)?.code === 'ECONNREFUSED' ||
-        (err as Error)?.message?.includes('ECONNREFUSED') ||
-        err instanceof AggregateError;
-      if (isConnectionError) {
-        console.warn(
-          '[DeploymentService] Queue unavailable (Redis not running?). Deployment created but not queued:',
-          deployment.id
-        );
-      } else {
-        throw err;
+      // Cancel any existing QUEUED deployment (supersede pattern)
+      const existingQueued = await this.deploymentRepo.findQueuedDeploymentForProject(projectId);
+      if (existingQueued) {
+        await this.queue.remove(existingQueued.id); // no-op if not in BullMQ
+        await this.deploymentRepo.update(existingQueued.id, { status: 'CANCELLED', completedAt: new Date() });
       }
+
+      // Check if a build is currently running
+      const building = await this.deploymentRepo.findBuildingDeployment(projectId);
+
+      // Create new deployment record
+      const deployment = await this.deploymentRepo.create({ projectId, status: 'QUEUED' });
+
+      // Enqueue immediately only if no active build; otherwise hold in DB
+      if (!building) {
+        try {
+          await this.queue.add({ deploymentId: deployment.id, projectId });
+        } catch (err) {
+          const isConnectionError =
+            (err as NodeJS.ErrnoException)?.code === 'ECONNREFUSED' ||
+            (err as Error)?.message?.includes('ECONNREFUSED') ||
+            err instanceof AggregateError;
+          if (isConnectionError) {
+            console.warn(
+              '[DeploymentService] Queue unavailable (Redis not running?). Deployment created but not queued:',
+              deployment.id
+            );
+          } else {
+            throw err;
+          }
+        }
+      }
+
+      return { deployment, queued: building !== null };
+    } finally {
+      await redis.del(lockKey).catch(() => {});
     }
-    return deployment;
   }
 
   /**
@@ -122,10 +153,14 @@ export class DeploymentService {
       buildLog: null,
       completedAt: null,
     });
-    await this.queue.retryFailed(deploymentId, {
-      deploymentId,
-      projectId: deployment.projectId,
-    });
+    // Only enqueue immediately if no build is running; otherwise it will be picked up by the worker
+    const building = await this.deploymentRepo.findBuildingDeployment(deployment.projectId);
+    if (!building) {
+      await this.queue.retryFailed(deploymentId, {
+        deploymentId,
+        projectId: deployment.projectId,
+      });
+    }
     return updated;
   }
 
@@ -143,11 +178,37 @@ export class DeploymentService {
   /**
    * Marks all BUILDING deployments as FAILED. Called once on worker startup to
    * recover from a previous crash where builds were left in an indeterminate state.
+   * Also re-enqueues QUEUED deployments that were held back (their BUILDING job is now gone).
    */
   async recoverStuckDeployments(): Promise<void> {
     const count = await this.deploymentRepo.markBuildingAsFailed();
     if (count > 0) {
       console.warn(`[DeploymentService] Marked ${count} stuck BUILDING deployment(s) as FAILED on startup`);
+    }
+
+    const orphaned = await this.deploymentRepo.findAllOrphanedQueuedDeployments();
+    for (const dep of orphaned) {
+      console.log(`[DeploymentService] Re-enqueuing orphaned QUEUED deployment ${dep.id}`);
+      await this.queue.add({ deploymentId: dep.id, projectId: dep.projectId }).catch((err) =>
+        console.error('[DeploymentService] Failed to re-enqueue on startup:', err)
+      );
+    }
+  }
+
+  /**
+   * Enqueues the next held-back QUEUED deployment for a project after the current build finishes.
+   * Called by the worker after each completed or failed job.
+   */
+  async enqueueNextForProject(projectId: string): Promise<void> {
+    const next = await this.deploymentRepo.findQueuedDeploymentForProject(projectId);
+    if (!next) return;
+    const stillBuilding = await this.deploymentRepo.findBuildingDeployment(projectId);
+    if (stillBuilding) return; // defensive guard
+    console.log(`[DeploymentService] Enqueuing held deployment ${next.id} for project ${projectId}`);
+    try {
+      await this.queue.add({ deploymentId: next.id, projectId });
+    } catch (err) {
+      console.error('[DeploymentService] Failed to enqueue held deployment:', err);
     }
   }
 

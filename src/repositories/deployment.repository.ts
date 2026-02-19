@@ -20,8 +20,15 @@ export interface IDeploymentRepository {
   findActiveContainerPorts(): Promise<number[]>;
   /** Clears containerPort on all other deployments of this project (release-on-redeploy). */
   clearPortForOtherDeployments(projectId: string, excludeDeploymentId: string): Promise<void>;
-  /** Returns true if the project has a QUEUED or BUILDING deployment in progress. */
-  hasActiveDeployment(projectId: string): Promise<boolean>;
+  /** Returns the BUILDING deployment for the project, or null if none. */
+  findBuildingDeployment(projectId: string): Promise<Deployment | null>;
+  /** Returns the oldest QUEUED deployment for the project, or null if none. */
+  findQueuedDeploymentForProject(projectId: string): Promise<Deployment | null>;
+  /**
+   * Returns one QUEUED deployment per project that has no BUILDING deployment (oldest first).
+   * Used by recoverStuckDeployments() on worker startup.
+   */
+  findAllOrphanedQueuedDeployments(): Promise<Deployment[]>;
   /**
    * Marks all BUILDING deployments as FAILED with completedAt = now.
    * Called on worker startup to clean up deployments stuck from a previous crash.
@@ -104,11 +111,31 @@ export class DeploymentRepository implements IDeploymentRepository {
     });
   }
 
-  async hasActiveDeployment(projectId: string): Promise<boolean> {
-    const count = await prisma.deployment.count({
-      where: { projectId, status: { in: ['QUEUED', 'BUILDING'] } },
+  async findBuildingDeployment(projectId: string): Promise<Deployment | null> {
+    return prisma.deployment.findFirst({ where: { projectId, status: 'BUILDING' } });
+  }
+
+  async findQueuedDeploymentForProject(projectId: string): Promise<Deployment | null> {
+    return prisma.deployment.findFirst({
+      where: { projectId, status: 'QUEUED' },
+      orderBy: { createdAt: 'asc' },
     });
-    return count > 0;
+  }
+
+  async findAllOrphanedQueuedDeployments(): Promise<Deployment[]> {
+    const buildingRows = await prisma.deployment.findMany({
+      where: { status: 'BUILDING' },
+      select: { projectId: true },
+      distinct: ['projectId'],
+    });
+    const buildingProjectIds = new Set(buildingRows.map((r) => r.projectId));
+
+    const rows = await prisma.deployment.findMany({
+      where: { status: 'QUEUED', projectId: { notIn: [...buildingProjectIds] } },
+      orderBy: { createdAt: 'asc' },
+    });
+    const seen = new Set<string>();
+    return rows.filter((r) => !seen.has(r.projectId) && seen.add(r.projectId));
   }
 
   async markBuildingAsFailed(): Promise<number> {
