@@ -13,11 +13,8 @@ export default function HomePage(): React.ReactElement {
         Deploy projects instantly by dragging a folder or pasting a GitHub URL.
       </p>
       <div className="flex gap-4">
-        <Button variant="outline" asChild>
-          <Link href="/login">Log in</Link>
-        </Button>
         <Button asChild>
-          <Link href="/register">Sign up</Link>
+          <Link href="/login">Log in</Link>
         </Button>
       </div>
     </main>

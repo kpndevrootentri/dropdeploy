@@ -6,6 +6,8 @@ import { UnauthorizedError } from '@/lib/errors';
 export interface Session {
   userId: string;
   email: string;
+  role: string;
+  mustResetPassword: boolean;
 }
 
 /**
@@ -18,5 +20,10 @@ export async function getSession(req: NextRequest): Promise<Session> {
     throw new UnauthorizedError('Not authenticated');
   }
   const payload = await authService.verifyToken(token);
-  return { userId: payload.sub, email: payload.email };
+  return {
+    userId: payload.sub,
+    email: payload.email,
+    role: payload.role ?? 'USER',
+    mustResetPassword: payload.mustResetPassword ?? false,
+  };
 }

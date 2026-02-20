@@ -278,6 +278,31 @@ export class DockerService {
   }
 
   /**
+   * Stops a running container by name without removing it.
+   */
+  async stopContainer(containerName: string): Promise<void> {
+    try {
+      const container = this.docker.getContainer(containerName);
+      const info = await container.inspect();
+      if (info.State.Running) await container.stop();
+    } catch {
+      // Container doesn't exist or already stopped — fine
+    }
+  }
+
+  /**
+   * Restarts a container by name.
+   */
+  async restartContainer(containerName: string): Promise<void> {
+    try {
+      const container = this.docker.getContainer(containerName);
+      await container.restart();
+    } catch {
+      // Container doesn't exist — fine
+    }
+  }
+
+  /**
    * Stops and removes a container by name. Silently ignores missing containers.
    */
   async stopAndRemoveContainer(containerName: string): Promise<void> {

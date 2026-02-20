@@ -15,6 +15,8 @@ export interface AuthTokens {
 export interface JwtPayload {
   sub: string;
   email: string;
+  role: string;
+  mustResetPassword: boolean;
   iat: number;
   exp: number;
 }
@@ -40,7 +42,7 @@ export class AuthService {
     }
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
     const user = await this.userRepo.create({ email: dto.email, passwordHash });
-    const tokens = await this.issueTokens(user.id, user.email);
+    const tokens = await this.issueTokens(user.id, user.email, 'USER', false);
     return { userId: user.id, tokens };
   }
 
@@ -56,8 +58,24 @@ export class AuthService {
     if (!valid) {
       throw new UnauthorizedError('Invalid email or password');
     }
-    const tokens = await this.issueTokens(user.id, user.email);
+    const tokens = await this.issueTokens(user.id, user.email, user.role, user.mustResetPassword);
     return { userId: user.id, tokens };
+  }
+
+  /**
+   * Resets the user's password and returns fresh tokens with mustResetPassword: false.
+   */
+  async resetPassword(userId: string, newPassword: string): Promise<AuthTokens> {
+    if (newPassword.length < 8) {
+      throw new ValidationError('Password must be at least 8 characters');
+    }
+    const hash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    const user = await this.userRepo.findById(userId);
+    if (!user) {
+      throw new UnauthorizedError('User not found');
+    }
+    await this.userRepo.setPassword(userId, hash);
+    return this.issueTokens(userId, user.email, user.role, false);
   }
 
   /**
@@ -75,12 +93,16 @@ export class AuthService {
       );
       const sub = payload.sub as string;
       const email = payload.email as string;
+      const role = (payload.role as string) ?? 'USER';
+      const mustResetPassword = (payload.mustResetPassword as boolean) ?? false;
       if (!sub || !email) {
         throw new UnauthorizedError('Invalid token payload');
       }
       return {
         sub,
         email,
+        role,
+        mustResetPassword,
         iat: (payload.iat as number) ?? 0,
         exp: (payload.exp as number) ?? 0,
       };
@@ -89,11 +111,11 @@ export class AuthService {
     }
   }
 
-  private async issueTokens(userId: string, email: string): Promise<AuthTokens> {
+  private async issueTokens(userId: string, email: string, role: string, mustResetPassword: boolean): Promise<AuthTokens> {
     if (!this.config.jwtSecret) {
       throw new ValidationError('JWT_SECRET not configured');
     }
-    const token = await new jose.SignJWT({ sub: userId, email })
+    const token = await new jose.SignJWT({ sub: userId, email, role, mustResetPassword })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
       .setExpirationTime(this.config.jwtExpiresIn)

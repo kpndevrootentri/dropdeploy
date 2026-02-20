@@ -2,17 +2,21 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme-toggle';
 
 interface Session {
   userId: string;
   email: string;
+  role?: string;
 }
 
 export function DashboardNav(): React.ReactElement {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const pathname = usePathname();
+  const isAdminRoute = pathname.startsWith('/dashboard/admin');
 
   useEffect(() => {
     fetch('/api/auth/session')
@@ -52,6 +56,13 @@ export function DashboardNav(): React.ReactElement {
   return (
     <div className="flex items-center gap-2">
       <ThemeToggle variant="ghost" size="icon" />
+      {session.role === 'CONTRIBUTOR' && (
+        <Link href={isAdminRoute ? '/dashboard' : '/dashboard/admin'}>
+          <Button variant="secondary" size="sm">
+            {isAdminRoute ? 'User Mode' : 'Admin Mode'}
+          </Button>
+        </Link>
+      )}
       <span className="text-sm text-muted-foreground">{session.email}</span>
       <Button variant="secondary" size="sm" onClick={handleLogout}>
         Log out

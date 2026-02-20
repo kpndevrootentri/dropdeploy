@@ -20,6 +20,8 @@ const envSchema = z.object({
   NGINX_CONFIG_PATH: z.string().default('/etc/nginx/sites-enabled'),
   BULLMQ_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(5),
   BULLMQ_JOB_TIMEOUT_MS: z.coerce.number().int().min(60_000).default(15 * 60 * 1000),
+  CONTRIBUTOR_EMAIL: z.string().email().optional(),
+  CONTRIBUTOR_PASSWORD: z.string().min(8).optional(),
 });
 
 type Env = z.infer<typeof envSchema>;

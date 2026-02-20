@@ -2,36 +2,38 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-export default function RegisterPage(): React.ReactElement {
+export default function ResetPasswordPage(): React.ReactElement {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     setError(null);
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match');
       return;
     }
+
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ newPassword }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data?.error?.message ?? 'Registration failed');
+        setError(data?.error?.message ?? 'Reset failed');
         setLoading(false);
         return;
       }
@@ -47,38 +49,36 @@ export default function RegisterPage(): React.ReactElement {
     <main className="min-h-screen flex flex-col items-center justify-center p-8">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-center">Sign up</CardTitle>
+          <CardTitle className="text-center">Set your password</CardTitle>
           <CardDescription className="text-center">
-            Create an account with your email and password
+            Choose a new password to continue
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="new-password">New password</Label>
               <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="new-password"
+                type="password"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
                 required
-                placeholder="you@example.com"
+                minLength={8}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="confirm-password">Confirm password</Label>
               <Input
-                id="password"
+                id="confirm-password"
                 type="password"
                 autoComplete="new-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 minLength={8}
-                placeholder="At least 8 characters"
               />
-              <p className="text-xs text-muted-foreground">At least 8 characters</p>
             </div>
             {error && (
               <p className="text-sm text-destructive" role="alert">
@@ -86,15 +86,9 @@ export default function RegisterPage(): React.ReactElement {
               </p>
             )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Creating account…' : 'Create account'}
+              {loading ? 'Saving…' : 'Set password'}
             </Button>
           </form>
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            Already have an account?{' '}
-            <Link href="/login" className="text-primary underline underline-offset-4 hover:no-underline">
-              Log in
-            </Link>
-          </p>
         </CardContent>
       </Card>
     </main>

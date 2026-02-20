@@ -7,9 +7,11 @@ export interface IProjectRepository {
   findByIdWithDeployments(id: string): Promise<Project | null>;
   findByUserId(userId: string): Promise<Project[]>;
   findBySlug(slug: string): Promise<Project | null>;
+  findAll(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date }[] })[]>;
   create(userId: string, data: CreateProjectDto): Promise<Project>;
   update(id: string, data: UpdateProjectDto): Promise<Project>;
   delete(id: string): Promise<void>;
+  transferOwner(id: string, newUserId: string): Promise<Project>;
 }
 
 export class ProjectRepository implements IProjectRepository {
@@ -39,6 +41,16 @@ export class ProjectRepository implements IProjectRepository {
     return prisma.project.findUnique({ where: { slug } });
   }
 
+  async findAll(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date }[] })[]> {
+    return prisma.project.findMany({
+      include: {
+        user: { select: { id: true, email: true, role: true } },
+        deployments: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, status: true, createdAt: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    }) as Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date }[] })[]>;
+  }
+
   async create(userId: string, data: CreateProjectDto): Promise<Project> {
     const slug = await this.generateUniqueSlug(data.name);
     return prisma.project.create({
@@ -64,6 +76,10 @@ export class ProjectRepository implements IProjectRepository {
 
   async delete(id: string): Promise<void> {
     await prisma.project.delete({ where: { id } });
+  }
+
+  async transferOwner(id: string, newUserId: string): Promise<Project> {
+    return prisma.project.update({ where: { id }, data: { userId: newUserId } });
   }
 
   private async generateUniqueSlug(base: string): Promise<string> {
