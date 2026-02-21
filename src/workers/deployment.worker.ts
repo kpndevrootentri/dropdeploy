@@ -8,8 +8,11 @@ import { Worker, type Job } from 'bullmq';
 import type { Redis } from 'ioredis';
 import { getRedisConnection } from '@/lib/redis';
 import { getConfig } from '@/lib/config';
+import { createLogger } from '@/lib/logger';
 import { deploymentService } from '@/services/deployment';
 import type { DeploymentJob } from '@/types/deployment.types';
+
+const log = createLogger('worker');
 
 const QUEUE_NAME = 'deployments';
 const HEARTBEAT_KEY = 'worker:health';
@@ -19,7 +22,7 @@ const HEARTBEAT_TTL_S = 90;
 async function processJob(job: Job<DeploymentJob>): Promise<void> {
   const { deploymentId, projectId } = job.data;
   const timeoutMs = getConfig().BULLMQ_JOB_TIMEOUT_MS;
-  console.log(`[worker] Processing deployment ${deploymentId} for project ${projectId} (timeout ${timeoutMs}ms)`);
+  log.info('Processing deployment', { deploymentId, projectId, timeoutMs });
 
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   const timeoutPromise = new Promise<never>((_, reject) => {
@@ -33,9 +36,9 @@ async function processJob(job: Job<DeploymentJob>): Promise<void> {
       deploymentService.buildAndDeploy(deploymentId),
       timeoutPromise,
     ]);
-    console.log(`[worker] Deployment ${deploymentId} completed`);
+    log.info('Deployment completed', { deploymentId });
   } catch (error) {
-    console.error(`[worker] Deployment ${deploymentId} failed:`, error);
+    log.error('Deployment failed', { deploymentId, error: error instanceof Error ? error.message : String(error) });
     throw error;
   } finally {
     if (timeoutHandle !== null) clearTimeout(timeoutHandle);
@@ -49,7 +52,7 @@ function startHeartbeat(redis: Redis): ReturnType<typeof setInterval> {
   const write = (): void => {
     const value = JSON.stringify({ pid, startedAt, timestamp: new Date().toISOString() });
     redis.set(HEARTBEAT_KEY, value, 'EX', HEARTBEAT_TTL_S).catch((err) => {
-      console.warn('[worker] Heartbeat write failed:', err);
+      log.warn('Heartbeat write failed', { error: String(err) });
     });
   };
 
@@ -72,17 +75,17 @@ async function main(): Promise<void> {
   );
 
   worker.on('completed', (job) => {
-    console.log(`[worker] Job ${job.id} completed`);
+    log.info('Job completed', { jobId: job.id, projectId: job.data.projectId });
     void deploymentService.enqueueNextForProject(job.data.projectId).catch((err) =>
-      console.error('[worker] enqueueNextForProject error after completion:', err)
+      log.error('enqueueNextForProject error after completion', { error: String(err) })
     );
   });
 
   worker.on('failed', (job, err) => {
-    console.error(`[worker] Job ${job?.id} failed:`, err?.message);
+    log.error('Job failed', { jobId: job?.id, error: err?.message });
     if (job?.data?.projectId) {
       void deploymentService.enqueueNextForProject(job.data.projectId).catch((e) =>
-        console.error('[worker] enqueueNextForProject error after failure:', e)
+        log.error('enqueueNextForProject error after failure', { error: String(e) })
       );
     }
   });
@@ -90,7 +93,7 @@ async function main(): Promise<void> {
   const heartbeatTimer = startHeartbeat(redis);
 
   const shutdown = async (): Promise<void> => {
-    console.log('[worker] Shutting down...');
+    log.info('Shutting down...');
     clearInterval(heartbeatTimer);
     await redis.del(HEARTBEAT_KEY).catch(() => {});
     await worker.close();
@@ -100,10 +103,12 @@ async function main(): Promise<void> {
   process.on('SIGTERM', () => { void shutdown(); });
   process.on('SIGINT', () => { void shutdown(); });
 
-  console.log('[worker] Deployment worker started');
+  log.info('Deployment worker started');
 }
 
 main().catch((err) => {
+  // Intentional console.error: logger may not be initialized yet at this point
+  // eslint-disable-next-line no-console
   console.error('[worker] Startup failed:', err);
   process.exit(1);
 });

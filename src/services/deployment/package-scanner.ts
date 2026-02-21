@@ -1,6 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { BUILT_IN_BLOCKED_PACKAGES } from '@/lib/blocked-packages';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('package-scanner');
 
 export interface PackageScanResult {
   blocked: string[];
@@ -37,7 +40,7 @@ function extractNpmPackages(packageJson: Record<string, unknown>): string[] {
 }
 
 function extractRequirementsTxtPackages(content: string): string[] {
-  console.log("Extracting requirements.txt packages")
+  log.debug('Extracting requirements.txt packages')
   return content
     .split('\n')
     .map((line) => line.trim())
@@ -79,8 +82,7 @@ function extractPyprojectPackages(content: string): string[] {
  * Returns the list of blocked package names found.
  */
 export async function scanPackages(workDir: string, extraBlocklist = ''): Promise<PackageScanResult> {
-
-  console.log("Scanning packages")
+  log.debug('Scanning packages', { workDir })
   // Merge built-in list with operator additions — normalize all entries
   const blocklistSet = new Set(
     Array.from(BUILT_IN_BLOCKED_PACKAGES).map(normalizeName),
@@ -95,7 +97,7 @@ export async function scanPackages(workDir: string, extraBlocklist = ''): Promis
     const raw = await fs.promises.readFile(path.join(workDir, 'package.json'), 'utf-8');
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const npmPackages = extractNpmPackages(parsed);
-    console.log('[package-scanner] package.json packages:', npmPackages);
+    log.debug('Scanned package.json', { count: npmPackages.length });
     for (const pkg of npmPackages) {
       if (blocklistSet.has(normalizeName(pkg))) {
         blocked.add(pkg);
@@ -109,7 +111,7 @@ export async function scanPackages(workDir: string, extraBlocklist = ''): Promis
   try {
     const raw = await fs.promises.readFile(path.join(workDir, 'requirements.txt'), 'utf-8');
     const reqPackages = extractRequirementsTxtPackages(raw);
-    console.log('[package-scanner] requirements.txt packages:', reqPackages);
+    log.debug('Scanned requirements.txt', { count: reqPackages.length });
     for (const pkg of reqPackages) {
       if (blocklistSet.has(normalizeName(pkg))) {
         blocked.add(pkg);
@@ -123,7 +125,7 @@ export async function scanPackages(workDir: string, extraBlocklist = ''): Promis
   try {
     const raw = await fs.promises.readFile(path.join(workDir, 'pyproject.toml'), 'utf-8');
     const pyprojectPackages = extractPyprojectPackages(raw);
-    console.log('[package-scanner] pyproject.toml packages:', pyprojectPackages);
+    log.debug('Scanned pyproject.toml', { count: pyprojectPackages.length });
     for (const pkg of pyprojectPackages) {
       if (blocklistSet.has(normalizeName(pkg))) {
         blocked.add(pkg);
@@ -134,6 +136,8 @@ export async function scanPackages(workDir: string, extraBlocklist = ''): Promis
   }
 
   const blockedList = Array.from(blocked);
-  console.log('[package-scanner] detected blocked packages:', blockedList);
+  if (blockedList.length > 0) {
+    log.warn('Blocked packages detected', { packages: blockedList });
+  }
   return { blocked: blockedList };
 }

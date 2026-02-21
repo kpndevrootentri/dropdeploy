@@ -8,8 +8,11 @@ import * as net from 'net';
 import * as path from 'path';
 import type { Project } from '@prisma/client';
 import { getConfig } from '@/lib/config';
+import { createLogger } from '@/lib/logger';
 import { DOCKERFILE_TEMPLATES, CONTAINER_PORTS, type DockerfileProjectType, injectNextPublicBuildArgs } from './dockerfile.templates';
 import { patchNextConfig } from './nextjs-config-patcher';
+
+const log = createLogger('docker');
 
 function isPortConflictError(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
@@ -92,7 +95,7 @@ export class DockerService {
       await patchNextConfig(contextPath);
     }
 
-    console.log('[docker] Building image:', imageName);
+    log.info('Building image', { imageName });
     const stream = await this.docker.buildImage(
       { context: contextPath, src: ['.'] },
       {
@@ -222,7 +225,7 @@ export class DockerService {
       } catch (err) {
         await container.remove().catch(() => {});
         if (!isPortConflictError(err) || attempt >= 2) throw err;
-        console.warn(`[docker] Port ${hostPort} conflict on start, retrying (attempt ${attempt + 1})`);
+        log.warn('Port conflict on start, retrying', { hostPort, attempt: attempt + 1 });
       }
     }
     throw new Error('Failed to start container after 3 port allocation attempts');

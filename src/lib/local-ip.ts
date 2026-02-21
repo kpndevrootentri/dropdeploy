@@ -33,8 +33,6 @@ export async function getLocalIP(): Promise<string | null> {
                 const parts = ice.candidate.candidate.split(' ');
                 const ip = parts[4];
 
-                console.log("ip", ip)
-
                 // Check if it's a valid IPv4 address and not localhost
                 if (ip && ip.match(/^(\d{1,3}\.){3}\d{1,3}$/) && !ip.startsWith('127.')) {
                     clearTimeout(timeout);

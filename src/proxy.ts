@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as jose from 'jose';
+import { randomUUID } from 'crypto';
 import { getTokenFromCookie } from '@/lib/auth-cookie';
 
 const DASHBOARD_PREFIX = '/dashboard';
@@ -9,11 +10,33 @@ const AUTH_PAGES = ['/login'];
 const RESET_PASSWORD_PATH = '/reset-password';
 
 /**
+ * Injects a unique x-request-id header into the request and echoes it in the
+ * response so that log lines from the same HTTP request can be correlated.
+ */
+function withRequestId(req: NextRequest, response: NextResponse): NextResponse {
+  const requestId = req.headers.get('x-request-id') ?? randomUUID();
+  response.headers.set('x-request-id', requestId);
+  return response;
+}
+
+/**
  * Protects /dashboard when no valid JWT; redirects logged-in users from /login.
  * Forces users with mustResetPassword to /reset-password before accessing the dashboard.
+ * Also injects x-request-id on all API requests for structured log correlation.
  */
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
+
+  // For API routes: inject request ID and pass through (no auth redirect needed here)
+  if (pathname.startsWith('/api/')) {
+    const requestId = request.headers.get('x-request-id') ?? randomUUID();
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-request-id', requestId);
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    response.headers.set('x-request-id', requestId);
+    return response;
+  }
+
   const token = getTokenFromCookie(request);
 
   let isAuthenticated = false;
@@ -38,31 +61,31 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 
   // Force password reset: authenticated users with mustResetPassword must go to /reset-password
   if (isAuthenticated && mustResetPassword && pathname !== RESET_PASSWORD_PATH) {
-    return NextResponse.redirect(new URL(RESET_PASSWORD_PATH, request.url));
+    return withRequestId(request, NextResponse.redirect(new URL(RESET_PASSWORD_PATH, request.url)));
   }
 
   // Prevent normal users (no reset needed) from visiting /reset-password
   if (isAuthenticated && !mustResetPassword && pathname === RESET_PASSWORD_PATH) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return withRequestId(request, NextResponse.redirect(new URL('/dashboard', request.url)));
   }
 
   if (pathname.startsWith(DASHBOARD_PREFIX) && !isAuthenticated) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('from', pathname);
-    return NextResponse.redirect(loginUrl);
+    return withRequestId(request, NextResponse.redirect(loginUrl));
   }
 
   if (pathname.startsWith(ADMIN_PREFIX) && isAuthenticated && userRole !== 'CONTRIBUTOR') {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return withRequestId(request, NextResponse.redirect(new URL('/dashboard', request.url)));
   }
 
   if (AUTH_PAGES.some((p) => pathname === p) && isAuthenticated) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return withRequestId(request, NextResponse.redirect(new URL('/dashboard', request.url)));
   }
 
-  return NextResponse.next();
+  return withRequestId(request, NextResponse.next());
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/login', '/reset-password'],
+  matcher: ['/dashboard/:path*', '/login', '/reset-password', '/api/:path*'],
 };

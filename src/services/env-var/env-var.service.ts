@@ -2,8 +2,11 @@ import type { EnvEnvironment } from '@prisma/client';
 import { envVarRepository, type IEnvironmentVariableRepository } from '@/repositories/env-var.repository';
 import { auditLogRepository, type IAuditLogRepository } from '@/repositories/audit-log.repository';
 import { encryptionService, type IEncryptionService } from '@/services/encryption';
+import { createLogger } from '@/lib/logger';
 import { ConflictError, NotFoundError } from '@/lib/errors';
 import type { CreateEnvVarDto, UpdateEnvVarDto, EnvVarResponse } from '@/types/env-var.types';
+
+const log = createLogger('env-var-service');
 
 export class EnvironmentVariableService {
   constructor(
@@ -127,7 +130,7 @@ export class EnvironmentVariableService {
       await this.auditLog.create({ action, targetKey, userId, projectId });
     } catch (err) {
       // Audit logging should never block the main operation
-      console.error('[EnvVarService] Failed to write audit log:', err);
+      log.error('Failed to write audit log', { action, error: String(err) });
     }
   }
 

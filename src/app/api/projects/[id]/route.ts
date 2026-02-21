@@ -4,6 +4,7 @@ import { projectService } from '@/services/project';
 import { handleApiError } from '@/lib/api-error';
 import { updateProjectSchema } from '@/validators/project.validator';
 import { ValidationError } from '@/lib/errors';
+import { auditLogRepository } from '@/repositories/audit-log.repository';
 
 type RouteCtx = { params: Promise<{ id: string }> };
 
@@ -40,6 +41,15 @@ export async function PATCH(
       throw new ValidationError(parsed.error.errors[0]?.message ?? 'Invalid input');
     }
     const project = await projectService.update(id, session.userId, parsed.data);
+
+    // Non-blocking audit log
+    auditLogRepository.create({
+      action: 'PROJECT_SETTINGS_UPDATED',
+      targetKey: Object.keys(parsed.data).join(','),
+      userId: session.userId,
+      projectId: id,
+    }).catch(() => {});
+
     return NextResponse.json({ success: true, data: project });
   } catch (error) {
     return handleApiError(error);
@@ -56,6 +66,15 @@ export async function DELETE(
   try {
     const session = await getSession(req);
     const { id } = await params;
+
+    // Write audit log before deletion (cascade would remove it after)
+    await auditLogRepository.create({
+      action: 'PROJECT_DELETED',
+      targetKey: id,
+      userId: session.userId,
+      projectId: id,
+    }).catch(() => {});
+
     await projectService.delete(id, session.userId);
     return NextResponse.json({ success: true });
   } catch (error) {

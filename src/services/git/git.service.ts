@@ -7,6 +7,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { simpleGit } from 'simple-git';
 import { getConfig } from '@/lib/config';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('git');
 
 export interface RepoResult {
   workDir: string;
@@ -47,7 +50,7 @@ export class GitService implements IGitService {
 
     if (exists) {
       // Repo already cloned – fetch latest and hard-reset to the target branch
-      console.log(`[git] Pulling latest for ${projectSlug} on branch ${branch}`);
+      log.info('Pulling latest', { slug: projectSlug, branch });
       const git = simpleGit(workDir);
 
       // Ensure the fetch refspec covers all remote branches.
@@ -81,7 +84,7 @@ export class GitService implements IGitService {
       return { workDir, commitHash: commitHash.trim() };
     } else {
       // First deploy – full clone so branch switching works immediately
-      console.log(`[git] Cloning ${repoUrl} (branch: ${branch}) into ${workDir}`);
+      log.info('Cloning repo', { repoUrl, branch, workDir });
       const git = simpleGit();
       await git.clone(repoUrl, workDir, ['-b', branch]);
 

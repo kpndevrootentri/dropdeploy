@@ -25,6 +25,8 @@ const envSchema = z.object({
   // Comma-separated list of blocked package names (npm, pip, etc.)
   // e.g. "malicious-pkg,evil-lib,badware"
   BLOCKED_PACKAGES: z.string().optional(),
+  // Logging level: error | warn | info | http | verbose | debug | silly
+  LOG_LEVEL: z.enum(['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly']).default('info'),
 });
 
 type Env = z.infer<typeof envSchema>;

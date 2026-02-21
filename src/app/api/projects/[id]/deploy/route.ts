@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/get-session';
 import { deploymentService } from '@/services/deployment';
 import { handleApiError } from '@/lib/api-error';
+import { auditLogRepository } from '@/repositories/audit-log.repository';
 
 /**
  * POST /api/projects/:id/deploy – create deployment (e.g. for GITHUB projects).
@@ -18,6 +19,14 @@ export async function POST(
     const message = queued
       ? 'Deployment queued — will start when the current build completes.'
       : 'Deployment started.';
+
+    // Non-blocking audit log
+    auditLogRepository.create({
+      action: 'DEPLOY_TRIGGERED',
+      targetKey: deployment.id,
+      userId: session.userId,
+      projectId,
+    }).catch(() => {});
 
     return NextResponse.json({
       success: true,

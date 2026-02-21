@@ -9,9 +9,12 @@ import { envVarService, type EnvironmentVariableService } from '@/services/env-v
 import { nginxService, type INginxService } from '@/services/nginx';
 import { getRedisConnection } from '@/lib/redis';
 import { getConfig } from '@/lib/config';
+import { createLogger } from '@/lib/logger';
 import { scanPackages } from './package-scanner';
 import { NotFoundError, ConflictError, ValidationError } from '@/lib/errors';
 import type { Deployment } from '@prisma/client';
+
+const log = createLogger('deployment-service');
 
 export class DeploymentService {
   constructor (
@@ -78,10 +81,9 @@ export class DeploymentService {
             (err as Error)?.message?.includes('ECONNREFUSED') ||
             err instanceof AggregateError;
           if (isConnectionError) {
-            console.warn(
-              '[DeploymentService] Queue unavailable (Redis not running?). Deployment created but not queued:',
-              deployment.id
-            );
+            log.warn('Queue unavailable (Redis not running?). Deployment created but not queued', {
+              deploymentId: deployment.id,
+            });
           } else {
             throw err;
           }
@@ -185,14 +187,14 @@ export class DeploymentService {
   async recoverStuckDeployments(): Promise<void> {
     const count = await this.deploymentRepo.markBuildingAsFailed();
     if (count > 0) {
-      console.warn(`[DeploymentService] Marked ${count} stuck BUILDING deployment(s) as FAILED on startup`);
+      log.warn('Marked stuck BUILDING deployment(s) as FAILED on startup', { count });
     }
 
     const orphaned = await this.deploymentRepo.findAllOrphanedQueuedDeployments();
     for (const dep of orphaned) {
-      console.log(`[DeploymentService] Re-enqueuing orphaned QUEUED deployment ${dep.id}`);
+      log.info('Re-enqueuing orphaned QUEUED deployment', { deploymentId: dep.id });
       await this.queue.add({ deploymentId: dep.id, projectId: dep.projectId }).catch((err) =>
-        console.error('[DeploymentService] Failed to re-enqueue on startup:', err)
+        log.error('Failed to re-enqueue on startup', { deploymentId: dep.id, error: String(err) })
       );
     }
   }
@@ -206,11 +208,11 @@ export class DeploymentService {
     if (!next) return;
     const stillBuilding = await this.deploymentRepo.findBuildingDeployment(projectId);
     if (stillBuilding) return; // defensive guard
-    console.log(`[DeploymentService] Enqueuing held deployment ${next.id} for project ${projectId}`);
+    log.info('Enqueuing held deployment', { deploymentId: next.id, projectId });
     try {
       await this.queue.add({ deploymentId: next.id, projectId });
     } catch (err) {
-      console.error('[DeploymentService] Failed to enqueue held deployment:', err);
+      log.error('Failed to enqueue held deployment', { deploymentId: next.id, error: String(err) });
     }
   }
 
@@ -221,10 +223,7 @@ export class DeploymentService {
   async buildAndDeploy(deploymentId: string): Promise<void> {
     const deployment = await this.deploymentRepo.findByIdWithProject(deploymentId);
     if (!deployment) {
-      console.warn(
-        '[DeploymentService] Deployment not found (stale or deleted job):',
-        deploymentId
-      );
+      log.warn('Deployment not found (stale or deleted job)', { deploymentId });
       return;
     }
     const { project } = deployment;
@@ -339,7 +338,7 @@ export class DeploymentService {
       try {
         await this.nginx.configureProject(project.slug, containerPort);
       } catch (err) {
-        console.warn('[DeploymentService] Nginx config failed (non-fatal):', err);
+        log.warn('Nginx config failed (non-fatal)', { slug: project.slug, error: String(err) });
       }
     } catch (err) {
       await this.deploymentRepo.update(deploymentId, {
@@ -376,8 +375,7 @@ export class DeploymentService {
         }
       }
     } catch {
-      // Non-critical — log and continue
-      console.warn('[DeploymentService] Failed to clean .env files from workDir');
+      log.warn('Failed to clean .env files from workDir', { workDir });
     }
   }
 }

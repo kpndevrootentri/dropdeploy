@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { AppError } from '@/lib/errors';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('api');
 
 /**
  * Central API error handler. Returns appropriate status and body.
@@ -33,7 +36,7 @@ export function handleApiError(error: unknown): NextResponse<unknown> {
     );
   }
 
-  console.error('Unhandled API error:', error);
+  log.error('Unhandled API error', { error: error instanceof Error ? error.message : String(error) });
   return NextResponse.json(
     {
       success: false,

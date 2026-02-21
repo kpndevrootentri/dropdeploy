@@ -3,8 +3,10 @@ import * as path from 'path';
 import { execFile as execFileCb } from 'child_process';
 import { promisify } from 'util';
 import { getConfig } from '@/lib/config';
+import { createLogger } from '@/lib/logger';
 
 const execFile = promisify(execFileCb);
+const log = createLogger('nginx');
 
 export interface INginxService {
   configureProject(slug: string, containerPort: number): Promise<void>;
@@ -40,9 +42,7 @@ export class NginxService implements INginxService {
     const config = this.cfg();
 
     if (config.NODE_ENV !== 'production') {
-      console.warn(
-        `[NginxService] Non-production environment — skipping nginx config for ${slug}`
-      );
+      log.warn('Non-production environment — skipping nginx config', { slug });
       return;
     }
 
@@ -68,9 +68,7 @@ export class NginxService implements INginxService {
     const config = this.cfg();
 
     if (config.NODE_ENV !== 'production') {
-      console.warn(
-        `[NginxService] Non-production environment — skipping nginx removal for ${slug}`
-      );
+      log.warn('Non-production environment — skipping nginx removal', { slug });
       return;
     }
 
