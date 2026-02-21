@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { FrameworkLogo, FRAMEWORK_CONFIG, getProjectUrl } from '@/components/ui/framework-logo';
 import { useFetchMutation } from '@/hooks/use-fetch-mutation';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ProjectTerminal } from '@/components/features/terminal';
 import { EnvVarsPanel } from '@/components/features/env-vars-panel';
@@ -154,6 +155,7 @@ function formatRelative(dateStr: string): string {
 
 const BUILD_STEPS = [
   { key: 'CLONING', label: 'Cloning' },
+  { key: 'SCANNING', label: 'Scanning' },
   { key: 'BUILDING_IMAGE', label: 'Building' },
   { key: 'STARTING', label: 'Starting' },
 ] as const;
@@ -1585,6 +1587,7 @@ export default function ProjectDetailPage(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const toastedDeploymentsRef = useRef<Set<string>>(new Set());
 
   const { execute: executeDeploy, loading: deploying, error: deployError, reset: resetDeploy } = useFetchMutation();
   const [deployMessage, setDeployMessage] = useState<string | null>(null);
@@ -1628,7 +1631,33 @@ export default function ProjectDetailPage(): React.ReactElement {
         .then((res) => res.json())
         .then((data) => {
           if (data?.success && data.data) {
-            setProject(data.data);
+            const updated = data.data as ProjectDetail;
+            setProject((prev) => {
+              if (prev) {
+                // Detect transitions to FAILED for any deployment that was in-progress
+                for (const dep of updated.deployments) {
+                  const prev_dep = prev.deployments.find((d) => d.id === dep.id);
+                  if (
+                    prev_dep &&
+                    (prev_dep.status === 'BUILDING' || prev_dep.status === 'QUEUED') &&
+                    !toastedDeploymentsRef.current.has(dep.id)
+                  ) {
+                    if (dep.status === 'FAILED') {
+                      toastedDeploymentsRef.current.add(dep.id);
+                      toast.error('Build failed', {
+                        description: `Deployment ${dep.id.slice(0, 8)} failed. Check the logs for details.`,
+                      });
+                    } else if (dep.status === 'DEPLOYED') {
+                      toastedDeploymentsRef.current.add(dep.id);
+                      toast.success('Deployed successfully', {
+                        description: `Deployment ${dep.id.slice(0, 8)} is now live.`,
+                      });
+                    }
+                  }
+                }
+              }
+              return updated;
+            });
           }
         })
         .catch(() => { });

@@ -8,6 +8,8 @@ import { gitService, type IGitService } from '@/services/git';
 import { envVarService, type EnvironmentVariableService } from '@/services/env-var';
 import { nginxService, type INginxService } from '@/services/nginx';
 import { getRedisConnection } from '@/lib/redis';
+import { getConfig } from '@/lib/config';
+import { scanPackages } from './package-scanner';
 import { NotFoundError, ConflictError, ValidationError } from '@/lib/errors';
 import type { Deployment } from '@prisma/client';
 
@@ -272,6 +274,17 @@ export class DeploymentService {
         project.branch,
       );
       await this.deploymentRepo.update(deploymentId, { commitHash });
+
+      await this.deploymentRepo.update(deploymentId, { buildStep: 'SCANNING' });
+      addMarker('Scanning packages...');
+      const { BLOCKED_PACKAGES } = getConfig();
+      const { blocked } = await scanPackages(workDir, BLOCKED_PACKAGES);
+      if (blocked.length > 0) {
+        onLog(`✗ Blocked package(s) detected: ${blocked.join(', ')}\n`);
+        onLog(`  Deployment rejected. Remove the offending package(s) and redeploy.\n`);
+        throw new Error(`Blocked package(s) detected: ${blocked.join(', ')}`);
+      }
+      onLog(`✓ Package scan passed.\n`);
 
       // Resolve env vars: split into build args (NEXT_PUBLIC_*) and runtime env
       const allEnvVars = await this.envVar.resolveForDeployment(project.id);

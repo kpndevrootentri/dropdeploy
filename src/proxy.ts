@@ -9,10 +9,10 @@ const AUTH_PAGES = ['/login'];
 const RESET_PASSWORD_PATH = '/reset-password';
 
 /**
- * Protects /dashboard when no valid JWT; redirects logged-in users from /login, /register.
+ * Protects /dashboard when no valid JWT; redirects logged-in users from /login.
  * Forces users with mustResetPassword to /reset-password before accessing the dashboard.
  */
-export async function middleware(request: NextRequest): Promise<NextResponse> {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
   const token = getTokenFromCookie(request);
 

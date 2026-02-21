@@ -185,6 +185,7 @@ export function ProjectTile({
 
 const BUILD_STEPS = [
   { key: 'CLONING', label: 'Cloning' },
+  { key: 'SCANNING', label: 'Scanning' },
   { key: 'BUILDING_IMAGE', label: 'Building' },
   { key: 'STARTING', label: 'Starting' },
 ] as const;

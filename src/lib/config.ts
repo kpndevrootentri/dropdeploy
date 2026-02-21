@@ -22,6 +22,9 @@ const envSchema = z.object({
   BULLMQ_JOB_TIMEOUT_MS: z.coerce.number().int().min(60_000).default(15 * 60 * 1000),
   CONTRIBUTOR_EMAIL: z.string().email().optional(),
   CONTRIBUTOR_PASSWORD: z.string().min(8).optional(),
+  // Comma-separated list of blocked package names (npm, pip, etc.)
+  // e.g. "malicious-pkg,evil-lib,badware"
+  BLOCKED_PACKAGES: z.string().optional(),
 });
 
 type Env = z.infer<typeof envSchema>;
