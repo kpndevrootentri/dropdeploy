@@ -4,7 +4,7 @@
 
 export type SourceType = 'GITHUB';
 
-export type ProjectType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO';
+export type ProjectType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE';
 
 export interface CreateProjectDto {
   name: string;

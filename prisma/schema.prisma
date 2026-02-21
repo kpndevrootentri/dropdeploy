@@ -86,6 +86,11 @@ enum ProjectType {
   NODEJS
   NEXTJS
   DJANGO
+  REACT
+  FASTAPI
+  FLASK
+  VUE
+  SVELTE
 }
 
 model EnvironmentVariable {

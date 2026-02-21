@@ -9,9 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { FRAMEWORK_CONFIG } from '@/components/ui/framework-logo';
 import { cn } from '@/lib/utils';
 
-type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO';
+type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE';
 
-const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO'];
+const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE'];
 
 export interface CreateProjectFormProps {
   onSuccess?: () => void;
@@ -73,35 +73,37 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
   };
 
   const formContent = (
-    <form onSubmit={handleSubmit} className={cn('space-y-4', embedded && 'pt-0')}>
-      <div className="space-y-2">
-        <Label htmlFor="project-name">Project name</Label>
-        <Input
-          id="project-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="My awesome app"
-          minLength={3}
-          maxLength={50}
-          required
-        />
-        <p className="text-xs text-muted-foreground">3–50 characters. Used to generate the project URL slug.</p>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      {/* Name + Branch side-by-side on sm+ */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor="project-name">Project name</Label>
+          <Input
+            id="project-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="My awesome app"
+            minLength={3}
+            maxLength={50}
+            required
+          />
+          <p className="text-xs text-muted-foreground">3–50 chars · becomes the URL slug</p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="branch">Branch</Label>
+          <Input
+            id="branch"
+            value={branch}
+            onChange={(e) => setBranch(e.target.value)}
+            placeholder="main"
+            maxLength={100}
+          />
+          <p className="text-xs text-muted-foreground">Defaults to <code className="bg-muted px-1 py-0.5 rounded text-xs">main</code></p>
+        </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="project-description">Description (optional)</Label>
-        <Textarea
-          id="project-description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Brief description of the project"
-          maxLength={500}
-          rows={3}
-        />
-        <p className="text-xs text-muted-foreground">{description.length}/500</p>
-      </div>
-
-      <div className="space-y-2">
+      {/* GitHub URL */}
+      <div className="space-y-1.5">
         <Label htmlFor="github-url">GitHub repository URL</Label>
         <Input
           id="github-url"
@@ -111,28 +113,36 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
           placeholder="https://github.com/username/repo"
           required
         />
-        <p className="text-xs text-muted-foreground">Public repository only. We clone and deploy from this URL.</p>
+        <p className="text-xs text-muted-foreground">Public repositories only.</p>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="branch">Branch</Label>
-        <Input
-          id="branch"
-          value={branch}
-          onChange={(e) => setBranch(e.target.value)}
-          placeholder="main"
-          maxLength={100}
+      {/* Description */}
+      <div className="space-y-1.5">
+        <Label htmlFor="project-description">
+          Description <span className="text-muted-foreground font-normal">(optional)</span>
+        </Label>
+        <Textarea
+          id="project-description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Brief description of the project"
+          maxLength={500}
+          rows={2}
         />
-        <p className="text-xs text-muted-foreground">The git branch to deploy. Defaults to <code className="bg-muted px-1 py-0.5 rounded text-xs">main</code>.</p>
+        <p className="text-xs text-muted-foreground text-right">{description.length}/500</p>
       </div>
 
+      {/* Framework picker */}
       <div className="space-y-2">
         <Label>Framework</Label>
-        <p className="text-xs text-muted-foreground">Determines how the project is built and run.</p>
-        <div className="grid grid-cols-4 gap-3" role="group" aria-label="Framework">
+        <div
+          className="grid grid-cols-3 gap-2 sm:grid-cols-5"
+          role="group"
+          aria-label="Framework"
+        >
           {FRAMEWORK_KEYS.map((key) => {
             const config = FRAMEWORK_CONFIG[key];
-            const { Logo, label, description } = config;
+            const { Logo, label, description: desc } = config;
             const isSelected = type === key;
             return (
               <button
@@ -140,18 +150,16 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
                 type="button"
                 onClick={() => setType(key)}
                 className={cn(
-                  'flex flex-col items-center gap-2 rounded-lg border-2 px-4 py-4 text-center transition-colors',
+                  'flex flex-col items-center gap-1.5 rounded-lg border-2 px-2 py-3 text-center transition-colors',
                   'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                  isSelected
-                    ? 'border-primary bg-primary/10'
-                    : 'border-input bg-card'
+                  isSelected ? 'border-primary bg-primary/10' : 'border-input bg-card'
                 )}
                 aria-pressed={isSelected}
-                aria-label={`${label} – ${description}`}
+                aria-label={`${label} – ${desc}`}
               >
-                <Logo size={40} className="shrink-0" />
-                <span className="text-sm font-medium">{label}</span>
-                <span className="text-xs text-muted-foreground">{description}</span>
+                <Logo size={28} />
+                <span className="text-xs font-semibold leading-tight">{label}</span>
+                <span className="hidden text-[10px] leading-tight text-muted-foreground sm:block">{desc}</span>
               </button>
             );
           })}
@@ -164,7 +172,7 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
         </p>
       )}
 
-      <Button type="submit" disabled={loading}>
+      <Button type="submit" disabled={loading} className="w-full sm:w-auto sm:self-end">
         {loading ? 'Creating…' : 'Create project'}
       </Button>
     </form>

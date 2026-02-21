@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
-import { Globe, Server, Layers } from 'lucide-react';
+import { FaHtml5, FaNodeJs, FaReact } from 'react-icons/fa';
+import { SiNextdotjs, SiDjango, SiFastapi, SiFlask, SiVuedotjs, SiSvelte } from 'react-icons/si';
 
 const BASE_DOMAIN =
   typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_BASE_DOMAIN
@@ -13,69 +14,74 @@ function isLocalhostDev(): boolean {
   return appUrl.includes('localhost') || process.env.NEXT_PUBLIC_USE_LOCALHOST_DEPLOY_URL === 'true';
 }
 
-const iconClass = 'shrink-0';
-
 export const FRAMEWORK_CONFIG = {
   STATIC: {
     label: 'Static',
     Logo: ({ size = 24, className }: { size?: number; className?: string }) => (
-      <img
-        src="/assets/icons/html.svg"
-        width={size}
-        height={size}
-        className={cn(iconClass, className)}
-        alt="HTML"
-        aria-hidden="true"
-      />
+      <FaHtml5 size={size} className={cn('shrink-0 text-orange-500', className)} aria-hidden="true" />
     ),
     description: 'HTML / CSS / JS',
   },
   NODEJS: {
     label: 'Node.js',
     Logo: ({ size = 24, className }: { size?: number; className?: string }) => (
-      <img
-        src="/assets/icons/nodejs.svg"
-        width={size}
-        height={size}
-        className={cn(iconClass, className)}
-        alt="Node.js"
-        aria-hidden="true"
-      />
+      <FaNodeJs size={size} className={cn('shrink-0 text-green-600', className)} aria-hidden="true" />
     ),
     description: 'Node.js',
   },
   NEXTJS: {
     label: 'Next.js',
     Logo: ({ size = 24, className }: { size?: number; className?: string }) => (
-      <img
-        src="/assets/icons/nextjs.svg"
-        width={size}
-        height={size}
-        className={cn(iconClass, className)}
-        alt="Next.js"
-        aria-hidden="true"
-      />
+      <SiNextdotjs size={size} className={cn('shrink-0 text-foreground', className)} aria-hidden="true" />
     ),
     description: 'Next.js',
   },
   DJANGO: {
     label: 'Django',
     Logo: ({ size = 24, className }: { size?: number; className?: string }) => (
-      <img
-        src="/assets/icons/django.svg"
-        width={size}
-        height={size}
-        className={cn(iconClass, className)}
-        alt="Django"
-        aria-hidden="true"
-      />
+      <SiDjango size={size} className={cn('shrink-0 text-green-800', className)} aria-hidden="true" />
     ),
     description: 'Python / Django',
+  },
+  REACT: {
+    label: 'React',
+    Logo: ({ size = 24, className }: { size?: number; className?: string }) => (
+      <FaReact size={size} className={cn('shrink-0 text-cyan-400', className)} aria-hidden="true" />
+    ),
+    description: 'React + Vite',
+  },
+  FASTAPI: {
+    label: 'FastAPI',
+    Logo: ({ size = 24, className }: { size?: number; className?: string }) => (
+      <SiFastapi size={size} className={cn('shrink-0 text-teal-500', className)} aria-hidden="true" />
+    ),
+    description: 'Python / FastAPI',
+  },
+  FLASK: {
+    label: 'Flask',
+    Logo: ({ size = 24, className }: { size?: number; className?: string }) => (
+      <SiFlask size={size} className={cn('shrink-0 text-foreground', className)} aria-hidden="true" />
+    ),
+    description: 'Python / Flask',
+  },
+  VUE: {
+    label: 'Vue',
+    Logo: ({ size = 24, className }: { size?: number; className?: string }) => (
+      <SiVuedotjs size={size} className={cn('shrink-0 text-emerald-500', className)} aria-hidden="true" />
+    ),
+    description: 'Vue + Vite',
+  },
+  SVELTE: {
+    label: 'Svelte',
+    Logo: ({ size = 24, className }: { size?: number; className?: string }) => (
+      <SiSvelte size={size} className={cn('shrink-0 text-orange-600', className)} aria-hidden="true" />
+    ),
+    description: 'Svelte / SvelteKit',
   },
 } as const;
 
 export interface FrameworkLogoProps {
-  framework: 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO';
+  framework: 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE';
   size?: number;
   className?: string;
   showLabel?: boolean;

@@ -54,6 +54,68 @@ COPY . .
 EXPOSE 8000
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
 `.trim(),
+
+  REACT: `
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine AS runner
+COPY --from=builder /app/dist /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+`.trim(),
+
+  FASTAPI: `
+FROM python:3.13-slim
+WORKDIR /app
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 8000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+`.trim(),
+
+  FLASK: `
+FROM python:3.13-slim
+WORKDIR /app
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt gunicorn
+COPY . .
+EXPOSE 5000
+CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5000", "--workers", "2"]
+`.trim(),
+
+  VUE: `
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine AS runner
+COPY --from=builder /app/dist /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+`.trim(),
+
+  SVELTE: `
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine AS runner
+COPY --from=builder /app/dist /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+`.trim(),
 } as const;
 
 export type DockerfileProjectType = keyof typeof DOCKERFILE_TEMPLATES;
@@ -63,10 +125,15 @@ export type DockerfileProjectType = keyof typeof DOCKERFILE_TEMPLATES;
  * a new project type only requires changes in this one file.
  */
 export const CONTAINER_PORTS: Record<DockerfileProjectType, number> = {
-  STATIC: 80,
-  NODEJS: 3000,
-  NEXTJS: 3000,
-  DJANGO: 8000,
+  STATIC:  80,
+  NODEJS:  3000,
+  NEXTJS:  3000,
+  DJANGO:  8000,
+  REACT:   80,
+  FASTAPI: 8000,
+  FLASK:   5000,
+  VUE:     80,
+  SVELTE:  80,
 };
 
 /**

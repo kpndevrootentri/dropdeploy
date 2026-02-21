@@ -20,10 +20,15 @@ function isPortConflictError(err: unknown): boolean {
 }
 
 const CONTAINER_RESOURCES: Record<string, { memory: number; cpuShares: number }> = {
-  STATIC: { memory: 128 * 1024 * 1024,  cpuShares: 256  },
-  NODEJS: { memory: 512 * 1024 * 1024,  cpuShares: 1024 },
-  NEXTJS: { memory: 1024 * 1024 * 1024, cpuShares: 1024 },
-  DJANGO: { memory: 512 * 1024 * 1024,  cpuShares: 512  },
+  STATIC:  { memory: 128 * 1024 * 1024,  cpuShares: 256  },
+  NODEJS:  { memory: 512 * 1024 * 1024,  cpuShares: 1024 },
+  NEXTJS:  { memory: 1024 * 1024 * 1024, cpuShares: 1024 },
+  DJANGO:  { memory: 512 * 1024 * 1024,  cpuShares: 512  },
+  REACT:   { memory: 128 * 1024 * 1024,  cpuShares: 256  },
+  FASTAPI: { memory: 512 * 1024 * 1024,  cpuShares: 512  },
+  FLASK:   { memory: 256 * 1024 * 1024,  cpuShares: 512  },
+  VUE:     { memory: 128 * 1024 * 1024,  cpuShares: 256  },
+  SVELTE:  { memory: 128 * 1024 * 1024,  cpuShares: 256  },
 };
 
 export interface DockerServiceConfig {
