@@ -111,6 +111,18 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  // Run on all paths except Next.js internals and static assets
-  matcher: ['/((?!_next/static|_next/image|favicon\\.ico).*)'],
+  matcher: [
+    /*
+     * Run on ALL paths. We cannot exclude _next/static or _next/image here
+     * because subdomain requests (e.g. nextjs.app.ayile.in/_next/static/...)
+     * must be rewritten to the container — skipping them would cause the
+     * platform's own static files to be served instead of the deployed app's.
+     *
+     * For non-subdomain requests the auth guard falls through to
+     * NextResponse.next() for static assets, so there is no functional
+     * difference — just a tiny bit of extra middleware overhead on the
+     * platform's own /_next/* paths.
+     */
+    '/(.*)',
+  ],
 };
