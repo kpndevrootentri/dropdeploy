@@ -51,6 +51,17 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   // Non-subdomain request — auth/dashboard guard
   const { pathname } = request.nextUrl;
 
+  // Static assets must never be redirected — the browser needs them to render any page,
+  // including /reset-password. Without this, mustResetPassword users would receive an
+  // HTML redirect instead of JS chunks, causing "Unexpected token '<'" errors.
+  if (
+    pathname.startsWith('/_next/static') ||
+    pathname.startsWith('/_next/image') ||
+    pathname === '/favicon.ico'
+  ) {
+    return NextResponse.next();
+  }
+
   // For API routes: inject request ID and pass through (no auth redirect needed here)
   if (pathname.startsWith('/api/')) {
     const requestId = request.headers.get('x-request-id') ?? randomUUID();
