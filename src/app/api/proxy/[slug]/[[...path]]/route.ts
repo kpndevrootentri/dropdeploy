@@ -18,6 +18,15 @@ const HOP_BY_HOP = new Set([
 ]);
 
 /**
+ * Headers to strip from the upstream response.
+ * Node.js fetch automatically decompresses gzip/br/deflate responses, so
+ * forwarding content-encoding would tell the browser to decompress an already
+ * decompressed body — causing a "Content Encoding Error". content-length is
+ * also stale after decompression and must be dropped.
+ */
+const STRIP_RESPONSE = new Set(['content-encoding', 'content-length']);
+
+/**
  * In-app reverse proxy for deployed containers.
  *
  * Reached via the middleware rewrite:
@@ -53,10 +62,14 @@ async function handler(
   const targetPath = path.length > 0 ? `/${path.join('/')}` : '/';
   const targetUrl = `http://127.0.0.1:${deployment.containerPort}${targetPath}${request.nextUrl.search}`;
 
-  // Build forwarded headers — strip hop-by-hop, rewrite host
+  // Build forwarded headers — strip hop-by-hop, host, and accept-encoding.
+  // Dropping accept-encoding prevents the container from sending a compressed
+  // response; Node.js fetch would decompress it but the stale content-encoding
+  // header would cause a browser "Content Encoding Error".
   const forwardHeaders = new Headers();
   for (const [key, value] of request.headers.entries()) {
-    if (!HOP_BY_HOP.has(key.toLowerCase()) && key.toLowerCase() !== 'host') {
+    const k = key.toLowerCase();
+    if (!HOP_BY_HOP.has(k) && k !== 'host' && k !== 'accept-encoding') {
       forwardHeaders.set(key, value);
     }
   }
@@ -82,10 +95,11 @@ async function handler(
     );
   }
 
-  // Forward response headers, filtering hop-by-hop
+  // Forward response headers, filtering hop-by-hop and decompression artifacts
   const responseHeaders = new Headers();
   for (const [key, value] of upstream.headers.entries()) {
-    if (!HOP_BY_HOP.has(key.toLowerCase())) {
+    const k = key.toLowerCase();
+    if (!HOP_BY_HOP.has(k) && !STRIP_RESPONSE.has(k)) {
       responseHeaders.set(key, value);
     }
   }
