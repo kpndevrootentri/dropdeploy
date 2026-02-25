@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-export default function ResetPasswordPage(): React.ReactElement {
+function ResetPasswordForm(): React.ReactElement {
   const router = useRouter();
 
   const [newPassword, setNewPassword] = useState('');
@@ -92,5 +92,25 @@ export default function ResetPasswordPage(): React.ReactElement {
         </CardContent>
       </Card>
     </main>
+  );
+}
+
+export default function ResetPasswordPage(): React.ReactElement {
+  return (
+    <Suspense fallback={
+      <main className="min-h-screen flex flex-col items-center justify-center p-8">
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle className="text-center">Set your password</CardTitle>
+            <CardDescription className="text-center">Loading…</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-10 w-full rounded-md bg-muted animate-pulse" />
+          </CardContent>
+        </Card>
+      </main>
+    }>
+      <ResetPasswordForm />
+    </Suspense>
   );
 }
