@@ -323,13 +323,13 @@ server {
 Each time a project deploys, add a server block to `/etc/nginx/sites-enabled/`:
 
 ```nginx
-# /etc/nginx/sites-enabled/dropdeploy-<project-slug>
+# /etc/nginx/sites-enabled/dropdeploy-my-next-app
 server {
     listen 80;
-    server_name <project-slug>.yourdomain.com;
+    server_name my-next-app.domain.in;
 
     location / {
-        proxy_pass http://127.0.0.1:<container-port>;
+        proxy_pass http://127.0.0.1:8739;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';

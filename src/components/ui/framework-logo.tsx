@@ -5,7 +5,7 @@ import { SiNextdotjs, SiDjango, SiFastapi, SiFlask, SiVuedotjs, SiSvelte } from 
 const BASE_DOMAIN =
   typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_BASE_DOMAIN
     ? process.env.NEXT_PUBLIC_BASE_DOMAIN
-    : 'dropdeploy.app';
+    : 'domain.in';
 
 /** True when app is running on localhost (dev); use port-based deploy URLs when available. */
 function isLocalhostDev(): boolean {

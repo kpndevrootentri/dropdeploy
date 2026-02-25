@@ -335,11 +335,9 @@ export class DeploymentService {
       // Signal SSE subscribers that the build is done
       getRedisConnection().publish(redisChannel, '__DONE__').catch(() => {});
 
-      try {
-        await this.nginx.configureProject(project.slug, containerPort);
-      } catch (err) {
-        log.warn('Nginx config failed (non-fatal)', { slug: project.slug, error: String(err) });
-      }
+      // Routing is handled by the in-app reverse proxy (src/app/api/proxy/[slug]).
+      // No per-project nginx config file is written or reloaded.
+      log.info('Deployment live — routed via in-app proxy', { slug: project.slug, containerPort });
     } catch (err) {
       await this.deploymentRepo.update(deploymentId, {
         status: 'FAILED',

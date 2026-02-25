@@ -9,10 +9,10 @@ const ADMIN_PREFIX = '/dashboard/admin';
 const AUTH_PAGES = ['/login'];
 const RESET_PASSWORD_PATH = '/reset-password';
 
-/**
- * Injects a unique x-request-id header into the request and echoes it in the
- * response so that log lines from the same HTTP request can be correlated.
- */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function withRequestId(req: NextRequest, response: NextResponse): NextResponse {
   const requestId = req.headers.get('x-request-id') ?? randomUUID();
   response.headers.set('x-request-id', requestId);
@@ -20,11 +20,35 @@ function withRequestId(req: NextRequest, response: NextResponse): NextResponse {
 }
 
 /**
- * Protects /dashboard when no valid JWT; redirects logged-in users from /login.
- * Forces users with mustResetPassword to /reset-password before accessing the dashboard.
- * Also injects x-request-id on all API requests for structured log correlation.
+ * Top-level Next.js proxy (replaces middleware.ts in Next.js 16+).
+ *
+ * Two responsibilities:
+ *  1. Subdomain proxy: requests arriving at {slug}.BASE_DOMAIN are internally
+ *     rewritten to /api/proxy/{slug}/{...path} so the in-app proxy handler can
+ *     look up the container port and forward the request.
+ *  2. Auth/dashboard guard: all other requests go through JWT verification,
+ *     redirect rules, and request-ID injection.
  */
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  const hostname = request.headers.get('host') ?? '';
+  const baseDomain = process.env.BASE_DOMAIN ?? '';
+
+  // Match {slug}.{BASE_DOMAIN} (with optional :port for local dev)
+  const subdomainPattern = new RegExp(
+    `^([a-z0-9][a-z0-9-]*)\\.${escapeRegex(baseDomain)}(?::\\d+)?$`
+  );
+  const match = hostname.match(subdomainPattern);
+
+  if (match) {
+    const slug = match[1];
+    const url = request.nextUrl.clone();
+    const originalPath = url.pathname;
+    // Rewrite to internal proxy route while preserving query string
+    url.pathname = `/api/proxy/${slug}${originalPath === '/' ? '' : originalPath}`;
+    return NextResponse.rewrite(url);
+  }
+
+  // Non-subdomain request — auth/dashboard guard
   const { pathname } = request.nextUrl;
 
   // For API routes: inject request ID and pass through (no auth redirect needed here)
@@ -87,5 +111,6 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/login', '/reset-password', '/api/:path*'],
+  // Run on all paths except Next.js internals and static assets
+  matcher: ['/((?!_next/static|_next/image|favicon\\.ico).*)'],
 };

@@ -180,7 +180,7 @@ flowchart TB
     end
 
     S8 --> S9["Step 9: Nginx routes traffic to container"]
-    S9 --> LIVE["Live at my-app.dropdeploy.app"]
+    S9 --> LIVE["Live at my-app.domain.in"]
 
     style T fill:#e0f2fe
     style LIVE fill:#dcfce7
@@ -293,14 +293,14 @@ Back in `buildAndDeploy()`:
 
 ```mermaid
 graph LR
-    U["User Browser"] -->|"my-app.dropdeploy.app"| NG["Nginx Reverse Proxy"]
+    U["User Browser"] -->|"my-app.domain.in"| NG["Nginx Reverse Proxy"]
     NG -->|"localhost:8472"| C["Docker Container"]
 
     style U fill:#e0f2fe
     style C fill:#dcfce7
 ```
 
-Nginx routes wildcard subdomain traffic to the correct container port. The app is accessible at `https://<slug>.dropdeploy.app`.
+Nginx routes wildcard subdomain traffic to the correct container port. The app is accessible at `https://<slug>.domain.in`.
 
 For local development, the UI also shows a **local network URL** (e.g., `http://192.168.1.x:8472`) so other devices on the same network can access the deployed app.
 
@@ -509,7 +509,7 @@ npm run worker         # Terminal 2: BullMQ deployment worker
 | `JWT_SECRET` | 32+ character string | JWT signing key |
 | `REDIS_HOST` | `localhost` | Redis host for BullMQ |
 | `REDIS_PORT` | `6379` | Redis port |
-| `BASE_DOMAIN` | `dropdeploy.app` | Subdomain base for deployed apps |
+| `BASE_DOMAIN` | `domain.in` | Subdomain base for deployed apps |
 | `DOCKER_SOCKET` | `/var/run/docker.sock` | Docker daemon socket |
 | `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | Frontend URL |
 | `PROJECTS_DIR` | `~/.dropdeploy/projects` | Cloned repo storage (default) |

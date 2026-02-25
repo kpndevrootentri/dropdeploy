@@ -12,7 +12,7 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('7d'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
-  BASE_DOMAIN: z.string().default('dropdeploy.app'),
+  BASE_DOMAIN: z.string().default('domain.in'),
   ENV_ENCRYPTION_KEY: z.string().length(64, 'Must be a 64-char hex string (32 bytes)'),
   DOCKER_SOCKET: z.string().optional(),
   PROJECTS_DIR: z.string().default(path.join(defaultBaseDir, 'projects')),

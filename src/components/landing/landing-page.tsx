@@ -318,7 +318,7 @@ export function LandingPage() {
               <div className="flex items-center gap-2 rounded-md border border-dashed border-border bg-muted/30 px-3 py-2">
                 <Link2 className="h-3.5 w-3.5 text-muted-foreground/40 flex-shrink-0" aria-hidden="true" />
                 <span className="text-xs text-muted-foreground/40 flex-1 truncate">
-                  my-portfolio.dropdeploy.app
+                  my-portfolio.domain.in
                 </span>
                 <Copy className="h-3.5 w-3.5 text-muted-foreground/30 flex-shrink-0" aria-hidden="true" />
               </div>
@@ -451,7 +451,7 @@ export function LandingPage() {
                 </div>
                 <div className="rounded-md border bg-muted/40 px-3 py-2 flex items-center gap-2">
                   <span className="text-xs text-muted-foreground flex-1 truncate">
-                    https://my-portfolio.dropdeploy.app
+                    https://my-portfolio.domain.in
                   </span>
                   <Copy className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" aria-hidden="true" />
                   <ExternalLink className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" aria-hidden="true" />

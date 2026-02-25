@@ -6,7 +6,7 @@ Deploy projects instantly by **pasting a GitHub repository URL**. The system clo
 graph LR
     A["Paste GitHub URL"] --> B["DropDeploy"]
     B --> C["Clone → Build → Deploy"]
-    C --> D["slug.dropdeploy.app"]
+    C --> D["slug.domain.in"]
 
     style B fill:#e0f2fe
     style D fill:#dcfce7
@@ -19,7 +19,7 @@ graph LR
 - **GitHub deployment** -- Deploy from any public repository URL
 - **Framework detection** -- Static (HTML), Node.js, Next.js, Django
 - **Containerized builds** -- Each deployment runs in an isolated Docker container
-- **Live URLs** -- Subdomain per project (`https://{slug}.dropdeploy.app`)
+- **Live URLs** -- Subdomain per project (`https://{slug}.domain.in`)
 - **Branch switching** -- Choose which branch to deploy, switch between deploys
 - **Build progress** -- Step-by-step indicators (cloning → building → starting)
 - **Interactive terminal** -- Run commands inside deployed containers with slash commands
@@ -122,13 +122,13 @@ sequenceDiagram
     W->>D: Clone → Build Image → Run Container
     D-->>W: Container on port 8472
     W->>App: Status: DEPLOYED
-    App-->>U: Live at slug.dropdeploy.app
+    App-->>U: Live at slug.domain.in
 ```
 
 1. **Create project** -- Provide a name, GitHub URL, and framework type.
 2. **Deploy** -- Click "Deploy" to queue a build job.
 3. **Worker builds** -- The BullMQ worker clones the repo, builds a Docker image, and starts a container.
-4. **Live URL** -- Access your app at `https://{slug}.dropdeploy.app` or via local network URL.
+4. **Live URL** -- Access your app at `https://{slug}.domain.in` or via local network URL.
 
 ---
 

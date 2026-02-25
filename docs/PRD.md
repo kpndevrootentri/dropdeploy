@@ -12,7 +12,7 @@ Build a web platform that allows users to **deploy projects instantly** by pasti
 graph LR
     A["Developer"] -->|Paste GitHub URL| B["DropDeploy"]
     B -->|Clone + Build + Deploy| C["Live URL"]
-    C -->|"slug.dropdeploy.app"| D["Users"]
+    C -->|"slug.domain.in"| D["Users"]
 
     style B fill:#e0f2fe
     style C fill:#dcfce7
@@ -135,7 +135,7 @@ stateDiagram-v2
 
 ### 5.6 URL Management
 
-- Auto-generated subdomain: `https://{slug}.dropdeploy.app`
+- Auto-generated subdomain: `https://{slug}.domain.in`
 - Nginx routes subdomain traffic to the correct container port
 - Local network URL: `http://<local-ip>:<port>` for same-network access
 
