@@ -116,6 +116,21 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 `.trim(),
+
+  ANDROID: `
+FROM reactnativecommunity/react-native-android:latest AS builder
+
+WORKDIR /app
+COPY . .
+RUN chmod +x ./gradlew
+
+ARG GRADLE_TASK=assembleDebug
+RUN ./gradlew $GRADLE_TASK --no-daemon --stacktrace
+
+FROM alpine:3.19
+ARG APK_OUTPUT_PATH=app/build/outputs/apk/debug/app-debug.apk
+COPY --from=builder /app/$APK_OUTPUT_PATH /artifact/app.apk
+`.trim(),
 } as const;
 
 export type DockerfileProjectType = keyof typeof DOCKERFILE_TEMPLATES;
@@ -134,6 +149,7 @@ export const CONTAINER_PORTS: Record<DockerfileProjectType, number> = {
   FLASK:   5000,
   VUE:     80,
   SVELTE:  80,
+  ANDROID: 0,
 };
 
 /**

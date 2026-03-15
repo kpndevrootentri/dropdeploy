@@ -48,26 +48,22 @@ graph TD
 
 ### Deployment Logging & Observability
 
-- [ ] Store full Docker build logs in database (not just last error)
-- [ ] Capture stdout/stderr separately with timestamps during build
-- [ ] Add log viewer UI on the project detail page per deployment
-- [ ] Show real-time build output (SSE or polling) instead of just step indicators
-
-> Currently only ~20 lines of build output are captured. Users can't debug failed builds without full logs.
+- [x] Store full Docker build logs in database (not just last error)
+- [x] Capture stdout/stderr with timestamps during build (`buildLog` column)
+- [x] Add log viewer UI on the project detail page per deployment
+- [x] Show real-time build output (SSE stream via `GET /api/projects/:id/deployments/:dId/logs/stream`)
 
 ### Worker Resilience
 
-- [ ] Mark stuck `BUILDING` deployments as `FAILED` on worker restart
-- [ ] Implement per-job timeout (long builds like Next.js can exceed defaults)
-- [ ] Add worker health heartbeat tracked in Redis
+- [x] Mark stuck `BUILDING` deployments as `FAILED` on worker restart (`recoverStuckDeployments()`)
+- [x] Implement per-job timeout (`BULLMQ_JOB_TIMEOUT_MS`, default 15 min)
+- [x] Add worker health heartbeat tracked in Redis (`worker:health` key, 90s TTL)
 - [ ] Add dead-letter queue UI for manually retrying permanently failed jobs
-
-> If the worker crashes mid-build, deployments stay in `BUILDING` forever.
 
 ### Port Allocation Safety
 
-- [ ] Check port availability before assigning (current random selection can collide)
-- [ ] Track allocated ports in database with release-on-container-stop
+- [x] Check port availability before assigning (TCP probe + DB exclusion list)
+- [x] Track allocated ports in database (`clearPortForOtherDeployments` on redeploy)
 - [ ] Handle port conflicts gracefully instead of failing silently
 
 ### Auth Hardening
@@ -89,27 +85,26 @@ graph TD
 
 ### Environment Variables
 
-- [ ] Add `EnvironmentVariable` model (projectId, key, encryptedValue)
-- [ ] Pass env vars to Docker container at runtime via `--env`
-- [ ] Add env var editor UI in project settings
-- [ ] Support `.env` file upload
-- [ ] Mask values in UI and logs
+- [x] Add `EnvironmentVariable` model (projectId, key, encryptedValue, iv, authTag)
+- [x] Pass env vars to Docker container at runtime via `--env`; `NEXT_PUBLIC_*` injected as build args
+- [x] Add env var editor UI in project settings
+- [x] Mask values in UI and logs (values stored encrypted; masked in API responses)
 
-> Most requested feature — users need DB URLs, API keys, and config without hardcoding.
+> Implemented with AES-256-GCM encryption, per-environment overrides (ALL / DEVELOPMENT / STAGING / PRODUCTION), and audit logging.
 
 ### Rate Limiting & Resource Quotas
 
-- [ ] Per-user deployment rate limit (e.g., 10/hour) via Redis
-- [ ] Limit 1 active deployment per project (queue subsequent triggers)
+- [x] Per-route rate limiting via Redis (`lib/rate-limit.ts`, applied on env-var routes)
+- [x] Per-project deployment lock (Redis advisory lock + smart queue prevents double-deploys)
 - [ ] Per-user container limit (e.g., 5 running containers)
 - [ ] Auto-cleanup of deployments older than 30 days
 
 ### Deployment Concurrency Control
 
-- [ ] Per-project deployment lock (Redis or DB advisory lock)
-- [ ] Queue new deploy requests while one is in progress
-- [ ] Show "deployment in progress" indicator to prevent double-clicks
-- [ ] Cancel queued deployment if a newer one is triggered
+- [x] Per-project deployment lock (Redis advisory lock in `createDeployment()`)
+- [x] Queue new deploy requests while one is in progress (smart hold-back queue)
+- [x] Cancel queued deployment if a newer one is triggered (supersede pattern)
+- [x] Show "deployment in progress" indicator to prevent double-clicks (UI status badges)
 
 ### Container Health Monitoring
 
@@ -134,14 +129,12 @@ graph TD
 - [ ] Parse `package.json` on clone to detect framework
 - [ ] Auto-detect based on file presence (`index.html`, `manage.py`, etc.)
 - [ ] Show detected type to user for confirmation before first deploy
-- [ ] Add more types: Flask, Go, Rust, Java/Spring
 
 ### Build Performance
 
 - [ ] Enable Docker BuildKit (`DOCKER_BUILDKIT=1`) for layer caching
 - [ ] Cache `node_modules` and `pip` packages across builds via Docker volumes
-- [ ] Add build time tracking and display in deployment history
-- [ ] Support custom Dockerfile (user-provided in repo root)
+- [x] Custom Dockerfile support (repo-root `Dockerfile` is detected and used automatically)
 
 ### Custom Domains
 
@@ -153,29 +146,27 @@ graph TD
 
 ### Nginx Dynamic Routing
 
-- [ ] Auto-generate Nginx config on deployment (currently manual)
-- [ ] Reload Nginx after each successful deployment
+- [x] All routing handled dynamically by in-app proxy (database-driven, no Nginx files per project)
 - [ ] Support WebSocket proxying for real-time apps
 - [ ] Add HTTPS redirect and HSTS headers
 
 ### Structured Logging
 
-- [ ] Replace `console.log` with structured logger (pino or winston)
+- [x] Winston logger with configurable log level (`LOG_LEVEL` env var)
+- [x] Audit log table for user actions (`AuditLog` model: ENV_CREATED, ENV_UPDATED, ENV_DELETED, DEPLOY_TRIGGERED, PROJECT_SETTINGS_UPDATED, PROJECT_DELETED)
 - [ ] Add request ID tracing across API → service → worker
-- [ ] Audit log table for user actions (deploy, delete, settings change)
-- [ ] Log level configuration via env var
 
 ### Database Resilience
 
+- [x] Indexes on frequently queried fields (`project.userId`, `deployment.projectId`, `deployment.status`)
 - [ ] Connection pooling (PgBouncer or Prisma pool settings)
 - [ ] Query timeout configuration
-- [ ] Indexes on frequently queried fields (`project.userId`, `deployment.projectId`, `deployment.status`)
 - [ ] Automated daily backups
 
 ### Deployment History UI
 
-- [ ] Paginated deployment history per project
-- [ ] Show build duration, branch, commit hash per deployment
+- [x] Paginated deployment history per project (`GET /api/projects/:id/deployments`)
+- [x] Show build duration, branch, commit hash per deployment
 - [ ] Diff view between deployments
 - [ ] "Redeploy" button on historical deployments
 
@@ -185,7 +176,8 @@ graph TD
 
 ### Testing
 
-- [ ] Unit tests for services (auth, deployment, docker, git)
+- [x] Unit tests for package scanner (`src/__tests__/package-scanner.test.ts`)
+- [ ] Unit tests for other services (auth, deployment, docker, git)
 - [ ] Integration tests for API routes
 - [ ] E2E test for full deploy flow (create → deploy → verify URL)
 - [ ] CI pipeline (GitHub Actions) with test + type-check
@@ -201,7 +193,6 @@ graph TD
 ### Developer Experience
 
 - [ ] `docker-compose.yml` for local dev (PostgreSQL + Redis)
-- [ ] Database seed script with sample data
 - [ ] Pre-commit hooks (lint + type-check)
 - [ ] `.devcontainer.json` for VS Code dev containers
 
@@ -218,12 +209,12 @@ graph TD
 - [ ] Mobile responsiveness improvements
 - [ ] Keyboard shortcuts (D = deploy, R = rollback, T = terminal)
 - [ ] Global error boundary with retry
+- [ ] Disallow spaces in env variable key input validation
 
 ### Performance
 
 - [ ] Redis caching for project list and detail queries
 - [ ] HTTP cache headers (ETag, Cache-Control) on API responses
-- [ ] Pagination on all list endpoints
 - [ ] Lazy-load deployment history and terminal output
 
 ---
@@ -236,9 +227,7 @@ High impact, achievable in a single session:
 |---|------|-----------|
 | 1 | **Docker BuildKit** | Set `DOCKER_BUILDKIT=1` in worker env for faster builds |
 | 2 | **Container restart policy** | Add `RestartPolicy: { Name: 'on-failure', MaximumRetryCount: 3 }` |
-| 3 | **Deployment lock** | Check for active `BUILDING` deployment before creating new one |
-| 4 | **Stuck deployment cleanup** | On worker startup, mark any `BUILDING` deployments as `FAILED` |
-| 5 | **Build duration display** | Calculate from `startedAt`/`completedAt` and show in UI |
-| 6 | **Commit hash tracking** | Store HEAD commit SHA after clone/pull in deployment record |
-| 7 | **Port collision check** | Query database for in-use ports before assigning |
-| 8 | **Deployment cancel** | Endpoint to cancel `QUEUED` deployments before worker picks them up |
+| 3 | **Request ID tracing** | Add `x-request-id` header propagation across API → service → worker logs |
+| 4 | **WebSocket proxying** | Forward `Upgrade` header in the in-app proxy for real-time apps |
+| 5 | **Auto-cleanup** | Cron job or worker task to prune deployments older than 30 days |
+| 6 | **Token revocation** | Store logout token JTI in Redis with TTL matching `JWT_EXPIRES_IN` |

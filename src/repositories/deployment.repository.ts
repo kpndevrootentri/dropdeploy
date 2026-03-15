@@ -9,7 +9,7 @@ export interface IDeploymentRepository {
   findByProjectId(projectId: string, limit?: number, skip?: number): Promise<Deployment[]>;
   countByProjectId(projectId: string): Promise<number>;
   create(data: { projectId: string; status?: string }): Promise<Deployment>;
-  update(id: string, data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'buildLog' | 'commitHash' | 'startedAt' | 'completedAt'>>): Promise<Deployment>;
+  update(id: string, data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'buildLog' | 'commitHash' | 'startedAt' | 'completedAt' | 'artifactUrl' | 'artifactType'>>): Promise<Deployment>;
   /** Clear subdomain on other deployments of this project so the given deployment can claim it (avoids unique constraint). */
   clearSubdomainForOtherDeployments(
     projectId: string,
@@ -73,7 +73,7 @@ export class DeploymentRepository implements IDeploymentRepository {
 
   async update(
     id: string,
-    data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'buildLog' | 'commitHash' | 'startedAt' | 'completedAt'>>
+    data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'buildLog' | 'commitHash' | 'startedAt' | 'completedAt' | 'artifactUrl' | 'artifactType'>>
   ): Promise<Deployment> {
     return prisma.deployment.update({
       where: { id },

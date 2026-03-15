@@ -6,6 +6,7 @@ import Docker from 'dockerode';
 import * as fs from 'fs';
 import * as net from 'net';
 import * as path from 'path';
+import * as stream from 'stream';
 import type { Project } from '@prisma/client';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
@@ -29,6 +30,7 @@ const CONTAINER_RESOURCES: Record<string, { memory: number; cpuShares: number }>
   FLASK:   { memory: 256 * 1024 * 1024,  cpuShares: 512  },
   VUE:     { memory: 128 * 1024 * 1024,  cpuShares: 256  },
   SVELTE:  { memory: 128 * 1024 * 1024,  cpuShares: 256  },
+  ANDROID: { memory: 4 * 1024 * 1024 * 1024, cpuShares: 2048 },
 };
 
 export interface DockerServiceConfig {
@@ -75,6 +77,7 @@ export class DockerService {
     buildArgs: Record<string, string> = {},
     secretValues: string[] = [],
     onLog?: (line: string) => void,
+    platform?: string,
   ): Promise<string> {
     const imageName = `dropdeploy/${project.slug}:latest`;
     const dockerfilePath = path.join(contextPath, 'Dockerfile');
@@ -82,13 +85,17 @@ export class DockerService {
     if (hasCustomDockerfile) {
       // Strip BuildKit-only directives so the classic builder doesn't choke on
       // user-supplied Dockerfiles that contain `# syntax=...` or `--mount=...`.
-      const raw = await fs.promises.readFile(dockerfilePath, 'utf8');
-      const sanitized = this.stripBuildKitDirectives(raw);
-      if (sanitized !== raw) {
-        await fs.promises.writeFile(dockerfilePath, sanitized, 'utf8');
+      let content = await fs.promises.readFile(dockerfilePath, 'utf8');
+      content = this.stripBuildKitDirectives(content);
+      if (project.type === 'ANDROID') {
+        content = this.injectPlatform(content, 'linux/amd64');
       }
+      await fs.promises.writeFile(dockerfilePath, content, 'utf8');
     } else {
-      const dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs));
+      let dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs));
+      if (project.type === 'ANDROID') {
+        dockerfile = this.injectPlatform(dockerfile, 'linux/amd64');
+      }
       await fs.promises.writeFile(dockerfilePath, dockerfile, 'utf8');
     }
 
@@ -101,51 +108,17 @@ export class DockerService {
     }
 
     log.info('Building image', { imageName });
-    const stream = await this.docker.buildImage(
-      { context: contextPath, src: ['.'] },
-      {
-        t: imageName,
-        ...(Object.keys(buildArgs).length > 0 ? { buildargs: buildArgs } : {}),
-      } as Record<string, unknown>,
-    );
 
     // Build a scrubber to redact secret values from build output
     const scrub = this.buildScrubber(secretValues);
 
-    // Collect build output for diagnostics
-    const buildLog: string[] = [];
-    await new Promise<void>((resolve, reject) => {
-      this.docker.modem.followProgress(
-        stream,
-        (err: Error | null, output: Array<{ stream?: string; error?: string; errorDetail?: { message?: string } }>) => {
-          if (err) {
-            reject(err);
-            return;
-          }
-          const buildError = output?.find((o) => o.error ?? o.errorDetail);
-          if (buildError) {
-            const msg = scrub(
-              buildError.error ??
-              buildError.errorDetail?.message ??
-              'Docker build failed',
-            );
-            const tail = buildLog.slice(-20).join('');
-            reject(new Error(`${msg}\n\nBuild output (last 20 lines):\n${tail}`));
-            return;
-          }
-          resolve();
-        },
-        (event: { stream?: string; error?: string }) => {
-          if (event.stream) {
-            const now = new Date();
-            const ts = `[${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}]`;
-            const formatted = `${ts} ${scrub(event.stream)}`;
-            buildLog.push(formatted);
-            onLog?.(formatted);
-          }
-        }
-      );
-    });
+    // Use Docker CLI with BuildKit for platform-specific builds (e.g. Android on ARM hosts).
+    // The classic dockerode builder ignores --platform in FROM directives.
+    if (platform) {
+      await this.buildImageWithCli(imageName, contextPath, buildArgs, platform, scrub, onLog);
+    } else {
+      await this.buildImageWithDockerode(imageName, contextPath, buildArgs, scrub, onLog);
+    }
 
     // Verify the image exists (Docker build can "succeed" from stream perspective but fail to produce an image).
     try {
@@ -234,6 +207,111 @@ export class DockerService {
       }
     }
     throw new Error('Failed to start container after 3 port allocation attempts');
+  }
+
+  /**
+   * Build using Docker CLI with BuildKit — required for --platform to work correctly.
+   */
+  private async buildImageWithCli(
+    imageName: string,
+    contextPath: string,
+    buildArgs: Record<string, string>,
+    platform: string,
+    scrub: (text: string) => string,
+    onLog?: (line: string) => void,
+  ): Promise<void> {
+    const args = ['build', '--platform', platform, '-t', imageName];
+    for (const [key, value] of Object.entries(buildArgs)) {
+      args.push('--build-arg', `${key}=${value}`);
+    }
+    args.push(contextPath);
+
+    const { spawn } = await import('child_process');
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn('docker', args, {
+        env: { ...process.env, DOCKER_BUILDKIT: '1' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      const buildLog: string[] = [];
+      const handleData = (data: Buffer) => {
+        const lines = data.toString().split('\n').filter(Boolean);
+        for (const line of lines) {
+          const now = new Date();
+          const ts = `[${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}]`;
+          const formatted = `${ts} ${scrub(line)}`;
+          buildLog.push(formatted);
+          onLog?.(formatted);
+        }
+      };
+
+      proc.stdout.on('data', handleData);
+      proc.stderr.on('data', handleData);
+
+      proc.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          const tail = buildLog.slice(-20).join('\n');
+          reject(new Error(`Docker build failed with exit code ${code}\n\nBuild output (last 20 lines):\n${tail}`));
+        }
+      });
+
+      proc.on('error', reject);
+    });
+  }
+
+  /**
+   * Build using dockerode (classic builder) — used for non-platform-specific builds.
+   */
+  private async buildImageWithDockerode(
+    imageName: string,
+    contextPath: string,
+    buildArgs: Record<string, string>,
+    scrub: (text: string) => string,
+    onLog?: (line: string) => void,
+  ): Promise<void> {
+    const buildStream = await this.docker.buildImage(
+      { context: contextPath, src: ['.'] },
+      {
+        t: imageName,
+        ...(Object.keys(buildArgs).length > 0 ? { buildargs: buildArgs } : {}),
+      } as Record<string, unknown>,
+    );
+
+    const buildLog: string[] = [];
+    await new Promise<void>((resolve, reject) => {
+      this.docker.modem.followProgress(
+        buildStream,
+        (err: Error | null, output: Array<{ stream?: string; error?: string; errorDetail?: { message?: string } }>) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          const buildError = output?.find((o) => o.error ?? o.errorDetail);
+          if (buildError) {
+            const msg = scrub(
+              buildError.error ??
+              buildError.errorDetail?.message ??
+              'Docker build failed',
+            );
+            const tail = buildLog.slice(-20).join('');
+            reject(new Error(`${msg}\n\nBuild output (last 20 lines):\n${tail}`));
+            return;
+          }
+          resolve();
+        },
+        (event: { stream?: string; error?: string }) => {
+          if (event.stream) {
+            const now = new Date();
+            const ts = `[${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}]`;
+            const formatted = `${ts} ${scrub(event.stream)}`;
+            buildLog.push(formatted);
+            onLog?.(formatted);
+          }
+        }
+      );
+    });
   }
 
   /**
@@ -330,6 +408,17 @@ export class DockerService {
    *   • `# syntax = ...` directives (trigger remote BuildKit frontend pull)
    *   • `--mount=...` flags on RUN instructions (BuildKit cache/secret mounts)
    */
+  /**
+   * Injects --platform=<platform> into FROM lines that don't already specify one.
+   * Ensures multi-arch hosts (e.g. Apple Silicon) always build for the target platform.
+   */
+  private injectPlatform(content: string, platform: string): string {
+    return content.replace(
+      /^(FROM\s+)(?!--platform)(\S+)/gim,
+      `$1--platform=${platform} $2`,
+    );
+  }
+
   private stripBuildKitDirectives(content: string): string {
     return content
       .split('\n')
@@ -338,6 +427,69 @@ export class DockerService {
       .join('\n')
       // Strip --mount=... flags (with their trailing whitespace) from RUN lines
       .replace(/--mount=\S+\s*/g, '');
+  }
+
+  /**
+   * Extracts a single file from a Docker image into destPath.
+   * Creates a temporary stopped container, uses getArchive to pull the tar stream,
+   * extracts the target file, then removes the container and image.
+   */
+  async extractArtifactFromImage(imageName: string, artifactPath: string, destPath: string): Promise<void> {
+    await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
+
+    const container = await this.docker.createContainer({ Image: imageName });
+    try {
+      const tarStream = await container.getArchive({ path: artifactPath }) as NodeJS.ReadableStream;
+
+      await new Promise<void>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        const passthrough = new stream.PassThrough();
+
+        tarStream.pipe(passthrough);
+
+        passthrough.on('data', (chunk: Buffer) => chunks.push(chunk));
+        passthrough.on('error', reject);
+        passthrough.on('end', async () => {
+          try {
+            const tarBuffer = Buffer.concat(chunks);
+            // Parse tar manually: each entry is 512-byte header + data blocks
+            let offset = 0;
+            while (offset + 512 <= tarBuffer.length) {
+              const header = tarBuffer.slice(offset, offset + 512);
+              // Check for end-of-archive (two 512-byte zero blocks)
+              if (header.every((b) => b === 0)) break;
+
+              const nameRaw = header.slice(0, 100).toString('utf8').replace(/\0/g, '');
+              const sizeOctal = header.slice(124, 136).toString('utf8').replace(/\0/g, '').trim();
+              const size = parseInt(sizeOctal, 8) || 0;
+              const typeFlag = header[156];
+
+              offset += 512;
+              // typeFlag 0 or 0x30 = regular file
+              if ((typeFlag === 0 || typeFlag === 0x30) && nameRaw && size > 0) {
+                const fileData = tarBuffer.slice(offset, offset + size);
+                await fs.promises.writeFile(destPath, fileData);
+                break; // Only one file expected
+              }
+              // Skip data blocks (round up to 512-byte boundary)
+              offset += Math.ceil(size / 512) * 512;
+            }
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+    } finally {
+      await container.remove().catch(() => {});
+      await this.docker.getImage(imageName).remove({ force: true }).catch(() => {});
+    }
+
+    // Verify extraction succeeded
+    const stat = await fs.promises.stat(destPath).catch(() => null);
+    if (!stat || stat.size === 0) {
+      throw new Error(`Failed to extract APK from image at path: ${artifactPath}`);
+    }
   }
 
   private isPortAvailable(port: number): Promise<boolean> {

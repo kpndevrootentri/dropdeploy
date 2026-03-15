@@ -18,6 +18,8 @@ const envSchema = z.object({
   DOCKER_SOCKET: z.string().optional(),
   PROJECTS_DIR: z.string().default(path.join(defaultBaseDir, 'projects')),
   DOCKER_DATA_DIR: z.string().default(path.join(defaultBaseDir, 'docker')),
+  ARTIFACTS_DIR: z.string().default(path.join(defaultBaseDir, 'artifacts')),
+  ANDROID_BUILD_TIMEOUT_MS: z.coerce.number().int().min(300_000).default(45 * 60 * 1000),
   NGINX_CONFIG_PATH: z.string().default('/etc/nginx/sites-enabled'),
   BULLMQ_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(5),
   BULLMQ_JOB_TIMEOUT_MS: z.coerce.number().int().min(60_000).default(15 * 60 * 1000),

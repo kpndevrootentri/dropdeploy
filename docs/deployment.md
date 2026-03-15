@@ -190,8 +190,9 @@ DOCKER_DATA_DIR="/home/ubuntu/.dropdeploy/docker"
 # App URL — use your actual domain
 NEXT_PUBLIC_APP_URL="https://app.yourdomain.com"
 
-# Deployment
+# Deployment — both must be set to the same domain
 BASE_DOMAIN="yourdomain.com"
+NEXT_PUBLIC_BASE_DOMAIN="yourdomain.com"
 NGINX_CONFIG_PATH="/etc/nginx/sites-enabled"
 
 # Worker tuning (optional — defaults shown)
@@ -222,15 +223,15 @@ mkdir -p /home/ubuntu/.dropdeploy/docker
 
 ## Step 8b — Seed the Contributor (Admin) Account
 
-The seed script creates the initial CONTRIBUTOR (admin) account. Run it once after the database is set up. If `CONTRIBUTOR_EMAIL` / `CONTRIBUTOR_PASSWORD` are set in `.env`, those values are used; otherwise pass them inline:
+The seed script creates the initial CONTRIBUTOR (admin) account. Run it once after the database is set up. If `CONTRIBUTOR_EMAIL` / `CONTRIBUTOR_PASSWORD` are set in `.env`, those values are used automatically; otherwise pass them inline:
 
 ```bash
 cd /home/ubuntu/dropdeploy
 
-# Option A — use values from .env
-npm run db:seed
+# Using values from .env
+npx tsx scripts/seed-contributor.ts
 
-# Option B — pass inline
+# Or pass inline
 CONTRIBUTOR_EMAIL="admin@yourdomain.com" \
 CONTRIBUTOR_PASSWORD="<strong-password>" \
 npx tsx scripts/seed-contributor.ts
@@ -274,6 +275,11 @@ npm run build
 
 ## Step 11 — Configure Nginx
 
+> **How subdomain routing works:** All traffic (dashboard + deployed projects) is forwarded
+> to the Next.js app on port 3000. The in-app proxy (`proxy.ts`) detects the subdomain from
+> the `Host` header and routes the request to the correct container internally — **no per-project
+> nginx config files are needed or written**.
+
 ### 11a — Main app (dashboard)
 
 Create `/etc/nginx/sites-available/dropdeploy-app`:
@@ -302,34 +308,16 @@ server {
 Create `/etc/nginx/sites-available/dropdeploy-projects`:
 
 ```nginx
-# Map subdomain to container port — populated dynamically by DropDeploy
-# Each deployed project gets an entry added here by the deployment service.
+# All deployed project subdomains (*.yourdomain.com) are forwarded to the
+# Next.js app. The in-app proxy resolves the container port from the database
+# on each request — no per-project config files or nginx reloads required.
 
 server {
     listen 80;
-    server_name ~^(?<subdomain>.+)\.yourdomain\.com$;
-
-    # This config is a catch-all; per-project port routing is done by
-    # the deployment service writing individual server blocks below.
-    return 404;
-}
-```
-
-> **Note:** The current version requires manual Nginx config updates after each deployment.
-> See [TODO.md](./TODO.md) (Nginx Dynamic Routing) for the planned auto-generation feature.
-
-### Per-project routing (add after each successful deployment)
-
-Each time a project deploys, add a server block to `/etc/nginx/sites-enabled/`:
-
-```nginx
-# /etc/nginx/sites-enabled/dropdeploy-my-next-app
-server {
-    listen 80;
-    server_name my-next-app.domain.in;
+    server_name *.yourdomain.com;
 
     location / {
-        proxy_pass http://127.0.0.1:8739;
+        proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -342,7 +330,8 @@ server {
 }
 ```
 
-Then reload Nginx: `sudo nginx -s reload`
+> **Important:** The `Host $host` header must be passed through intact — the Next.js proxy
+> reads it to extract the slug and route to the correct container.
 
 ### Enable sites and test
 
@@ -379,7 +368,9 @@ sudo certbot certonly \
 sudo systemctl enable --now certbot.timer
 ```
 
-After cert is issued, update your Nginx server blocks to use SSL:
+After cert is issued, update **both** Nginx server blocks to use SSL.
+
+Replace `/etc/nginx/sites-available/dropdeploy-app`:
 
 ```nginx
 server {
@@ -389,7 +380,17 @@ server {
     ssl_certificate     /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
 
-    # ... rest of location block same as above
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
 }
 
 # HTTP → HTTPS redirect
@@ -398,6 +399,42 @@ server {
     server_name app.yourdomain.com;
     return 301 https://$host$request_uri;
 }
+```
+
+Replace `/etc/nginx/sites-available/dropdeploy-projects`:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name *.yourdomain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+# HTTP → HTTPS redirect for all project subdomains
+server {
+    listen 80;
+    server_name *.yourdomain.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+Then reload:
+```bash
+sudo nginx -t && sudo nginx -s reload
 ```
 
 ---
@@ -473,14 +510,14 @@ DropDeploy auto-selects a Dockerfile template based on the `type` set on the pro
 | Type | Base Image | Internal Port | Notes |
 |------|-----------|--------------|-------|
 | `STATIC` | `nginx:alpine` | 80 | Serves static files via Nginx |
-| `NODEJS` | `node:18-alpine` | 3000 | `npm install --omit=dev` + `npm start` |
-| `REACT` | `node:18-alpine` | 3000 | Vite/CRA build + Nginx static serving |
-| `NEXTJS` | `node:18-alpine` | 3000 | Multi-stage build (builder + runner) |
-| `VUE` | `node:18-alpine` | 3000 | Vite build + Nginx static serving |
-| `SVELTE` | `node:18-alpine` | 3000 | Vite/SvelteKit build |
-| `DJANGO` | `python:3.12-slim` | 8000 | `pip install -r requirements.txt` + `manage.py runserver` |
-| `FASTAPI` | `python:3.12-slim` | 8000 | `pip install -r requirements.txt` + `uvicorn` |
-| `FLASK` | `python:3.12-slim` | 8000 | `pip install -r requirements.txt` + `flask run` |
+| `NODEJS` | `node:22-alpine` | 3000 | `npm install --omit=dev` + `npm start` |
+| `REACT` | `node:22-alpine` → `nginx:alpine` | 80 | Vite/CRA build + Nginx static serving |
+| `NEXTJS` | `node:22-alpine` (multi-stage) | 3000 | Builder + runner; `NEXT_PUBLIC_*` vars injected as build args |
+| `VUE` | `node:22-alpine` → `nginx:alpine` | 80 | Vite build + Nginx static serving |
+| `SVELTE` | `node:22-alpine` → `nginx:alpine` | 80 | Vite/SvelteKit build + Nginx static serving |
+| `DJANGO` | `python:3.13-slim` | 8000 | `pip install -r requirements.txt` + `manage.py runserver` |
+| `FASTAPI` | `python:3.13-slim` | 8000 | `pip install -r requirements.txt` + `uvicorn main:app` |
+| `FLASK` | `python:3.13-slim` | 5000 | `pip install -r requirements.txt` + `gunicorn app:app` |
 
 No additional configuration is needed on the server — templates are built into the application.
 
@@ -611,7 +648,7 @@ pm2 set pm2-logrotate:retain 7
 | Docker build fails | `docker info` — verify daemon is running and accessible |
 | Database connection refused | `sudo systemctl status postgresql` |
 | Redis connection refused | `sudo systemctl status redis-server` |
-| Subdomain not routing | Check Nginx config for the project, `sudo nginx -t`, `sudo nginx -s reload` |
+| Subdomain not routing | Ensure `*.yourdomain.com` nginx block forwards to `127.0.0.1:3000` with `proxy_set_header Host $host`. Verify `BASE_DOMAIN` in `.env` matches your domain. Run `sudo nginx -t && sudo nginx -s reload`. |
 | SSL cert expired | `sudo certbot renew --dry-run` to test; `sudo certbot renew` to renew |
 | Out of disk space | Run `docker image prune -f && docker container prune -f` |
 | Deployment fails with "blocked package" | A dependency matched the security blocklist — check deployment logs for the package name; remove it from `package.json` / `requirements.txt` or add a legitimate override with care |
@@ -627,19 +664,20 @@ pm2 set pm2-logrotate:retain 7
 ```
 VPS
 ├── Nginx (80/443)
-│   ├── app.yourdomain.com       → 127.0.0.1:3000
-│   ├── proj-a.yourdomain.com    → 127.0.0.1:8042
-│   └── proj-b.yourdomain.com    → 127.0.0.1:8107
+│   ├── app.yourdomain.com     → 127.0.0.1:3000  (dashboard)
+│   └── *.yourdomain.com       → 127.0.0.1:3000  (all projects, same Next.js app)
 │
 ├── PM2
-│   ├── dropdeploy-app    (Next.js,  port 3000)
+│   ├── dropdeploy-app    (Next.js, port 3000)
+│   │     proxy.ts reads Host header → rewrites to /api/proxy/{slug}
+│   │     → looks up containerPort in DB → forwards to container
 │   └── dropdeploy-worker (BullMQ worker)
 │
 ├── PostgreSQL  (localhost:5432)
 ├── Redis       (localhost:6379)
 └── Docker Engine (/var/run/docker.sock)
-    ├── container: proj-a  → host port 8042
-    └── container: proj-b  → host port 8107
+    ├── container: proj-a  → host port 8042  (never exposed via nginx directly)
+    └── container: proj-b  → host port 8107  (never exposed via nginx directly)
 ```
 
 ---

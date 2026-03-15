@@ -44,10 +44,10 @@ export function ProjectTile({
 }: ProjectTileProps): React.ReactElement {
   const { execute, loading, error, reset } = useFetchMutation();
 
-  const framework =
-    project.type === 'STATIC' || project.type === 'NODEJS' || project.type === 'NEXTJS' || project.type === 'DJANGO'
-      ? project.type
-      : 'STATIC';
+  const VALID_FRAMEWORKS = new Set(['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'ANDROID']);
+  const framework = VALID_FRAMEWORKS.has(project.type)
+    ? (project.type as 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'ANDROID')
+    : 'STATIC';
   const latestDeployment = project.deployments?.[0];
   const status = latestDeployment?.status;
   const hasDeployed = status === 'DEPLOYED';
@@ -98,7 +98,7 @@ export function ProjectTile({
                   </span>
                 </div>
                 {status === 'BUILDING' && latestDeployment?.buildStep && (
-                  <BuildProgress currentStep={latestDeployment.buildStep} />
+                  <BuildProgress currentStep={latestDeployment.buildStep} projectType={project.type} />
                 )}
               </div>
             )}
@@ -183,19 +183,30 @@ export function ProjectTile({
   );
 }
 
-const BUILD_STEPS = [
+const DEFAULT_BUILD_STEPS = [
   { key: 'CLONING', label: 'Cloning' },
   { key: 'SCANNING', label: 'Scanning' },
   { key: 'BUILDING_IMAGE', label: 'Building' },
   { key: 'STARTING', label: 'Starting' },
 ] as const;
 
-function BuildProgress({ currentStep }: { currentStep: string | null }): React.ReactElement {
-  const currentIdx = BUILD_STEPS.findIndex((s) => s.key === currentStep);
+const ANDROID_BUILD_STEPS = [
+  { key: 'CLONING', label: 'Cloning' },
+  { key: 'SCANNING', label: 'Scanning' },
+  { key: 'DOCKER_BUILD', label: 'Docker' },
+  { key: 'DOWNLOADING_SDK', label: 'SDK' },
+  { key: 'GRADLE_BUILD', label: 'Gradle' },
+  { key: 'ASSEMBLING', label: 'Assembling' },
+  { key: 'EXTRACTING_APK', label: 'Extracting' },
+] as const;
+
+function BuildProgress({ currentStep, projectType }: { currentStep: string | null; projectType?: string }): React.ReactElement {
+  const steps = projectType === 'ANDROID' ? ANDROID_BUILD_STEPS : DEFAULT_BUILD_STEPS;
+  const currentIdx = steps.findIndex((s) => s.key === currentStep);
 
   return (
     <div className="flex items-center gap-1.5 mt-2">
-      {BUILD_STEPS.map((step, i) => {
+      {steps.map((step, i) => {
         const isDone = currentIdx > i;
         const isActive = currentIdx === i;
         return (

@@ -11,6 +11,7 @@ import { getRedisConnection } from '@/lib/redis';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
 import { scanPackages } from './package-scanner';
+import { androidBuildService } from '@/services/android/android-build.service';
 import { NotFoundError, ConflictError, ValidationError } from '@/lib/errors';
 import type { Deployment } from '@prisma/client';
 
@@ -284,6 +285,55 @@ export class DeploymentService {
         throw new Error(`Blocked package(s) detected: ${blocked.join(', ')}`);
       }
       onLog(`✓ Package scan passed.\n`);
+
+      // Android: ephemeral build — extract APK, store artifact, no container
+      if (project.type === 'ANDROID') {
+        await this.deploymentRepo.update(deploymentId, { buildStep: 'DOCKER_BUILD' });
+        addMarker('Building Docker image (platform: linux/amd64)...');
+
+        // Track Android build phases from Docker/Gradle output
+        let currentPhase = 'DOCKER_BUILD';
+        const androidOnLog = (line: string): void => {
+          onLog(line);
+
+          let newPhase: string | null = null;
+          if (/downloading.*sdk|android sdk|sdk manager/i.test(line)) {
+            newPhase = 'DOWNLOADING_SDK';
+          } else if (/welcome to gradle|gradle.*daemon|> task\s|gradlew/i.test(line)) {
+            newPhase = 'GRADLE_BUILD';
+          } else if (/> task :app:assemble|> task :app:bundle|BUILD SUCCESSFUL/i.test(line)) {
+            newPhase = 'ASSEMBLING';
+          }
+
+          if (newPhase && newPhase !== currentPhase) {
+            currentPhase = newPhase;
+            const labels: Record<string, string> = {
+              DOWNLOADING_SDK: 'Downloading Android SDK...',
+              GRADLE_BUILD: 'Running Gradle build...',
+              ASSEMBLING: 'Assembling APK...',
+            };
+            addMarker(labels[newPhase] ?? newPhase);
+            void this.deploymentRepo.update(deploymentId, { buildStep: newPhase });
+          }
+        };
+
+        const apkPath = await androidBuildService.prepareAndBuild(project, workDir, deploymentId, androidOnLog);
+
+        await this.deploymentRepo.update(deploymentId, { buildStep: 'EXTRACTING_APK' });
+        addMarker('Extracting APK artifact...');
+
+        await this.deploymentRepo.update(deploymentId, {
+          status: 'DEPLOYED',
+          buildStep: null,
+          buildLog: logLines.join(''),
+          artifactUrl: apkPath,
+          artifactType: 'apk',
+          completedAt: new Date(),
+        });
+        getRedisConnection().publish(redisChannel, '__DONE__').catch(() => {});
+        log.info('Android build complete', { deploymentId, apkPath });
+        return;
+      }
 
       // Resolve env vars: split into build args (NEXT_PUBLIC_*) and runtime env
       const allEnvVars = await this.envVar.resolveForDeployment(project.id);

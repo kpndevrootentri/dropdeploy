@@ -10,6 +10,7 @@ import { getRedisConnection } from '@/lib/redis';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
 import { deploymentService } from '@/services/deployment';
+import { projectRepository } from '@/repositories/project.repository';
 import type { DeploymentJob } from '@/types/deployment.types';
 
 const log = createLogger('worker');
@@ -21,7 +22,9 @@ const HEARTBEAT_TTL_S = 90;
 
 async function processJob(job: Job<DeploymentJob>): Promise<void> {
   const { deploymentId, projectId } = job.data;
-  const timeoutMs = getConfig().BULLMQ_JOB_TIMEOUT_MS;
+  const config = getConfig();
+  const project = await projectRepository.findById(projectId);
+  const timeoutMs = project?.type === 'ANDROID' ? config.ANDROID_BUILD_TIMEOUT_MS : config.BULLMQ_JOB_TIMEOUT_MS;
   log.info('Processing deployment', { deploymentId, projectId, timeoutMs });
 
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;

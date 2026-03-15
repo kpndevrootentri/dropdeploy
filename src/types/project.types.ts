@@ -4,7 +4,7 @@
 
 export type SourceType = 'GITHUB';
 
-export type ProjectType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE';
+export type ProjectType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'ANDROID';
 
 export interface CreateProjectDto {
   name: string;
@@ -36,6 +36,8 @@ export interface ProjectWithLatestDeployment {
     id: string;
     status: string;
     subdomain: string | null;
+    artifactUrl?: string | null;
+    artifactType?: string | null;
     createdAt: Date;
   }>;
 }

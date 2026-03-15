@@ -47,6 +47,7 @@ model Project {
   deployments          Deployment[]
   environmentVariables EnvironmentVariable[]
   auditLogs            AuditLog[]
+  androidBuildConfig   AndroidBuildConfig?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -65,6 +66,9 @@ model Deployment {
   commitHash    String?          @map("commit_hash")
   startedAt     DateTime?        @map("started_at")
   completedAt   DateTime?        @map("completed_at")
+
+  artifactUrl  String? @map("artifact_url")
+  artifactType String? @map("artifact_type")
 
   projectId String  @map("project_id")
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -91,6 +95,7 @@ enum ProjectType {
   FLASK
   VUE
   SVELTE
+  ANDROID
 }
 
 model EnvironmentVariable {
@@ -143,4 +148,30 @@ enum DeploymentStatus {
   DEPLOYED
   FAILED
   CANCELLED
+}
+
+model AndroidBuildConfig {
+  id        String  @id @default(cuid())
+  projectId String  @unique @map("project_id")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  buildType     String @default("debug") @map("build_type")
+  gradleTask    String @default("assembleDebug") @map("gradle_task")
+  apkOutputPath String @default("app/build/outputs/apk/debug/app-debug.apk") @map("apk_output_path")
+
+  keystoreBase64     String? @map("keystore_base64") @db.Text
+  keystoreIv         String? @map("keystore_iv")
+  keystoreAuthTag    String? @map("keystore_auth_tag")
+  keystoreAlias      String? @map("keystore_alias")
+  keystorePassword   String? @map("keystore_password") @db.Text
+  keystorePasswordIv         String? @map("keystore_password_iv")
+  keystorePasswordAuthTag    String? @map("keystore_password_auth_tag")
+  keyPassword        String? @map("key_password") @db.Text
+  keyPasswordIv      String? @map("key_password_iv")
+  keyPasswordAuthTag String? @map("key_password_auth_tag")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("android_build_configs")
 }

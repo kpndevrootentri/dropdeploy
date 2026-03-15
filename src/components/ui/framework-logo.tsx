@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { FaHtml5, FaNodeJs, FaReact } from 'react-icons/fa';
-import { SiNextdotjs, SiDjango, SiFastapi, SiFlask, SiVuedotjs, SiSvelte } from 'react-icons/si';
+import { SiNextdotjs, SiDjango, SiFastapi, SiFlask, SiVuedotjs, SiSvelte, SiAndroid } from 'react-icons/si';
 
 const BASE_DOMAIN =
   typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_BASE_DOMAIN
@@ -78,10 +78,17 @@ export const FRAMEWORK_CONFIG = {
     ),
     description: 'Svelte / SvelteKit',
   },
+  ANDROID: {
+    label: 'Android',
+    Logo: ({ size = 24, className }: { size?: number; className?: string }) => (
+      <SiAndroid size={size} className={cn('shrink-0 text-green-500', className)} aria-hidden="true" />
+    ),
+    description: 'Gradle / APK',
+  },
 } as const;
 
 export interface FrameworkLogoProps {
-  framework: 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE';
+  framework: 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'ANDROID';
   size?: number;
   className?: string;
   showLabel?: boolean;

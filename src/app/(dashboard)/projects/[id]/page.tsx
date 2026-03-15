@@ -77,7 +77,7 @@ interface ProjectDetail {
   deployments: Deployment[];
 }
 
-type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO';
+type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'ANDROID';
 type Tab = 'overview' | 'env' | 'settings' | 'advanced' | 'analytics';
 
 interface AnalyticsData {
@@ -90,7 +90,7 @@ interface AnalyticsData {
   recentBuildTimes: { createdAt: string; durationMs: number; status: string }[];
 }
 
-const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO'];
+const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'ANDROID'];
 const POLL_INTERVAL_MS = 2500;
 
 // ---------------------------------------------------------------------------
@@ -153,12 +153,26 @@ function formatRelative(dateStr: string): string {
   return `${diffDay}d ago`;
 }
 
-const BUILD_STEPS = [
+const DEFAULT_BUILD_STEPS = [
   { key: 'CLONING', label: 'Cloning' },
   { key: 'SCANNING', label: 'Scanning' },
   { key: 'BUILDING_IMAGE', label: 'Building' },
   { key: 'STARTING', label: 'Starting' },
 ] as const;
+
+const ANDROID_BUILD_STEPS = [
+  { key: 'CLONING', label: 'Cloning' },
+  { key: 'SCANNING', label: 'Scanning' },
+  { key: 'DOCKER_BUILD', label: 'Docker' },
+  { key: 'DOWNLOADING_SDK', label: 'SDK' },
+  { key: 'GRADLE_BUILD', label: 'Gradle' },
+  { key: 'ASSEMBLING', label: 'Assembling' },
+  { key: 'EXTRACTING_APK', label: 'Extracting' },
+] as const;
+
+function getBuildSteps(projectType?: string) {
+  return projectType === 'ANDROID' ? ANDROID_BUILD_STEPS : DEFAULT_BUILD_STEPS;
+}
 
 function formatDuration(ms: number): string {
   const sec = Math.floor(ms / 1000);
@@ -195,12 +209,13 @@ function ElapsedTimer({ since }: { since: string }): React.ReactElement {
   return <span className="tabular-nums">{formatDuration(elapsed)}</span>;
 }
 
-function BuildProgress({ currentStep }: { currentStep: string | null }): React.ReactElement {
-  const currentIdx = BUILD_STEPS.findIndex((s) => s.key === currentStep);
+function BuildProgress({ currentStep, projectType }: { currentStep: string | null; projectType?: string }): React.ReactElement {
+  const steps = getBuildSteps(projectType);
+  const currentIdx = steps.findIndex((s) => s.key === currentStep);
 
   return (
     <div className="flex items-center gap-1.5 mt-2">
-      {BUILD_STEPS.map((step, i) => {
+      {steps.map((step, i) => {
         const isDone = currentIdx > i;
         const isActive = currentIdx === i;
         return (
@@ -358,12 +373,14 @@ function DeploymentLogs({ deployment, projectId }: { deployment: Deployment; pro
 function DeploymentRow({
   deployment,
   projectId,
+  projectType,
   branch,
   isDeployInProgress,
   onRetried,
 }: {
   deployment: Deployment;
   projectId: string;
+  projectType?: string;
   branch: string;
   isDeployInProgress: boolean;
   onRetried: () => void;
@@ -461,7 +478,7 @@ function DeploymentRow({
             )}
           </div>
           {isInProgress && deployment.status === 'BUILDING' && (
-            <BuildProgress currentStep={deployment.buildStep} />
+            <BuildProgress currentStep={deployment.buildStep} projectType={projectType} />
           )}
           {retryError && (
             <p className="text-xs text-destructive mt-1">{retryError}</p>
@@ -817,9 +834,7 @@ function SettingsPanel({
 }): React.ReactElement {
   const router = useRouter();
   const framework =
-    project.type === 'STATIC' || project.type === 'NODEJS' || project.type === 'NEXTJS' || project.type === 'DJANGO'
-      ? project.type
-      : 'STATIC';
+    (project.type in FRAMEWORK_CONFIG ? project.type : 'STATIC') as keyof typeof FRAMEWORK_CONFIG;
 
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description ?? '');
@@ -1346,9 +1361,7 @@ function OverviewPanel({
   };
 
   const framework =
-    project.type === 'STATIC' || project.type === 'NODEJS' || project.type === 'NEXTJS' || project.type === 'DJANGO'
-      ? project.type
-      : 'STATIC';
+    (project.type in FRAMEWORK_CONFIG ? project.type : 'STATIC') as keyof typeof FRAMEWORK_CONFIG;
 
   const latestDeployment = project.deployments[0];
   const isDeployed = latestDeployment?.status === 'DEPLOYED';
@@ -1543,6 +1556,7 @@ function OverviewPanel({
                   key={deployment.id}
                   deployment={deployment}
                   projectId={project.id}
+                  projectType={project.type}
                   branch={project.branch}
                   isDeployInProgress={isInProgress}
                   onRetried={onRetried}
@@ -1714,9 +1728,7 @@ export default function ProjectDetailPage(): React.ReactElement {
   }
 
   const framework =
-    project.type === 'STATIC' || project.type === 'NODEJS' || project.type === 'NEXTJS' || project.type === 'DJANGO'
-      ? project.type
-      : 'STATIC';
+    (project.type in FRAMEWORK_CONFIG ? project.type : 'STATIC') as keyof typeof FRAMEWORK_CONFIG;
   const latestDeployment = project.deployments[0];
   const isInProgress = latestDeployment?.status === 'QUEUED' || latestDeployment?.status === 'BUILDING';
 
