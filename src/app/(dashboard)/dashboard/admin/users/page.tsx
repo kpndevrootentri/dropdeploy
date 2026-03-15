@@ -11,7 +11,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { KeyRound, ShieldCheck, ShieldOff, Trash2, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, ShieldCheck, ShieldOff, Trash2, Loader2 } from 'lucide-react';
 
 interface AdminUser {
   id: string;
@@ -39,6 +39,10 @@ export default function AdminUsersPage(): React.ReactElement {
   const [resetPassword, setResetPassword] = useState('');
   const [resetError, setResetError] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+
+  // Show/hide for create user password
+  const [showInvitePassword, setShowInvitePassword] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -55,6 +59,7 @@ export default function AdminUsersPage(): React.ReactElement {
     setInviteEmail('');
     setInvitePassword('');
     setInviteError(null);
+    setShowInvitePassword(false);
     setOpen(true);
   };
 
@@ -62,6 +67,7 @@ export default function AdminUsersPage(): React.ReactElement {
     setResetTarget(user);
     setResetPassword('');
     setResetError(null);
+    setShowResetPassword(false);
     setResetOpen(true);
   };
 
@@ -263,31 +269,46 @@ export default function AdminUsersPage(): React.ReactElement {
           <DialogHeader>
             <DialogTitle>Reset Password</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Setting a new password for <span className="font-medium text-foreground">{resetTarget?.email}</span>.
-          </p>
-          <form id="reset-password-form" onSubmit={handleResetPassword} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="reset-password">New password</Label>
-              <Input
-                id="reset-password"
-                type="password"
-                value={resetPassword}
-                onChange={(e) => setResetPassword(e.target.value)}
-                required
-                minLength={8}
-                placeholder="Min 8 characters"
-                autoComplete="new-password"
-              />
-            </div>
-            {resetError && (
-              <p className="text-sm text-destructive" role="alert">
-                {resetError}
-              </p>
-            )}
-          </form>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setResetOpen(false)} disabled={resetting}>
+          <div className="px-1 py-2 space-y-5">
+            <p className="text-sm text-muted-foreground border-b border-border pb-4">
+              Setting a new password for{' '}
+              <span className="font-semibold text-foreground">{resetTarget?.email}</span>
+            </p>
+            <form id="reset-password-form" onSubmit={handleResetPassword} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reset-password">New password</Label>
+                <div className="relative">
+                  <Input
+                    id="reset-password"
+                    type={showResetPassword ? 'text' : 'password'}
+                    value={resetPassword}
+                    onChange={(e) => setResetPassword(e.target.value)}
+                    required
+                    minLength={8}
+                    placeholder="Min 8 characters"
+                    autoComplete="new-password"
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetPassword((v) => !v)}
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+                    tabIndex={-1}
+                    aria-label={showResetPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              {resetError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {resetError}
+                </p>
+              )}
+            </form>
+          </div>
+          <DialogFooter className="pt-2 border-t border-border">
+            <Button variant="outline" onClick={() => setResetOpen(false)} disabled={resetting}>
               Cancel
             </Button>
             <Button type="submit" form="reset-password-form" disabled={resetting}>
@@ -317,16 +338,28 @@ export default function AdminUsersPage(): React.ReactElement {
             </div>
             <div className="space-y-2">
               <Label htmlFor="invite-password">Temporary password</Label>
-              <Input
-                id="invite-password"
-                type="password"
-                value={invitePassword}
-                onChange={(e) => setInvitePassword(e.target.value)}
-                required
-                minLength={8}
-                placeholder="Min 8 characters"
-                autoComplete="new-password"
-              />
+              <div className="relative">
+                <Input
+                  id="invite-password"
+                  type={showInvitePassword ? 'text' : 'password'}
+                  value={invitePassword}
+                  onChange={(e) => setInvitePassword(e.target.value)}
+                  required
+                  minLength={8}
+                  placeholder="Min 8 characters"
+                  autoComplete="new-password"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowInvitePassword((v) => !v)}
+                  className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+                  tabIndex={-1}
+                  aria-label={showInvitePassword ? 'Hide password' : 'Show password'}
+                >
+                  {showInvitePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
               <p className="text-xs text-muted-foreground">
                 The user will be prompted to set their own password on first login.
               </p>
