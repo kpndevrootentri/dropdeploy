@@ -7,7 +7,7 @@ export interface IProjectRepository {
   findByIdWithDeployments(id: string): Promise<Project | null>;
   findByUserId(userId: string): Promise<Project[]>;
   findBySlug(slug: string): Promise<Project | null>;
-  findAll(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date }[] })[]>;
+  findAll(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date; containerPort: number | null }[] })[]>;
   create(userId: string, data: CreateProjectDto): Promise<Project>;
   update(id: string, data: UpdateProjectDto): Promise<Project>;
   delete(id: string): Promise<void>;
@@ -41,14 +41,14 @@ export class ProjectRepository implements IProjectRepository {
     return prisma.project.findUnique({ where: { slug } });
   }
 
-  async findAll(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date }[] })[]> {
+  async findAll(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date; containerPort: number | null }[] })[]> {
     return prisma.project.findMany({
       include: {
         user: { select: { id: true, email: true, role: true } },
-        deployments: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, status: true, createdAt: true } },
+        deployments: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, status: true, createdAt: true, containerPort: true } },
       },
       orderBy: { createdAt: 'desc' },
-    }) as Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date }[] })[]>;
+    }) as Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date; containerPort: number | null }[] })[]>;
   }
 
   async create(userId: string, data: CreateProjectDto): Promise<Project> {

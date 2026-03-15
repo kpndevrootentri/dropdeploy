@@ -11,6 +11,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { KeyRound, ShieldCheck, ShieldOff, Trash2, Loader2 } from 'lucide-react';
 
 interface AdminUser {
   id: string;
@@ -25,12 +26,19 @@ export default function AdminUsersPage(): React.ReactElement {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
 
-  // Modal state
+  // Create user modal
   const [open, setOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [invitePassword, setInvitePassword] = useState('');
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
+
+  // Reset password modal
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -50,10 +58,41 @@ export default function AdminUsersPage(): React.ReactElement {
     setOpen(true);
   };
 
+  const openResetModal = (user: AdminUser): void => {
+    setResetTarget(user);
+    setResetPassword('');
+    setResetError(null);
+    setResetOpen(true);
+  };
+
+  const handleResetPassword = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    if (!resetTarget) return;
+    setResetError(null);
+    setResetting(true);
+    try {
+      const res = await fetch(`/api/admin/users/${resetTarget.id}/reset-password`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword: resetPassword }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setResetError(body?.error?.message ?? body?.error ?? 'Failed to reset password');
+        return;
+      }
+      setResetOpen(false);
+    } catch {
+      setResetError('Network error');
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const handleChangeRole = async (userId: string, currentRole: string): Promise<void> => {
     const newRole = currentRole === 'CONTRIBUTOR' ? 'USER' : 'CONTRIBUTOR';
     if (!confirm(`Change role to ${newRole}?`)) return;
-    setActing(userId + 'role');
+    setActing(`${userId}:role`);
     try {
       const res = await fetch(`/api/admin/users/${userId}/role`, {
         method: 'PATCH',
@@ -75,7 +114,7 @@ export default function AdminUsersPage(): React.ReactElement {
 
   const handleDelete = async (userId: string, email: string): Promise<void> => {
     if (!confirm(`Delete user "${email}"? All their projects will also be deleted.`)) return;
-    setActing(userId + 'delete');
+    setActing(`${userId}:delete`);
     try {
       const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
       if (!res.ok) {
@@ -138,13 +177,16 @@ export default function AdminUsersPage(): React.ReactElement {
             </thead>
             <tbody>
               {users.map((u) => {
-                const isActing = acting?.startsWith(u.id);
+                const isActing = acting?.startsWith(`${u.id}:`);
+                const isChangingRole = acting === `${u.id}:role`;
+                const isDeleting = acting === `${u.id}:delete`;
+                const isContributor = u.role === 'CONTRIBUTOR';
                 return (
                   <tr key={u.id} className="border-b">
                     <td className="py-3 pr-4 font-medium">{u.email}</td>
                     <td className="py-3 pr-4">
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                        u.role === 'CONTRIBUTOR'
+                        isContributor
                           ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
                           : 'bg-muted text-muted-foreground'
                       }`}>
@@ -156,23 +198,48 @@ export default function AdminUsersPage(): React.ReactElement {
                       {new Date(u.createdAt).toLocaleDateString()}
                     </td>
                     <td className="py-3">
-                      <div className="flex gap-1">
-                        <Button
-                          size="sm"
-                          variant="secondary"
+                      <div className="flex items-center gap-2">
+                        {/* Promote / Demote */}
+                        <button
+                          title={isContributor ? 'Demote — Remove contributor privileges' : 'Promote — Grant contributor privileges'}
                           disabled={!!isActing}
                           onClick={() => handleChangeRole(u.id, u.role)}
+                          className="inline-flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-md border border-transparent text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                         >
-                          {u.role === 'CONTRIBUTOR' ? 'Demote' : 'Promote'}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
+                          {isChangingRole
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : isContributor
+                              ? <ShieldOff className="w-4 h-4" />
+                              : <ShieldCheck className="w-4 h-4" />
+                          }
+                          <span className="text-[10px] leading-none font-medium">
+                            {isContributor ? 'Demote' : 'Promote'}
+                          </span>
+                        </button>
+
+                        {/* Reset Password */}
+                        <button
+                          title="Reset Password — Set a new password for this user"
+                          disabled={!!isActing}
+                          onClick={() => openResetModal(u)}
+                          className="inline-flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-md border border-transparent text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <KeyRound className="w-4 h-4" />
+                          <span className="text-[10px] leading-none font-medium">Reset PW</span>
+                        </button>
+
+                        <div className="w-px h-8 bg-border" />
+
+                        {/* Delete */}
+                        <button
+                          title="Delete — Permanently removes the user and all their projects"
                           disabled={!!isActing}
                           onClick={() => handleDelete(u.id, u.email)}
+                          className="inline-flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-md border border-transparent text-muted-foreground hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:hover:bg-red-950 dark:hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                         >
-                          Delete
-                        </Button>
+                          {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                          <span className="text-[10px] leading-none font-medium">Delete</span>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -189,6 +256,46 @@ export default function AdminUsersPage(): React.ReactElement {
           </table>
         </div>
       )}
+
+      {/* Reset Password Dialog */}
+      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reset Password</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Setting a new password for <span className="font-medium text-foreground">{resetTarget?.email}</span>.
+          </p>
+          <form id="reset-password-form" onSubmit={handleResetPassword} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="reset-password">New password</Label>
+              <Input
+                id="reset-password"
+                type="password"
+                value={resetPassword}
+                onChange={(e) => setResetPassword(e.target.value)}
+                required
+                minLength={8}
+                placeholder="Min 8 characters"
+                autoComplete="new-password"
+              />
+            </div>
+            {resetError && (
+              <p className="text-sm text-destructive" role="alert">
+                {resetError}
+              </p>
+            )}
+          </form>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setResetOpen(false)} disabled={resetting}>
+              Cancel
+            </Button>
+            <Button type="submit" form="reset-password-form" disabled={resetting}>
+              {resetting ? 'Saving…' : 'Reset Password'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">

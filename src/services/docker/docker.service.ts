@@ -20,15 +20,15 @@ function isPortConflictError(err: unknown): boolean {
 }
 
 const CONTAINER_RESOURCES: Record<string, { memory: number; cpuShares: number }> = {
-  STATIC:  { memory: 128 * 1024 * 1024,  cpuShares: 256  },
-  NODEJS:  { memory: 512 * 1024 * 1024,  cpuShares: 1024 },
-  NEXTJS:  { memory: 1024 * 1024 * 1024, cpuShares: 1024 },
-  DJANGO:  { memory: 512 * 1024 * 1024,  cpuShares: 512  },
-  REACT:   { memory: 128 * 1024 * 1024,  cpuShares: 256  },
-  FASTAPI: { memory: 512 * 1024 * 1024,  cpuShares: 512  },
-  FLASK:   { memory: 256 * 1024 * 1024,  cpuShares: 512  },
-  VUE:     { memory: 128 * 1024 * 1024,  cpuShares: 256  },
-  SVELTE:  { memory: 128 * 1024 * 1024,  cpuShares: 256  },
+  STATIC: { memory: 128 * 1024 * 1024, cpuShares: 256 },
+  NODEJS: { memory: 512 * 1024 * 1024, cpuShares: 1024 },
+  NEXTJS: { memory: 1024 * 1024 * 1024, cpuShares: 1024 },
+  DJANGO: { memory: 512 * 1024 * 1024, cpuShares: 512 },
+  REACT: { memory: 128 * 1024 * 1024, cpuShares: 256 },
+  FASTAPI: { memory: 512 * 1024 * 1024, cpuShares: 512 },
+  FLASK: { memory: 256 * 1024 * 1024, cpuShares: 512 },
+  VUE: { memory: 128 * 1024 * 1024, cpuShares: 256 },
+  SVELTE: { memory: 128 * 1024 * 1024, cpuShares: 256 },
 };
 
 export interface DockerServiceConfig {
@@ -228,7 +228,7 @@ export class DockerService {
         await container.start();
         return hostPort;
       } catch (err) {
-        await container.remove().catch(() => {});
+        await container.remove().catch(() => { });
         if (!isPortConflictError(err) || attempt >= 2) throw err;
         log.warn('Port conflict on start, retrying', { hostPort, attempt: attempt + 1 });
       }
@@ -283,6 +283,48 @@ export class DockerService {
       if (!excluded.has(port) && await this.isPortAvailable(port)) return port;
     }
     throw new Error('No available port found in range 8000–9999');
+  }
+
+  /**
+   * Returns key container details for a given container name, or null if not found.
+   */
+  async getContainerInfo(containerName: string): Promise<{
+    id: string;
+    status: string;
+    running: boolean;
+    startedAt: string;
+    image: string;
+    ports: { hostPort: number; containerPort: number }[];
+    cpuLimit: number;
+    memoryLimitBytes: number;
+    restartCount: number;
+  } | null> {
+    try {
+      const container = this.docker.getContainer(containerName);
+      const info = await container.inspect();
+      const portBindings = info.HostConfig?.PortBindings ?? {};
+      const ports = Object.entries(portBindings).flatMap(([containerPort, bindings]) => {
+        const cp = parseInt(containerPort.split('/')[0], 10);
+        const list = Array.isArray(bindings) ? bindings as { HostPort: string }[] : [];
+        return list.map((b) => ({
+          hostPort: parseInt(b.HostPort, 10),
+          containerPort: cp,
+        }));
+      });
+      return {
+        id: info.Id.slice(0, 12),
+        status: info.State.Status,
+        running: info.State.Running,
+        startedAt: info.State.StartedAt,
+        image: info.Config?.Image ?? info.Image,
+        ports,
+        cpuLimit: info.HostConfig?.CpuShares ?? 0,
+        memoryLimitBytes: info.HostConfig?.Memory ?? 0,
+        restartCount: info.RestartCount ?? 0,
+      };
+    } catch {
+      return null;
+    }
   }
 
   /**

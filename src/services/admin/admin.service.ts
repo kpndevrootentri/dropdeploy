@@ -88,6 +88,12 @@ export class AdminService {
     await this.projectRepo.delete(projectId);
   }
 
+  async getProjectContainerInfo(projectId: string): Promise<ReturnType<DockerService['getContainerInfo']>> {
+    const project = await this.projectRepo.findById(projectId);
+    if (!project) throw new NotFoundError('Project');
+    return this.docker.getContainerInfo(`dropdeploy-${project.slug}`);
+  }
+
   async stopContainer(projectId: string): Promise<void> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
@@ -98,6 +104,14 @@ export class AdminService {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
     await this.docker.restartContainer(`dropdeploy-${project.slug}`);
+  }
+
+  async resetUserPassword(userId: string, newPassword: string): Promise<void> {
+    const user = await this.userRepo.findById(userId);
+    if (!user) throw new NotFoundError('User');
+    if (newPassword.length < 8) throw new ValidationError('Password must be at least 8 characters');
+    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    await this.userRepo.setPassword(userId, passwordHash);
   }
 
   async forceRedeploy(projectId: string, actorId: string): Promise<void> {
