@@ -45,7 +45,14 @@ export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
       state,
     });
 
-    return NextResponse.redirect(`${GITLAB_AUTHORIZE_URL}?${params}`);
+    const oauthUrl = `${GITLAB_AUTHORIZE_URL}?${params}`;
+
+    if (popup) {
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Connecting to GitLab…</title><style>*{margin:0;padding:0;box-sizing:border-box}body{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#1a1a2e;color:#e2e2e2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;gap:16px}.spinner{width:36px;height:36px;border:3px solid rgba(255,255,255,.15);border-top-color:#fc6d26;border-radius:50%;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}p{font-size:14px;color:#999}</style></head><body><div class="spinner"></div><p>Redirecting to GitLab…</p><script>window.location.replace(${JSON.stringify(oauthUrl)})</script></body></html>`;
+      return new NextResponse(html, { headers: { 'Content-Type': 'text/html' } });
+    }
+
+    return NextResponse.redirect(oauthUrl);
   } catch (error) {
     return handleApiError(error);
   }

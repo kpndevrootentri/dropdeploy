@@ -45,7 +45,14 @@ export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
       state,
     });
 
-    return NextResponse.redirect(`${GITHUB_AUTHORIZE_URL}?${params}`);
+    const oauthUrl = `${GITHUB_AUTHORIZE_URL}?${params}`;
+
+    if (popup) {
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Connecting to GitHub…</title><style>*{margin:0;padding:0;box-sizing:border-box}body{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#0d1117;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;gap:16px}.spinner{width:36px;height:36px;border:3px solid rgba(255,255,255,.15);border-top-color:#58a6ff;border-radius:50%;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}p{font-size:14px;color:#8b949e}</style></head><body><div class="spinner"></div><p>Redirecting to GitHub…</p><script>window.location.replace(${JSON.stringify(oauthUrl)})</script></body></html>`;
+      return new NextResponse(html, { headers: { 'Content-Type': 'text/html' } });
+    }
+
+    return NextResponse.redirect(oauthUrl);
   } catch (error) {
     return handleApiError(error);
   }

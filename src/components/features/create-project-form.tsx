@@ -114,6 +114,7 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
       if (popup?.closed) {
         clearInterval(pollRef.current!);
         setConnectingProvider(null);
+        void fetchProviders();
       }
     }, 500);
   };

@@ -1,11 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Link2, Link2Off, Github, AlertCircle } from 'lucide-react';
+
+const POPUP_WIDTH = 600;
+const POPUP_HEIGHT = 700;
 
 interface ProviderInfo {
   id: string;
@@ -32,7 +35,10 @@ export function GitProviderPanel(): React.ReactElement {
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const popupRef = useRef<Window | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchProviders = useCallback(async (): Promise<void> => {
     try {
@@ -49,19 +55,54 @@ export function GitProviderPanel(): React.ReactElement {
   useEffect(() => {
     void fetchProviders();
 
-    // Show toast if OAuth just completed
+    // Handle non-popup OAuth redirect (fallback)
     const params = new URLSearchParams(window.location.search);
-    const connected = params.get('connected');
     const oauthError = params.get('oauth_error');
-    if (connected || oauthError) {
-      // Clean up query params without reload
-      const clean = window.location.pathname;
-      window.history.replaceState({}, '', clean);
+    if (params.get('connected') || oauthError) {
+      window.history.replaceState({}, '', window.location.pathname);
     }
-    if (oauthError) {
-      setError(decodeURIComponent(oauthError));
-    }
+    if (oauthError) setError(decodeURIComponent(oauthError));
   }, [fetchProviders]);
+
+  // Listen for postMessage from OAuth popup
+  useEffect(() => {
+    const handler = (event: MessageEvent): void => {
+      const msg = event.data as { type?: string; provider?: string; error?: string };
+      if (msg.type === 'oauth_success') {
+        setConnecting(null);
+        setError(null);
+        if (pollRef.current) clearInterval(pollRef.current);
+        void fetchProviders();
+      } else if (msg.type === 'oauth_error') {
+        setConnecting(null);
+        setError(msg.error ?? 'Failed to connect account');
+        if (pollRef.current) clearInterval(pollRef.current);
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [fetchProviders]);
+
+  const openConnectPopup = (provider: string): void => {
+    setError(null);
+    setConnecting(provider);
+    const left = window.screenX + (window.outerWidth - POPUP_WIDTH) / 2;
+    const top = window.screenY + (window.outerHeight - POPUP_HEIGHT) / 2;
+    const popup = window.open(
+      `/api/auth/${provider.toLowerCase()}/connect?popup=1`,
+      `connect_${provider}`,
+      `width=${POPUP_WIDTH},height=${POPUP_HEIGHT},left=${left},top=${top}`,
+    );
+    popupRef.current = popup;
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(() => {
+      if (popup?.closed) {
+        clearInterval(pollRef.current!);
+        setConnecting(null);
+        void fetchProviders();
+      }
+    }, 500);
+  };
 
   const handleDisconnect = async (provider: string): Promise<void> => {
     setDisconnecting(provider);
@@ -113,6 +154,8 @@ export function GitProviderPanel(): React.ReactElement {
               Icon={<Github className="h-5 w-5" />}
               connected={providers.find((p) => p.provider === 'GITHUB') ?? null}
               disconnecting={disconnecting === 'GITHUB'}
+              connecting={connecting === 'GITHUB'}
+              onConnect={() => openConnectPopup('GITHUB')}
               onDisconnect={() => handleDisconnect('GITHUB')}
             />
 
@@ -123,6 +166,8 @@ export function GitProviderPanel(): React.ReactElement {
               Icon={<GitLabIcon size={20} />}
               connected={providers.find((p) => p.provider === 'GITLAB') ?? null}
               disconnecting={disconnecting === 'GITLAB'}
+              connecting={connecting === 'GITLAB'}
+              onConnect={() => openConnectPopup('GITLAB')}
               onDisconnect={() => handleDisconnect('GITLAB')}
             />
 
@@ -139,11 +184,12 @@ export function GitProviderPanel(): React.ReactElement {
 }
 
 function ProviderRow({
-  providerKey,
   label,
   Icon,
   connected,
   disconnecting,
+  connecting,
+  onConnect,
   onDisconnect,
 }: {
   providerKey: string;
@@ -151,6 +197,8 @@ function ProviderRow({
   Icon: React.ReactElement;
   connected: ProviderInfo | null;
   disconnecting: boolean;
+  connecting: boolean;
+  onConnect: () => void;
   onDisconnect: () => void;
 }): React.ReactElement {
   return (
@@ -175,7 +223,9 @@ function ProviderRow({
               <Badge variant="secondary" className="text-[10px] h-4 px-1.5">Connected</Badge>
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">Not connected</p>
+            <p className="text-xs text-muted-foreground">
+              {connecting ? 'Complete in popup…' : 'Not connected'}
+            </p>
           )}
         </div>
       </div>
@@ -196,11 +246,18 @@ function ProviderRow({
           <span className="ml-1.5">{disconnecting ? 'Disconnecting…' : 'Disconnect'}</span>
         </Button>
       ) : (
-        <Button variant="outline" size="sm" asChild>
-          <a href={`/api/auth/${providerKey.toLowerCase()}/connect`}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onConnect}
+          disabled={connecting}
+        >
+          {connecting ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+          ) : (
             <Link2 className="h-4 w-4 mr-1.5" />
-            Connect {label}
-          </a>
+          )}
+          {connecting ? 'Connecting…' : `Connect ${label}`}
         </Button>
       )}
     </div>
