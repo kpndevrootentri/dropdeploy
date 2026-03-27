@@ -78,7 +78,7 @@ interface ProjectDetail {
   deployments: Deployment[];
 }
 
-type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO';
+type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE';
 type Tab = 'overview' | 'env' | 'settings' | 'advanced' | 'analytics';
 
 interface AnalyticsData {
@@ -91,7 +91,7 @@ interface AnalyticsData {
   recentBuildTimes: { createdAt: string; durationMs: number; status: string }[];
 }
 
-const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO'];
+const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE'];
 const POLL_INTERVAL_MS = 2500;
 
 // ---------------------------------------------------------------------------
@@ -817,10 +817,7 @@ function SettingsPanel({
   onUpdated: () => void;
 }): React.ReactElement {
   const router = useRouter();
-  const framework =
-    project.type === 'STATIC' || project.type === 'NODEJS' || project.type === 'NEXTJS' || project.type === 'DJANGO'
-      ? project.type
-      : 'STATIC';
+  const framework = (project.type in FRAMEWORK_CONFIG ? project.type : 'STATIC') as FrameworkType;
 
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description ?? '');
@@ -1349,10 +1346,7 @@ function OverviewPanel({
     }
   };
 
-  const framework =
-    project.type === 'STATIC' || project.type === 'NODEJS' || project.type === 'NEXTJS' || project.type === 'DJANGO'
-      ? project.type
-      : 'STATIC';
+  const framework = (project.type in FRAMEWORK_CONFIG ? project.type : 'STATIC') as FrameworkType;
 
   const latestDeployment = project.deployments[0];
   const isDeployed = latestDeployment?.status === 'DEPLOYED';
@@ -1717,10 +1711,7 @@ export default function ProjectDetailPage(): React.ReactElement {
     );
   }
 
-  const framework =
-    project.type === 'STATIC' || project.type === 'NODEJS' || project.type === 'NEXTJS' || project.type === 'DJANGO'
-      ? project.type
-      : 'STATIC';
+  const framework = (project.type in FRAMEWORK_CONFIG ? project.type : 'STATIC') as FrameworkType;
   const latestDeployment = project.deployments[0];
   const isInProgress = latestDeployment?.status === 'QUEUED' || latestDeployment?.status === 'BUILDING';
 

@@ -3,7 +3,9 @@
 import { useCallback } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { FrameworkLogo, getProjectUrl } from '@/components/ui/framework-logo';
+import { FrameworkLogo, FRAMEWORK_CONFIG, getProjectUrl } from '@/components/ui/framework-logo';
+
+type FrameworkType = keyof typeof FRAMEWORK_CONFIG;
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ExternalLink, Copy, Check, Link2Off, Rocket, Loader2, AlertCircle, Hammer, CheckCircle2 } from 'lucide-react';
@@ -44,10 +46,7 @@ export function ProjectTile({
 }: ProjectTileProps): React.ReactElement {
   const { execute, loading, error, reset } = useFetchMutation();
 
-  const framework =
-    project.type === 'STATIC' || project.type === 'NODEJS' || project.type === 'NEXTJS' || project.type === 'DJANGO'
-      ? project.type
-      : 'STATIC';
+  const framework: FrameworkType = (project.type in FRAMEWORK_CONFIG ? project.type : 'STATIC') as FrameworkType;
   const latestDeployment = project.deployments?.[0];
   const status = latestDeployment?.status;
   const hasDeployed = status === 'DEPLOYED';
