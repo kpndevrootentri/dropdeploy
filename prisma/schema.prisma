@@ -22,8 +22,9 @@ model User {
   role              UserRole @default(USER)
   mustResetPassword Boolean  @default(false) @map("must_reset_password")
 
-  projects  Project[]
-  auditLogs AuditLog[]
+  projects      Project[]
+  auditLogs     AuditLog[]
+  gitProviders  GitProvider[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -79,6 +80,36 @@ model Deployment {
 
 enum SourceType {
   GITHUB
+  GITLAB
+}
+
+model GitProvider {
+  id             String     @id @default(cuid())
+  provider       SourceType
+  providerUserId String     @map("provider_user_id")
+  username       String
+  avatarUrl      String?    @map("avatar_url")
+
+  encryptedToken String     @db.Text @map("encrypted_token")
+  iv             String
+  authTag        String     @map("auth_tag")
+
+  // GitLab only — refresh token and expiry (GitHub tokens don't expire)
+  encryptedRefreshToken String?   @db.Text @map("encrypted_refresh_token")
+  refreshIv             String?   @map("refresh_iv")
+  refreshAuthTag        String?   @map("refresh_auth_tag")
+  tokenExpiresAt        DateTime? @map("token_expires_at")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // One account per provider per user (intentional v1 constraint)
+  @@unique([userId, provider])
+  @@index([userId])
+  @@map("git_providers")
 }
 
 enum ProjectType {

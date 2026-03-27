@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ProjectTerminal } from '@/components/features/terminal';
 import { EnvVarsPanel } from '@/components/features/env-vars-panel';
+import { GitProviderPanel } from '@/components/features/git-provider-panel';
 import { getLocalIP } from '@/lib/local-ip';
 import {
   ArrowLeft,
@@ -1005,6 +1006,9 @@ function SettingsPanel({
           </form>
         </CardContent>
       </Card>
+
+      {/* Git Connections */}
+      <GitProviderPanel />
 
       {/* Danger Zone */}
       <Card className="border-destructive/50">

@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const createProjectSchema = z.object({
   name: z.string().min(3).max(50),
   description: z.string().max(500).optional(),
-  source: z.literal('GITHUB'),
+  source: z.enum(['GITHUB', 'GITLAB']),
   githubUrl: z.string().url(),
   type: z.enum(['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE']).optional(),
   branch: z.string().max(100).optional(),

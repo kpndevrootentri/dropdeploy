@@ -28,6 +28,12 @@ const envSchema = z.object({
   BLOCKED_PACKAGES: z.string().optional(),
   // Logging level: error | warn | info | http | verbose | debug | silly
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly']).default('info'),
+  // OAuth — GitHub and GitLab (all optional; feature disabled when absent)
+  GITHUB_CLIENT_ID: z.string().optional(),
+  GITHUB_CLIENT_SECRET: z.string().optional(),
+  GITLAB_CLIENT_ID: z.string().optional(),
+  GITLAB_CLIENT_SECRET: z.string().optional(),
+  APP_URL: z.string().url().optional(),
 });
 
 type Env = z.infer<typeof envSchema>;

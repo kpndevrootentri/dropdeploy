@@ -7,6 +7,7 @@ import { dockerService, type DockerService } from '@/services/docker';
 import { gitService, type IGitService } from '@/services/git';
 import { envVarService, type EnvironmentVariableService } from '@/services/env-var';
 import { nginxService, type INginxService } from '@/services/nginx';
+import { gitProviderService } from '@/services/git-provider';
 import { getRedisConnection } from '@/lib/redis';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
@@ -267,11 +268,36 @@ export class DeploymentService {
       });
 
       addMarker('Cloning...');
-      const { workDir, commitHash } = await this.git.ensureRepo(
-        project.githubUrl,
-        project.slug,
-        project.branch,
-      );
+      const cleanUrl = project.githubUrl!;
+      const token = await gitProviderService.getTokenForDeployment(project.userId, project.source);
+      const authUrl = token ? buildAuthUrl(cleanUrl, project.source, token) : cleanUrl;
+
+      let workDir: string;
+      let commitHash: string;
+      try {
+        ({ workDir, commitHash } = await this.git.ensureRepo(
+          authUrl,
+          cleanUrl,
+          project.slug,
+          project.branch,
+        ));
+      } catch (err) {
+        const msg = String(err);
+        const isAuthFailure =
+          msg.includes('Authentication failed') ||
+          msg.includes('Invalid username') ||
+          msg.includes('could not read Username') ||
+          msg.includes('repository not found') ||
+          msg.includes('Repository not found') ||
+          msg.includes('fatal: unable to access');
+        if (isAuthFailure) {
+          throw new Error(
+            `Git authentication failed for ${project.source}. ` +
+            `Go to project Settings → Git Connections and reconnect your account.`,
+          );
+        }
+        throw err;
+      }
       await this.deploymentRepo.update(deploymentId, { commitHash });
 
       await this.deploymentRepo.update(deploymentId, { buildStep: 'SCANNING' });
@@ -376,6 +402,19 @@ export class DeploymentService {
       log.warn('Failed to clean .env files from workDir', { workDir });
     }
   }
+}
+
+/**
+ * Builds an authenticated HTTPS clone URL by embedding the token.
+ * GitHub: https://x-access-token:<token>@github.com/owner/repo.git
+ * GitLab: https://oauth2:<token>@gitlab.com/owner/repo.git
+ * The token is NEVER stored — only used in-memory during clone/pull.
+ */
+function buildAuthUrl(repoUrl: string, source: string, token: string): string {
+  const url = new URL(repoUrl.endsWith('.git') ? repoUrl : `${repoUrl}.git`);
+  url.username = source === 'GITHUB' ? 'x-access-token' : 'oauth2';
+  url.password = token;
+  return url.toString();
 }
 
 export const deploymentService = new DeploymentService(

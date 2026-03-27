@@ -24,9 +24,11 @@ export interface IGitService {
 
   /**
    * Clone (first time) or fetch+reset (subsequent) the repo at the given branch.
+   * - authUrl: used for git network operations (may contain embedded token)
+   * - cleanUrl: stored as remote origin after clone to scrub the token from .git/config
    * Returns the work directory path and the HEAD commit SHA.
    */
-  ensureRepo(repoUrl: string, projectSlug: string, branch: string): Promise<RepoResult>;
+  ensureRepo(authUrl: string, cleanUrl: string, projectSlug: string, branch: string): Promise<RepoResult>;
 }
 
 export class GitService implements IGitService {
@@ -35,7 +37,8 @@ export class GitService implements IGitService {
   }
 
   async ensureRepo(
-    repoUrl: string,
+    authUrl: string,
+    cleanUrl: string,
     projectSlug: string,
     branch: string,
   ): Promise<RepoResult> {
@@ -49,18 +52,17 @@ export class GitService implements IGitService {
       .catch(() => false);
 
     if (exists) {
-      // Repo already cloned – fetch latest and hard-reset to the target branch
+      // Repo already cloned – update remote URL (may need new token) then fetch+reset
       log.info('Pulling latest', { slug: projectSlug, branch });
       const git = simpleGit(workDir);
 
-      // Ensure the fetch refspec covers all remote branches.
-      // Shallow single-branch clones only track the originally-cloned branch,
-      // so `origin/<other>` refs are missing. Fix the refspec before fetching.
+      // Update remote to use authUrl for this fetch (token may have rotated)
+      await git.remote(['set-url', 'origin', authUrl]);
+
       await git.raw([
         'config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*',
       ]);
 
-      // Unshallow if needed, then fetch all branches
       const isShallow = await fs.promises
         .stat(path.join(gitDir, 'shallow'))
         .then(() => true)
@@ -71,11 +73,12 @@ export class GitService implements IGitService {
         await git.fetch(['origin', '--prune']);
       }
 
-      // Switch to the target branch
+      // Scrub token from remote URL immediately after fetch
+      await git.remote(['set-url', 'origin', cleanUrl]);
+
       try {
         await git.checkout(branch);
       } catch {
-        // Branch may not exist locally yet – create tracking branch
         await git.checkoutBranch(branch, `origin/${branch}`);
       }
       await git.reset(['--hard', `origin/${branch}`]);
@@ -83,10 +86,13 @@ export class GitService implements IGitService {
       const commitHash = await git.revparse(['HEAD']);
       return { workDir, commitHash: commitHash.trim() };
     } else {
-      // First deploy – full clone so branch switching works immediately
-      log.info('Cloning repo', { repoUrl, branch, workDir });
+      // First deploy – full clone
+      log.info('Cloning repo', { cleanUrl, branch, workDir });
       const git = simpleGit();
-      await git.clone(repoUrl, workDir, ['-b', branch]);
+      await git.clone(authUrl, workDir, ['-b', branch]);
+
+      // Immediately scrub token from .git/config remote origin
+      await simpleGit(workDir).remote(['set-url', 'origin', cleanUrl]);
 
       const commitHash = await simpleGit(workDir).revparse(['HEAD']);
       return { workDir, commitHash: commitHash.trim() };
