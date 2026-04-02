@@ -43,7 +43,7 @@ graph TD
 ```
 
 ---
-
+[ ] also add fetch branch and switing by repo
 ## Critical
 
 ### Deployment Logging & Observability
@@ -76,6 +76,11 @@ graph TD
 - [ ] Add token revocation on logout (store revoked tokens in Redis with TTL)
 - [ ] Verify `httpOnly`, `secure`, `sameSite=strict` flags are set consistently
 
+### documentation
+- [ ] get started with project creation
+- [ ] git setup in project
+- [ ]  run build in local
+- [ ] category with framwork docs
 ---
 
 ## High
@@ -120,10 +125,11 @@ graph TD
 
 ### Private Repository Support
 
-- [ ] GitHub OAuth token for private repo cloning
-- [ ] SSH deploy key support per project
-- [ ] Store credentials encrypted in database
-- [ ] Credential management UI in project settings
+- [x] GitHub OAuth token for private repo cloning
+- [x] GitLab OAuth token for private repo cloning
+- [x] Store credentials encrypted in database (AES-256-GCM, per user per provider)
+- [x] Credential management UI in project settings (Git Connections card)
+- [x] Repo picker — browse and select private repos when creating a project
 
 ---
 

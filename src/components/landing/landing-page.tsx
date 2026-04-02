@@ -76,8 +76,8 @@ function AnimatedSection({
 const FEATURES = [
   {
     icon: GitBranch,
-    title: 'Paste a link, deploy instantly',
-    desc: 'Just paste your GitHub link. No files to upload, no setup to configure. DropDeploy takes it from there.',
+    title: 'Public or private — just deploy',
+    desc: 'Connect your GitHub or GitLab account and deploy any repo — public or private. Or paste a URL directly. No tokens to manage.',
   },
   {
     icon: Code,
@@ -121,8 +121,8 @@ const HOW_IT_WORKS = [
     step: '01',
     icon: GitBranch,
     title: 'Add your project',
-    desc: 'Give your project a name, choose your language from the list, and paste your GitHub link. That takes about 30 seconds.',
-    detail: 'No account setup, no config files, no terminal',
+    desc: 'Give your project a name, pick your language, and paste a GitHub or GitLab link — or pick a repo from your connected account. That takes about 30 seconds.',
+    detail: 'Private repos work too — connect your account once and pick from a list',
   },
   {
     step: '02',
@@ -249,7 +249,7 @@ export function LandingPage() {
         <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center py-24">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-border bg-muted/60 text-xs text-muted-foreground mb-8 select-none">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" aria-hidden="true" />
-            Works with 9 popular languages and frameworks
+            GitHub & GitLab · Public & private repos · 9 frameworks
             <ChevronRight className="h-3 w-3" aria-hidden="true" />
           </div>
 
@@ -259,7 +259,7 @@ export function LandingPage() {
           </h1>
 
           <p className="text-xl text-muted-foreground max-w-xl mx-auto mb-10 leading-relaxed">
-            Paste your GitHub link, pick your language, click Deploy.
+            Connect GitHub or GitLab, pick any repo — public or private — click Deploy.
             DropDeploy builds and hosts your app — share it with anyone in seconds.
           </p>
 
@@ -394,7 +394,7 @@ export function LandingPage() {
                 {
                   icon: GitBranch,
                   title: 'Your code, always up to date',
-                  desc: 'Paste your GitHub link once. Every time you deploy, DropDeploy grabs your latest code automatically.',
+                  desc: 'Connect GitHub or GitLab once. Every deploy picks up your latest code automatically — public or private repos.',
                 },
                 {
                   icon: Code,
@@ -597,7 +597,7 @@ export function LandingPage() {
               Ready to share your project with the world?
             </h2>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-10">
-              Sign in, paste your GitHub link, and click Deploy. Your project is live in minutes — no setup, no expertise required.
+              Sign in, connect GitHub or GitLab, pick your repo, and click Deploy. Your project is live in minutes — public or private, no setup required.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Button size="lg" className="text-base px-10 h-12 gap-2" asChild>

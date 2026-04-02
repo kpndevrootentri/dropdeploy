@@ -6,11 +6,11 @@
 
 ## 1. Objective
 
-Build a web platform that allows users to **deploy projects instantly** by pasting a GitHub repository URL. The system automatically builds, deploys, and hosts the project, returning a **publicly accessible URL**.
+Build a web platform that allows users to **deploy projects instantly** by pasting a GitHub or GitLab repository URL, or by selecting a repository from a connected account (including private repos). The system automatically builds, deploys, and hosts the project, returning a **publicly accessible URL**.
 
 ```mermaid
 graph LR
-    A["Developer"] -->|Paste GitHub URL| B["DropDeploy"]
+    A["Developer"] -->|"Paste URL or pick repo"| B["DropDeploy"]
     B -->|Clone + Build + Deploy| C["Live URL"]
     C -->|"slug.domain.in"| D["Users"]
 
@@ -24,7 +24,9 @@ graph LR
 
 ### Goals (MVP)
 
-- GitHub repo deployment via URL
+- GitHub and GitLab repo deployment via URL
+- Private repository support via OAuth (GitHub + GitLab)
+- Searchable repo picker for connected accounts
 - Automatic project type detection (Static, Node.js, Next.js, Django)
 - Containerized build and runtime (Docker)
 - Live deployment URL via subdomain
@@ -72,6 +74,12 @@ As a user, I want to select which git branch to deploy and switch branches betwe
 ### US-5: Container Terminal
 As a user, I want to run commands inside my deployed container to debug issues, view logs, and inspect the environment.
 
+### US-6: Deploy Private Repositories
+As a user, I want to connect my GitHub or GitLab account and deploy private repositories without exposing credentials.
+
+### US-7: Browse and Select Repositories
+As a user with a connected Git account, I want to search and pick a repository from a list instead of pasting a URL manually.
+
 ---
 
 ## 5. Functional Requirements
@@ -85,11 +93,20 @@ As a user, I want to run commands inside my deployed container to debug issues, 
 
 ### 5.2 Project Creation
 
-**GitHub Mode:**
-- Public repositories only (MVP)
-- Clone via HTTPS
-- Validate repository availability
+**GitHub / GitLab Mode:**
+- Public and private repositories supported
+- Clone via HTTPS (with OAuth token for private repos)
 - Configurable deploy branch (default: `main`)
+- Source (`GITHUB` / `GITLAB`) auto-detected from repo URL
+- Repo picker: searchable modal populated from connected account (debounced search, Redis-cached)
+- Manual URL input always available as fallback
+
+**Git Provider Connection:**
+- One-click OAuth connect for GitHub and GitLab
+- Tokens stored AES-256-GCM encrypted per user per provider
+- GitLab tokens auto-refreshed (2h expiry); GitHub tokens are non-expiring
+- CSRF-safe: one-time-use nonce stored in Redis (10min TTL)
+- Disconnect via Settings → Git Connections
 
 **Upload Mode** (future):
 - Drag & drop folder upload (client-side zip)

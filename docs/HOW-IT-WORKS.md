@@ -7,11 +7,11 @@
 
 ## 1. Overview
 
-DropDeploy lets users deploy projects instantly by pasting a GitHub repository URL. The system clones the repo, builds a Docker image, starts a container, and returns a live subdomain URL.
+DropDeploy lets users deploy projects instantly by pasting a GitHub or GitLab repository URL, or by selecting a repo from a connected account (including private repos). The system clones the repo, builds a Docker image, starts a container, and returns a live subdomain URL.
 
 ```mermaid
 graph LR
-    A[Paste GitHub URL] --> B[Queue Job]
+    A[Paste URL or Pick Repo] --> B[Queue Job]
     B --> C[Clone Repo]
     C --> D[Build Docker Image]
     D --> E[Start Container]
@@ -74,6 +74,7 @@ graph TB
 ```mermaid
 erDiagram
     User ||--o{ Project : owns
+    User ||--o{ GitProvider : "connects"
     Project ||--o{ Deployment : has
 
     User {
@@ -83,11 +84,26 @@ erDiagram
         datetime createdAt
     }
 
+    GitProvider {
+        string id PK "cuid"
+        enum provider "GITHUB | GITLAB"
+        string providerUserId
+        string username
+        string avatarUrl
+        string encryptedToken "AES-256-GCM"
+        string iv
+        string authTag
+        string encryptedRefreshToken "GitLab only"
+        datetime tokenExpiresAt "GitLab only"
+        string userId FK
+    }
+
     Project {
         string id PK "cuid"
         string name
         string slug UK "used as subdomain"
         string githubUrl
+        enum source "GITHUB | GITLAB"
         enum type "STATIC | NODEJS | NEXTJS | DJANGO"
         string branch "default: main"
         string userId FK
@@ -138,12 +154,43 @@ Login follows the same flow but verifies the password instead of creating a user
 ### 4.2 Project Creation
 
 1. User clicks **"New Project"** on the dashboard.
-2. Fills in: project name, GitHub URL, framework type, and optionally a branch (defaults to `main`).
+2. Fills in: project name, repository URL (GitHub or GitLab), framework type, and optionally a branch (defaults to `main`).
+   - If a Git provider is connected: **"Pick from GitHub"** / **"Pick from GitLab"** buttons open the repo picker — a searchable modal that fills the form automatically.
+   - Source (`GITHUB` / `GITLAB`) is auto-detected from the URL. Manual URL input is always available as fallback.
 3. `POST /api/projects` validates input with Zod (`createProjectSchema`).
 4. `ProjectService.create()` generates a unique slug and inserts a `Project` row.
 5. Dashboard refreshes to show the new project tile.
 
-### 4.3 Project Detail Page
+### 4.3 Git Provider Connection (OAuth)
+
+Users connect their GitHub and/or GitLab accounts once from **Settings → Git Connections** or during project creation.
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant UI as Browser
+    participant API as /api/auth/github/connect
+    participant CB as /api/auth/github/callback
+    participant GH as GitHub OAuth
+    participant DB as PostgreSQL
+
+    U->>UI: Click "Connect GitHub"
+    UI->>API: GET (link navigation)
+    API->>API: Generate nonce, store in Redis (10min TTL)
+    API-->>UI: 302 → GitHub OAuth
+    UI->>GH: Authorize app
+    GH-->>CB: code + state
+    CB->>CB: Verify JWT state + Redis nonce (one-time use)
+    CB->>GH: Exchange code for token
+    CB->>GH: Fetch user profile
+    CB->>CB: AES-256-GCM encrypt token
+    CB->>DB: Upsert GitProvider record
+    CB-->>UI: 302 → /dashboard?connected=github
+```
+
+GitLab additionally stores a refresh token and expiry — `GitProviderService.getTokenForDeployment()` auto-refreshes expired tokens transparently before each deploy.
+
+### 4.4 Project Detail Page
 
 The project detail page has **three tabs**:
 
@@ -220,24 +267,28 @@ flowchart TB
 
 **File:** `src/services/git/git.service.ts` -- `ensureRepo()`
 
+Before cloning, `DeploymentService` calls `GitProviderService.getTokenForDeployment()` to fetch a decrypted OAuth token for private repositories. The authenticated clone URL embeds the token (`x-access-token:<token>@github.com/...` for GitHub; `oauth2:<token>@gitlab.com/...` for GitLab). After clone, the remote origin is immediately scrubbed back to the clean URL so the token is never persisted in `.git/config`.
+
 ```mermaid
 flowchart TD
-    A{Repo exists locally?}
-    A -->|No| B[git clone URL -b branch]
-    A -->|Yes| C[git fetch origin]
-    C --> D[Update refspec for full branch discovery]
-    D --> E{Shallow clone?}
-    E -->|Yes| F[git fetch --unshallow]
-    E -->|No| G[git checkout branch]
-    F --> G
-    G --> H[git reset --hard origin/branch]
-    B --> I[Repo ready]
+    A[Fetch OAuth token if provider connected] --> B{Repo exists locally?}
+    B -->|No| C[git clone authUrl -b branch]
+    C --> D[Scrub token from .git/config remote]
+    B -->|Yes| E[git fetch origin]
+    E --> F[Update refspec for full branch discovery]
+    F --> G{Shallow clone?}
+    G -->|Yes| H[git fetch --unshallow]
+    G -->|No| I[git checkout branch]
     H --> I
+    I --> J[git reset --hard origin/branch]
+    D --> K[Repo ready]
+    J --> K
 ```
 
 - **First deploy:** Clones into `PROJECTS_DIR/<slug>/` (default: `~/.dropdeploy/projects/`).
 - **Subsequent deploys:** Fetches latest, switches branch if needed, hard-resets to `origin/<branch>`.
 - Repos persist across deployments for faster subsequent builds.
+- If authentication fails (token revoked, repo not found), a user-friendly error is surfaced: _"Go to Settings → Git Connections and reconnect your account."_
 
 ### Step 5: Select Dockerfile template
 
@@ -462,6 +513,13 @@ flowchart LR
 | `POST` | `/api/auth/login` | Login |
 | `POST` | `/api/auth/logout` | Logout (clear cookie) |
 | `GET` | `/api/auth/session` | Validate current session |
+| `GET` | `/api/auth/github/connect` | Start GitHub OAuth flow |
+| `GET` | `/api/auth/github/callback` | GitHub OAuth callback |
+| `GET` | `/api/auth/gitlab/connect` | Start GitLab OAuth flow |
+| `GET` | `/api/auth/gitlab/callback` | GitLab OAuth callback |
+| `GET` | `/api/git-providers` | List connected providers (username + avatar) |
+| `DELETE` | `/api/git-providers/:provider` | Disconnect a provider |
+| `GET` | `/api/git-providers/:provider/repos` | Search repos (`?q=&page=&refresh=`) |
 | `GET` | `/api/projects` | List user's projects |
 | `POST` | `/api/projects` | Create project |
 | `GET` | `/api/projects/:id` | Get project details |
@@ -514,6 +572,13 @@ npm run worker         # Terminal 2: BullMQ deployment worker
 | `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | Frontend URL |
 | `PROJECTS_DIR` | `~/.dropdeploy/projects` | Cloned repo storage (default) |
 | `DOCKER_DATA_DIR` | `~/.dropdeploy/docker` | Docker data storage (default) |
+| `APP_URL` | `https://yourdomain.com` | Base URL for OAuth callback URIs |
+| `GITHUB_CLIENT_ID` | `Ov23li...` | GitHub OAuth App client ID (optional) |
+| `GITHUB_CLIENT_SECRET` | `...` | GitHub OAuth App client secret (optional) |
+| `GITLAB_CLIENT_ID` | `...` | GitLab OAuth Application ID (optional) |
+| `GITLAB_CLIENT_SECRET` | `...` | GitLab OAuth Application secret (optional) |
+
+> GitHub/GitLab OAuth variables are optional — private repo support is disabled if they are absent.
 
 ---
 

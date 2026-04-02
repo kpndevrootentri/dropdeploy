@@ -18,7 +18,7 @@ graph TB
     subgraph Application["Application Layer"]
         API[API Routes]
         MW[Middleware — JWT Auth]
-        SVC[Services — Auth / Project / Deployment / Docker / Git / Terminal]
+        SVC[Services — Auth / Project / Deployment / Docker / Git / GitProvider / Terminal]
     end
 
     subgraph Domain["Domain Layer"]
@@ -59,22 +59,27 @@ graph LR
     API -->|CRUD| PS[Project Service]
     API -->|deploy| DS[Deployment Service]
     API -->|exec| DTS[Docker Terminal Service]
+    API -->|OAuth| GPS[GitProvider Service]
 
     DS -->|enqueue| Q[BullMQ Queue]
     Q -->|process| W[Worker]
     W -->|orchestrate| DS
 
+    DS -->|get token| GPS
     DS -->|clone/pull| GS[Git Service]
     DS -->|build/run| DocS[Docker Service]
 
     PS --> PR[Project Repo]
     DS --> DR[Deployment Repo]
     Auth --> UR[User Repo]
+    GPS --> GPR[GitProvider Repo]
 
     PR --> DB[(PostgreSQL)]
     DR --> DB
     UR --> DB
+    GPR --> DB
     Q --> Redis[(Redis)]
+    GPS --> Redis
 ```
 
 ---
@@ -95,6 +100,17 @@ dropDeploy/
 │   │   │   └── layout.tsx
 │   │   ├── api/
 │   │   │   ├── auth/                  # login, logout, register, session
+│   │   │   │   ├── github/
+│   │   │   │   │   ├── connect/route.ts   # Start GitHub OAuth flow
+│   │   │   │   │   └── callback/route.ts  # GitHub OAuth callback
+│   │   │   │   └── gitlab/
+│   │   │   │       ├── connect/route.ts   # Start GitLab OAuth flow
+│   │   │   │       └── callback/route.ts  # GitLab OAuth callback
+│   │   │   ├── git-providers/
+│   │   │   │   ├── route.ts               # GET — list connected providers
+│   │   │   │   └── [provider]/
+│   │   │   │       ├── route.ts           # DELETE — disconnect provider
+│   │   │   │       └── repos/route.ts     # GET — search repos (Redis-cached)
 │   │   │   ├── projects/
 │   │   │   │   ├── route.ts           # GET (list) / POST (create)
 │   │   │   │   └── [id]/
@@ -110,11 +126,13 @@ dropDeploy/
 │   │   ├── ui/                        # Reusable primitives (Button, Card, ...)
 │   │   ├── features/                  # Feature components
 │   │   │   ├── auth-header.tsx
-│   │   │   ├── create-project-form.tsx
+│   │   │   ├── create-project-form.tsx  # Repo picker + sessionStorage draft restore
 │   │   │   ├── dashboard-nav.tsx
-│   │   │   ├── project-list.tsx       # Auto-polling project grid
-│   │   │   ├── project-tile.tsx       # Status badge + deploy button
-│   │   │   └── terminal.tsx           # Interactive container terminal
+│   │   │   ├── git-provider-panel.tsx   # Connect/disconnect GitHub & GitLab cards
+│   │   │   ├── project-list.tsx         # Auto-polling project grid
+│   │   │   ├── project-tile.tsx         # Status badge + deploy button
+│   │   │   ├── repo-picker.tsx          # Debounced search modal for private repos
+│   │   │   └── terminal.tsx             # Interactive container terminal
 │   │   └── layouts/
 │   │
 │   ├── hooks/
@@ -138,6 +156,7 @@ dropDeploy/
 │   │   ├── user.repository.ts         # IUserRepository + implementation
 │   │   ├── project.repository.ts      # IProjectRepository + slug uniqueness
 │   │   ├── deployment.repository.ts   # IDeploymentRepository + subdomain transfer
+│   │   ├── git-provider.repository.ts # IGitProviderRepository — findByUserAndProvider, upsert, delete
 │   │   └── index.ts
 │   │
 │   ├── services/                      # Business logic
@@ -150,8 +169,11 @@ dropDeploy/
 │   │   │   ├── dockerfile.templates.ts     # Per-type Dockerfile strings
 │   │   │   ├── nextjs-config-patcher.ts    # ESM/CJS config patching
 │   │   │   └── index.ts
-│   │   └── git/
-│   │       ├── git.service.ts         # Clone-once + branch switching
+│   │   ├── git/
+│   │   │   ├── git.service.ts         # Clone-once + branch switching + token scrub
+│   │   │   └── index.ts
+│   │   └── git-provider/
+│   │       ├── git-provider.service.ts  # OAuth connect/disconnect, token fetch + auto-refresh
 │   │       └── index.ts
 │   │
 │   ├── types/                         # Domain types & DTOs
@@ -169,7 +191,7 @@ dropDeploy/
 │       └── deployment.worker.ts       # BullMQ worker (concurrency: 5)
 │
 ├── prisma/
-│   └── schema.prisma                  # User, Project, Deployment models
+│   └── schema.prisma                  # User, Project, Deployment, GitProvider models
 ├── docker/
 │   ├── templates/                     # Dockerfile templates per project type
 │   └── nginx/                         # Reverse-proxy config
@@ -307,6 +329,7 @@ sequenceDiagram
 |-------------|----------------|
 | 5.1 Auth | `AuthService`, JWT, `UserRepository`, `/api/auth/*` |
 | 5.2 Projects | `ProjectService`, `ProjectRepository`, `GitService` |
+| 5.2 Git Providers | `GitProviderService`, `GitProviderRepository`, `/api/auth/github/*`, `/api/auth/gitlab/*`, `/api/git-providers/*` |
 | 5.3 Type Detection | `ProjectType` enum, `DOCKERFILE_TEMPLATES` in `services/docker/` |
 | 5.4 Build & Deploy | `DeploymentService`, `DockerService`, `GitService`, `deployment.worker.ts` |
 | 5.5 Status | `DeploymentStatus` enum, `buildStep` tracking (CLONING / BUILDING_IMAGE / STARTING) |
