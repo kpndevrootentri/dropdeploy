@@ -17,6 +17,18 @@ import type { Deployment } from '@prisma/client';
 
 const log = createLogger('deployment-service');
 
+const BUILD_LOG_MAX_BYTES = 500 * 1024; // 500 KB
+
+/** Joins log lines and truncates from the head, keeping the tail, to stay under 500 KB. */
+function capBuildLog(lines: string[]): string {
+  const full = lines.join('');
+  if (Buffer.byteLength(full, 'utf8') <= BUILD_LOG_MAX_BYTES) return full;
+  const truncated = Buffer.from(full, 'utf8').slice(-BUILD_LOG_MAX_BYTES).toString('utf8');
+  // Drop any partial multi-byte character at the start by finding the first newline
+  const newlineIdx = truncated.indexOf('\n');
+  return '[...truncated, showing last 500 KB...]\n' + (newlineIdx === -1 ? truncated : truncated.slice(newlineIdx + 1));
+}
+
 export class DeploymentService {
   constructor (
     private readonly deploymentRepo: IDeploymentRepository,
@@ -239,7 +251,7 @@ export class DeploymentService {
 
     const flushLog = async (): Promise<void> => {
       try {
-        await this.deploymentRepo.update(deploymentId, { buildLog: logLines.join('') });
+        await this.deploymentRepo.update(deploymentId, { buildLog: capBuildLog(logLines) });
       } catch {
         // Non-fatal: log flush failure shouldn't abort the build
       }
@@ -352,7 +364,7 @@ export class DeploymentService {
       await this.deploymentRepo.update(deploymentId, {
         status: 'DEPLOYED',
         buildStep: null,
-        buildLog: logLines.join(''),
+        buildLog: capBuildLog(logLines),
         containerPort,
         subdomain: project.slug,
         completedAt: new Date(),
@@ -368,7 +380,7 @@ export class DeploymentService {
       await this.deploymentRepo.update(deploymentId, {
         status: 'FAILED',
         buildStep: null,
-        buildLog: logLines.join(''),
+        buildLog: capBuildLog(logLines),
         completedAt: new Date(),
       });
       // Signal SSE subscribers that the build ended (with failure)

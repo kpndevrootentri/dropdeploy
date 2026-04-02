@@ -35,6 +35,11 @@ export interface IDeploymentRepository {
    * Returns the number of rows updated.
    */
   markBuildingAsFailed(): Promise<number>;
+  /**
+   * Clears containerPort on the DEPLOYED deployment for a project.
+   * Called when a container is stopped so the port re-enters the available pool.
+   */
+  releasePortForProject(projectId: string): Promise<void>;
 }
 
 export class DeploymentRepository implements IDeploymentRepository {
@@ -144,6 +149,13 @@ export class DeploymentRepository implements IDeploymentRepository {
       data: { status: 'FAILED', buildStep: null, completedAt: new Date() },
     });
     return result.count;
+  }
+
+  async releasePortForProject(projectId: string): Promise<void> {
+    await prisma.deployment.updateMany({
+      where: { projectId, status: 'DEPLOYED', containerPort: { not: null } },
+      data: { containerPort: null },
+    });
   }
 }
 

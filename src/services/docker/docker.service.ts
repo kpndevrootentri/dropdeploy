@@ -367,6 +367,17 @@ export class DockerService {
   }
 
   /**
+   * Removes a Docker image by name. Silently ignores missing images.
+   */
+  async removeImage(imageName: string): Promise<void> {
+    try {
+      await this.docker.getImage(imageName).remove({ force: true });
+    } catch {
+      // Image doesn't exist or already removed — fine
+    }
+  }
+
+  /**
    * Removes BuildKit-only directives from a Dockerfile so the classic builder
    * can process it.  Specifically:
    *   • `# syntax = ...` directives (trigger remote BuildKit frontend pull)

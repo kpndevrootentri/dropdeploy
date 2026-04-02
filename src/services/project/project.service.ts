@@ -61,6 +61,7 @@ export class ProjectService {
   async delete(id: string, userId: string): Promise<void> {
     const project = await this.getById(id, userId);
     await this.docker.stopAndRemoveContainer(`dropdeploy-${project.slug}`);
+    await this.docker.removeImage(`dropdeploy/${project.slug}:latest`);
     await this.projectRepo.delete(id);
   }
 }

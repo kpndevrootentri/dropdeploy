@@ -4,6 +4,8 @@ import type { IUserRepository } from '@/repositories/user.repository';
 import { userRepository } from '@/repositories/user.repository';
 import type { IProjectRepository } from '@/repositories/project.repository';
 import { projectRepository } from '@/repositories/project.repository';
+import type { IDeploymentRepository } from '@/repositories/deployment.repository';
+import { deploymentRepository } from '@/repositories/deployment.repository';
 import { dockerService, type DockerService } from '@/services/docker';
 import { deploymentService } from '@/services/deployment';
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/errors';
@@ -15,6 +17,7 @@ export class AdminService {
     private readonly userRepo: IUserRepository,
     private readonly projectRepo: IProjectRepository,
     private readonly docker: DockerService,
+    private readonly deploymentRepo: IDeploymentRepository,
   ) {}
 
   async listAllUsers(): Promise<(User & { _count: { projects: number } })[]> {
@@ -85,6 +88,7 @@ export class AdminService {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
     await this.docker.stopAndRemoveContainer(`dropdeploy-${project.slug}`);
+    await this.docker.removeImage(`dropdeploy/${project.slug}:latest`);
     await this.projectRepo.delete(projectId);
   }
 
@@ -98,6 +102,7 @@ export class AdminService {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
     await this.docker.stopContainer(`dropdeploy-${project.slug}`);
+    await this.deploymentRepo.releasePortForProject(projectId);
   }
 
   async restartContainer(projectId: string): Promise<void> {
@@ -122,4 +127,4 @@ export class AdminService {
   }
 }
 
-export const adminService = new AdminService(userRepository, projectRepository, dockerService);
+export const adminService = new AdminService(userRepository, projectRepository, dockerService, deploymentRepository);
