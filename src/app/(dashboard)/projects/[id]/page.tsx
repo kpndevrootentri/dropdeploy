@@ -78,7 +78,7 @@ interface ProjectDetail {
 }
 
 type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE';
-type Tab = 'overview' | 'env' | 'settings' | 'advanced' | 'analytics';
+type Tab = 'overview' | 'deployments' | 'analytics' | 'env' | 'settings' | 'advanced';
 
 interface AnalyticsData {
   totalDeployments: number;
@@ -773,6 +773,7 @@ function AnalyticsPanel({ projectId }: { projectId: string }): React.ReactElemen
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" /> },
+  { key: 'deployments', label: 'Deployments', icon: <Rocket className="h-4 w-4" /> },
   { key: 'analytics', label: 'Analytics', icon: <BarChart2 className="h-4 w-4" /> },
   { key: 'env', label: 'Environment', icon: <KeyRound className="h-4 w-4" /> },
   { key: 'settings', label: 'Settings', icon: <Settings className="h-4 w-4" /> },
@@ -1277,30 +1278,31 @@ function AdvancedPanel({ project }: { project: ProjectDetail }): React.ReactElem
 // OverviewPanel
 // ---------------------------------------------------------------------------
 
-function OverviewPanel({
+// ---------------------------------------------------------------------------
+// DeploymentsPanel
+// ---------------------------------------------------------------------------
+
+function DeploymentsPanel({
   project,
-  deployError,
   isInProgress,
   onRetried,
+  onDeploy,
+  deploying,
+  deployMessage,
 }: {
   project: ProjectDetail;
-  deploying: boolean;
-  deployError: string | null;
   isInProgress: boolean;
-  onDeploy: () => void;
   onRetried: () => void;
+  onDeploy: () => void;
+  deploying: boolean;
+  deployMessage: string | null;
 }): React.ReactElement {
-  const [copiedUrl, setCopiedUrl] = useState(false);
-  const [localIP, setLocalIP] = useState<string | null>(null);
-
-  // Pagination state for deployment history
   const DEPLOYMENTS_PAGE_SIZE = 5;
   const [extraDeployments, setExtraDeployments] = useState<Deployment[]>([]);
   const [deploymentTotal, setDeploymentTotal] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
 
-  // Reset extra deployments when the project is refreshed (first deployment ID changes)
   const firstDeploymentId = project.deployments[0]?.id;
   const prevFirstDeploymentIdRef = useRef<string | undefined>(firstDeploymentId);
   useEffect(() => {
@@ -1341,6 +1343,106 @@ function OverviewPanel({
       setLoadingMore(false);
     }
   };
+
+  return (
+    <Card>
+      <CardHeader className="pb-4">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base">Deployments</CardTitle>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">
+              {deploymentTotal !== null
+                ? `${allDeployments.length} of ${deploymentTotal}`
+                : allDeployments.length}{' '}
+              deployment{(deploymentTotal ?? allDeployments.length) !== 1 ? 's' : ''}
+            </span>
+            <div className="flex flex-col items-end gap-1">
+              <Button
+                size="sm"
+                onClick={onDeploy}
+                disabled={deploying}
+                title={isInProgress ? 'A build is running — clicking will queue a new deployment' : undefined}
+              >
+                {deploying ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Rocket className="mr-2 h-3.5 w-3.5" />
+                )}
+                {deploying ? 'Deploying…' : allDeployments.length === 0 ? 'Deploy' : 'Redeploy'}
+              </Button>
+              {deployMessage && (
+                <p className="text-xs text-muted-foreground">{deployMessage}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {allDeployments.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <Rocket className="h-8 w-8 text-muted-foreground/40 mb-2" />
+            <p className="text-sm text-muted-foreground">No deployments yet</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Click &quot;Deploy&quot; to create your first deployment.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {allDeployments.map((deployment) => (
+              <DeploymentRow
+                key={deployment.id}
+                deployment={deployment}
+                projectId={project.id}
+                branch={project.branch}
+                isDeployInProgress={isInProgress}
+                onRetried={onRetried}
+              />
+            ))}
+            {hasMoreDeployments && (
+              <div className="pt-1">
+                {loadMoreError && (
+                  <p className="text-xs text-destructive mb-1">{loadMoreError}</p>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs text-muted-foreground"
+                  onClick={() => { void loadMoreDeployments(); }}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? (
+                    <><Loader2 className="mr-2 h-3 w-3 animate-spin" />Loading…</>
+                  ) : (
+                    'Load more'
+                  )}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// OverviewPanel
+// ---------------------------------------------------------------------------
+
+function OverviewPanel({
+  project,
+  deployError,
+  isInProgress,
+}: {
+  project: ProjectDetail;
+  deploying: boolean;
+  deployError: string | null;
+  isInProgress: boolean;
+  onDeploy: () => void;
+  onRetried: () => void;
+}): React.ReactElement {
+  const [copiedUrl, setCopiedUrl] = useState(false);
+  const [localIP, setLocalIP] = useState<string | null>(null);
 
   const framework = (project.type in FRAMEWORK_CONFIG ? project.type : 'STATIC') as FrameworkType;
 
@@ -1508,64 +1610,6 @@ function OverviewPanel({
         </CardContent>
       </Card>
 
-      {/* Deployments */}
-      <Card>
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Deployments</CardTitle>
-            <span className="text-xs text-muted-foreground">
-              {deploymentTotal !== null
-                ? `${allDeployments.length} of ${deploymentTotal}`
-                : allDeployments.length}{' '}
-              deployment{(deploymentTotal ?? allDeployments.length) !== 1 ? 's' : ''}
-            </span>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {allDeployments.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Rocket className="h-8 w-8 text-muted-foreground/40 mb-2" />
-              <p className="text-sm text-muted-foreground">No deployments yet</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Click &quot;Deploy&quot; to create your first deployment.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {allDeployments.map((deployment) => (
-                <DeploymentRow
-                  key={deployment.id}
-                  deployment={deployment}
-                  projectId={project.id}
-                  branch={project.branch}
-                  isDeployInProgress={isInProgress}
-                  onRetried={onRetried}
-                />
-              ))}
-              {hasMoreDeployments && (
-                <div className="pt-1">
-                  {loadMoreError && (
-                    <p className="text-xs text-destructive mb-1">{loadMoreError}</p>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full text-xs text-muted-foreground"
-                    onClick={() => { void loadMoreDeployments(); }}
-                    disabled={loadingMore}
-                  >
-                    {loadingMore ? (
-                      <><Loader2 className="mr-2 h-3 w-3 animate-spin" />Loading…</>
-                    ) : (
-                      'Load more'
-                    )}
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -1731,23 +1775,6 @@ export default function ProjectDetailPage(): React.ReactElement {
             </p>
           </div>
         </div>
-        <div className="flex flex-col items-end gap-1 shrink-0">
-          <Button
-            onClick={handleDeploy}
-            disabled={deploying}
-            title={isInProgress ? 'A build is running — clicking will queue a new deployment' : undefined}
-          >
-            {deploying ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Rocket className="mr-2 h-4 w-4" />
-            )}
-            {deploying ? 'Deploying…' : 'Deploy'}
-          </Button>
-          {deployMessage && (
-            <p className="text-xs text-muted-foreground">{deployMessage}</p>
-          )}
-        </div>
       </div>
 
       {/* Sidebar + Content */}
@@ -1763,6 +1790,16 @@ export default function ProjectDetailPage(): React.ReactElement {
               isInProgress={isInProgress}
               onDeploy={handleDeploy}
               onRetried={fetchProject}
+            />
+          )}
+          {activeTab === 'deployments' && (
+            <DeploymentsPanel
+              project={project}
+              isInProgress={isInProgress}
+              onRetried={fetchProject}
+              onDeploy={handleDeploy}
+              deploying={deploying}
+              deployMessage={deployMessage}
             />
           )}
           {activeTab === 'analytics' && (
