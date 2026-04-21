@@ -48,12 +48,34 @@ model Project {
   deployments          Deployment[]
   environmentVariables EnvironmentVariable[]
   auditLogs            AuditLog[]
+  showcase             ProjectShowcase?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([userId])
   @@map("projects")
+}
+
+model ProjectShowcase {
+  id               String    @id @default(cuid())
+  projectId        String    @unique @map("project_id")
+  shortDescription String    @map("short_description") @db.VarChar(140)
+  tags             String[]
+  liveUrl          String?   @map("live_url")
+  repoUrl          String?   @map("repo_url")
+  contactUrl       String?   @map("contact_url")
+  isPublished      Boolean   @default(false) @map("is_published")
+  publishedAt      DateTime? @map("published_at")
+  viewCount        Int       @default(0) @map("view_count")
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isPublished])
+  @@map("project_showcases")
 }
 
 model Deployment {

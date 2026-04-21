@@ -44,7 +44,9 @@ import {
   TrendingUp,
   Activity,
   Zap,
+  BookOpen,
 } from 'lucide-react';
+import { PublishPanel } from '@/components/features/publish-panel';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -78,7 +80,7 @@ interface ProjectDetail {
 }
 
 type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE';
-type Tab = 'overview' | 'deployments' | 'analytics' | 'env' | 'settings' | 'advanced';
+type Tab = 'overview' | 'deployments' | 'analytics' | 'env' | 'settings' | 'advanced' | 'publish';
 
 interface AnalyticsData {
   totalDeployments: number;
@@ -776,6 +778,7 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: 'deployments', label: 'Deployments', icon: <Rocket className="h-4 w-4" /> },
   { key: 'analytics', label: 'Analytics', icon: <BarChart2 className="h-4 w-4" /> },
   { key: 'env', label: 'Environment', icon: <KeyRound className="h-4 w-4" /> },
+  { key: 'publish', label: 'Publish', icon: <BookOpen className="h-4 w-4" /> },
   { key: 'settings', label: 'Settings', icon: <Settings className="h-4 w-4" /> },
   { key: 'advanced', label: 'Advanced', icon: <Terminal className="h-4 w-4" /> },
 ];
@@ -1807,6 +1810,15 @@ export default function ProjectDetailPage(): React.ReactElement {
           )}
           {activeTab === 'env' && (
             <EnvVarsPanel projectId={project.id} />
+          )}
+          {activeTab === 'publish' && (
+            <PublishPanel
+              projectId={project.id}
+              projectName={project.name}
+              projectSlug={project.slug}
+              defaultLiveUrl={isInProgress || !latestDeployment ? '' : getProjectUrl(project.slug, latestDeployment?.containerPort ?? undefined)}
+              defaultRepoUrl={project.githubUrl ?? ''}
+            />
           )}
           {activeTab === 'settings' && (
             <SettingsPanel
