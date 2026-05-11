@@ -115,11 +115,14 @@ export async function detectFromRawUrl(
       }
       return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${file}`;
     }
-    // GitLab
+    // GitLab — prefer API (works for private repos with token)
     const project = encodeURIComponent(`${owner}/${repo}`);
     const filePath = encodeURIComponent(file);
     return `https://gitlab.com/api/v4/projects/${project}/repository/files/${filePath}/raw?ref=${branch}`;
   };
+
+  const makeGitLabRawUrl = (file: string): string =>
+    `https://gitlab.com/${owner}/${repo}/-/raw/${branch}/${file}`;
 
   const headers: Record<string, string> = {};
   if (token) {
@@ -127,7 +130,14 @@ export async function detectFromRawUrl(
     if (host === 'github') headers['Accept'] = 'application/vnd.github.raw+json';
   }
 
-  const probe = (file: string) => fetchRaw(makeUrl(file), headers);
+  const probe = async (file: string): Promise<string | null> => {
+    const result = await fetchRaw(makeUrl(file), headers);
+    // For public GitLab repos without a token, fall back to the raw URL
+    if (result === null && host === 'gitlab' && !token) {
+      return fetchRaw(makeGitLabRawUrl(file));
+    }
+    return result;
+  };
 
   const [
     nextConfigJs, nextConfigTs, nextConfigMjs,

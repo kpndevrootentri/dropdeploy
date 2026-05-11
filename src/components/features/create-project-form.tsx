@@ -127,30 +127,15 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
     setView('picker');
   };
 
-  const handleRepoSelect = useCallback((repo: { name: string; url: string; defaultBranch: string }): void => {
-    setRepoUrl(repo.url.endsWith('.git') ? repo.url : `${repo.url}.git`);
-    setSelectedRepoName(repo.name);
-    setBranch(repo.defaultBranch);
-    if (!name) setName(repo.name);
-    setView('form');
-    setPickerProvider(null);
-  }, [name]);
-
-  const clearSelectedRepo = (): void => {
-    setRepoUrl('');
-    setSelectedRepoName('');
-    setDetectedType(null);
-  };
-
-  const handleUrlBlur = useCallback(async (): Promise<void> => {
-    const url = repoUrl.trim();
-    if (!url || detecting) return;
+  const triggerDetection = useCallback(async (url: string, branchVal: string): Promise<void> => {
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl || detecting) return;
     setDetecting(true);
     try {
       const res = await fetch('/api/detect-type', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repoUrl: url, branch: branch.trim() || 'main' }),
+        body: JSON.stringify({ repoUrl: trimmedUrl, branch: branchVal.trim() || 'main' }),
       });
       if (!res.ok) return;
       const data = await res.json() as { data?: { type: FrameworkType; confidence: string } };
@@ -161,7 +146,28 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
       }
     } catch { /* non-fatal */ }
     finally { setDetecting(false); }
-  }, [repoUrl, branch, detecting]);
+  }, [detecting]);
+
+  const handleRepoSelect = useCallback((repo: { name: string; url: string; defaultBranch: string }): void => {
+    const resolvedUrl = repo.url.endsWith('.git') ? repo.url : `${repo.url}.git`;
+    setRepoUrl(resolvedUrl);
+    setSelectedRepoName(repo.name);
+    setBranch(repo.defaultBranch);
+    if (!name) setName(repo.name);
+    setView('form');
+    setPickerProvider(null);
+    void triggerDetection(resolvedUrl, repo.defaultBranch);
+  }, [name, triggerDetection]);
+
+  const clearSelectedRepo = (): void => {
+    setRepoUrl('');
+    setSelectedRepoName('');
+    setDetectedType(null);
+  };
+
+  const handleUrlBlur = useCallback((): void => {
+    void triggerDetection(repoUrl, branch);
+  }, [triggerDetection, repoUrl, branch]);
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
