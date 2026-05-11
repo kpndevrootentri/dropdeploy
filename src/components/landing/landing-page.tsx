@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   RefreshCw,
   LayoutDashboard,
+  Compass,
 } from 'lucide-react';
 
 function useInView(threshold = 0.12) {
@@ -171,6 +172,36 @@ const USE_CASES = [
   },
 ];
 
+const EXPLORE_PREVIEW = [
+  {
+    name: 'Portfolio Generator',
+    owner: 'alex',
+    tags: ['Web App', 'Utility'],
+    desc: 'Build a polished portfolio site from your GitHub profile in seconds.',
+    liveUrl: true,
+    color: 'bg-blue-500/15 text-blue-500',
+    initial: 'R',
+  },
+  {
+    name: 'Habit Tracker API',
+    owner: 'priya',
+    tags: ['API', 'Data Tool'],
+    desc: 'A REST API to track daily habits with streaks and reminders.',
+    liveUrl: false,
+    color: 'bg-green-500/15 text-green-500',
+    initial: 'N',
+  },
+  {
+    name: 'Data Viz Dashboard',
+    owner: 'marcus',
+    tags: ['Dashboard', 'ML / AI'],
+    desc: 'Interactive charts and tables for exploring CSV datasets visually.',
+    liveUrl: true,
+    color: 'bg-violet-500/15 text-violet-500',
+    initial: 'P',
+  },
+];
+
 const HERO_STEPS: { label: string; done: boolean; active: boolean }[] = [
   { label: 'Getting your latest code', done: true, active: false },
   { label: 'Checking for issues', done: true, active: false },
@@ -208,6 +239,10 @@ export function LandingPage() {
                 <a href="#features" className="hover:text-foreground transition-colors">Features</a>
                 <a href="#how-it-works" className="hover:text-foreground transition-colors">How It Works</a>
                 <a href="#use-cases" className="hover:text-foreground transition-colors">Who It&apos;s For</a>
+                <Link href="/explore" className="hover:text-foreground transition-colors flex items-center gap-1.5">
+                  <Compass className="h-3.5 w-3.5" aria-hidden="true" />
+                  Explore
+                </Link>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -324,6 +359,59 @@ export function LandingPage() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* ── Explore ── */}
+      <section id="explore" className="py-24" aria-labelledby="explore-heading">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <AnimatedSection className="text-center mb-12">
+            <p className="text-blue-500 text-sm font-medium uppercase tracking-widest mb-4">Explore</p>
+            <h2 id="explore-heading" className="text-4xl sm:text-5xl font-bold mb-6">
+              Discover what the community is building.
+            </h2>
+            <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
+              Browse apps, APIs, and tools deployed by other developers. Publish your own project and let the world find it.
+            </p>
+            <Button size="lg" className="text-base px-8 h-12 gap-2" asChild>
+              <Link href="/explore">
+                <Compass className="h-4 w-4" aria-hidden="true" />
+                Browse Explore
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            </Button>
+          </AnimatedSection>
+
+          <AnimatedSection delay={120} className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 pointer-events-none select-none">
+            {EXPLORE_PREVIEW.map((item) => (
+              <div
+                key={item.name}
+                className="rounded-xl border border-border bg-card p-5 flex flex-col gap-4"
+                aria-hidden="true"
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${item.color}`}>
+                    {item.initial}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-sm truncate">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">by {item.owner}</p>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground line-clamp-2 flex-1">{item.desc}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap gap-1">
+                    {item.tags.map((t) => (
+                      <span key={t} className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                  {item.liveUrl && <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true" />}
+                </div>
+              </div>
+            ))}
+          </AnimatedSection>
         </div>
       </section>
 
@@ -624,6 +712,7 @@ export function LandingPage() {
             </div>
             <p className="text-sm text-muted-foreground">Your project, live on the internet. No setup required.</p>
             <div className="flex items-center gap-5 text-sm text-muted-foreground">
+              <Link href="/explore" className="hover:text-foreground transition-colors">Explore</Link>
               <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
               <a href="#" className="hover:text-foreground transition-colors">Terms</a>
               <a href="#" className="hover:text-foreground transition-colors">GitHub</a>
