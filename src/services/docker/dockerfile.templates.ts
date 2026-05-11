@@ -31,7 +31,7 @@ ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholde
 
 ARG {{NEXT_PUBLIC_BUILD_ARGS}}
 ENV {{NEXT_PUBLIC_BUILD_ARGS}}={{NEXT_PUBLIC_BUILD_ARGS}}
-RUN npx prisma generate
+RUN if [ -f prisma/schema.prisma ]; then npx prisma generate; fi
 RUN npm run build
 
 FROM node:22-alpine AS runner
