@@ -82,6 +82,13 @@ interface ProjectDetail {
 type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE';
 type Tab = 'overview' | 'deployments' | 'analytics' | 'env' | 'settings' | 'advanced' | 'publish';
 
+interface TrafficData {
+  totalHits: number;
+  hitsThisWeek: number;
+  hitsByDay: { date: string; count: number }[];
+  deviceBreakdown: { mobile: number; desktop: number; bot: number; unknown: number };
+}
+
 interface AnalyticsData {
   totalDeployments: number;
   deploysThisWeek: number;
@@ -90,6 +97,7 @@ interface AnalyticsData {
   liveSinceMs: number | null;
   deploysByDay: { date: string; total: number; succeeded: number; failed: number }[];
   recentBuildTimes: { createdAt: string; durationMs: number; status: string }[];
+  traffic: TrafficData | null;
 }
 
 const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE'];
@@ -625,6 +633,46 @@ function BuildTimeChart({
   );
 }
 
+function TrafficChart({ days }: { days: { date: string; count: number }[] }): React.ReactElement {
+  const maxCount = Math.max(...days.map((d) => d.count), 1);
+  return (
+    <div>
+      <div className="flex items-end gap-0.5 sm:gap-1 h-20">
+        {days.map((day) => {
+          const heightPct = day.count > 0 ? Math.max((day.count / maxCount) * 100, 8) : 0;
+          return (
+            <div key={day.date} className="flex-1 relative group flex flex-col justify-end h-full">
+              {day.count > 0 ? (
+                <div
+                  className="w-full rounded-t-sm bg-blue-500 transition-opacity group-hover:opacity-70"
+                  style={{ height: `${heightPct}%` }}
+                />
+              ) : (
+                <div className="w-full bg-border rounded-sm" style={{ height: '2px' }} />
+              )}
+              {day.count > 0 && (
+                <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center z-10 bg-popover border rounded px-2 py-1 text-xs whitespace-nowrap shadow pointer-events-none">
+                  <span className="font-medium">{formatShortDate(day.date)}</span>
+                  <span>{day.count} visit{day.count !== 1 ? 's' : ''}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex gap-0.5 sm:gap-1 mt-1">
+        {days.map((day, i) => (
+          <div key={day.date} className="flex-1 text-center">
+            {(i === 0 || i === 6 || i === 13) && (
+              <span className="text-xs text-muted-foreground">{formatShortDate(day.date)}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AnalyticsPanel({ projectId }: { projectId: string }): React.ReactElement {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -765,6 +813,82 @@ function AnalyticsPanel({ projectId }: { projectId: string }): React.ReactElemen
           </CardHeader>
         </Card>
       )}
+
+      {/* Traffic */}
+      {data.traffic ? (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard
+              label="Total visits"
+              value={data.traffic.totalHits.toLocaleString()}
+              icon={<Wifi className="h-3.5 w-3.5" />}
+              sub="via proxy (all time)"
+            />
+            <StatCard
+              label="This week"
+              value={data.traffic.hitsThisWeek.toLocaleString()}
+              icon={<Activity className="h-3.5 w-3.5" />}
+            />
+          </div>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Traffic (14 days)</CardTitle>
+              <CardDescription>Unique proxy requests per day to your deployed app</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {data.traffic.totalHits === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">
+                  No traffic recorded yet — visits to your deployed app will appear here.
+                </p>
+              ) : (
+                <TrafficChart days={data.traffic.hitsByDay} />
+              )}
+            </CardContent>
+          </Card>
+
+          {data.traffic.totalHits > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Device breakdown</CardTitle>
+                <CardDescription>All-time visitor device distribution</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {(
+                    [
+                      { key: 'desktop', label: 'Desktop' },
+                      { key: 'mobile', label: 'Mobile' },
+                      { key: 'bot', label: 'Bot / Crawler' },
+                      { key: 'unknown', label: 'Unknown' },
+                    ] as { key: keyof TrafficData['deviceBreakdown']; label: string }[]
+                  ).map(({ key, label }) => {
+                    const count = data.traffic!.deviceBreakdown[key];
+                    const pct = data.traffic!.totalHits > 0
+                      ? Math.round((count / data.traffic!.totalHits) * 100)
+                      : 0;
+                    if (count === 0) return null;
+                    return (
+                      <div key={key} className="flex items-center gap-3">
+                        <span className="text-xs text-muted-foreground w-24 shrink-0">{label}</span>
+                        <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-blue-500"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className="text-xs tabular-nums text-muted-foreground w-12 text-right">
+                          {pct}% ({count.toLocaleString()})
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </>
+      ) : null}
     </div>
   );
 }

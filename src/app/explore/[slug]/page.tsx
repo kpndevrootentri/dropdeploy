@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import type { Metadata } from 'next';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { FrameworkLogo, FRAMEWORK_CONFIG } from '@/components/ui/framework-logo';
 import { showcaseService, type ShowcaseTag } from '@/services/showcase/showcase.service';
+import { showcaseRepository } from '@/repositories/showcase.repository';
 import { getSessionFromCookies } from '@/lib/get-session';
 import { ArrowLeft, ExternalLink, Github, Globe, Mail } from 'lucide-react';
 
@@ -25,6 +27,25 @@ interface PageProps {
 
 export const revalidate = 30;
 
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const showcase = await showcaseRepository.findBySlug(slug);
+  if (!showcase) return {};
+
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
+  return {
+    title: `${showcase.project.name} — DropDeploy`,
+    description: showcase.shortDescription,
+    openGraph: {
+      title: showcase.project.name,
+      description: showcase.shortDescription,
+      url: `${base}/explore/${slug}`,
+      type: 'website',
+    },
+    alternates: { canonical: `${base}/explore/${slug}` },
+  };
+}
+
 export default async function ExploreToolPage({ params }: PageProps) {
   const { slug } = await params;
 
@@ -41,8 +62,26 @@ export default async function ExploreToolPage({ params }: PageProps) {
   const { Logo } = config;
   const ownerHandle = showcase.project.user.email.split('@')[0];
 
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: showcase.project.name,
+    description: showcase.shortDescription,
+    applicationCategory: 'WebApplication',
+    operatingSystem: 'Web',
+    ...(showcase.liveUrl ? { url: showcase.liveUrl } : {}),
+    ...(showcase.publishedAt ? { datePublished: showcase.publishedAt.toISOString() } : {}),
+    author: { '@type': 'Person', name: ownerHandle },
+    sameAs: `${base}/explore/${showcase.project.slug}`,
+  };
+
   return (
     <div className="min-h-screen bg-background">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }}
+      />
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between gap-4">

@@ -3,6 +3,18 @@ import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
+function detectDevice(ua: string): 'mobile' | 'desktop' | 'bot' | 'unknown' {
+  if (!ua) return 'unknown';
+  const l = ua.toLowerCase();
+  if (
+    l.includes('bot') || l.includes('crawler') || l.includes('spider') ||
+    l.includes('slurp') || l.includes('googlebot') || l.includes('facebookexternalhit')
+  ) return 'bot';
+  if (l.includes('mobile') || l.includes('android') || l.includes('iphone') || l.includes('ipad'))
+    return 'mobile';
+  return 'desktop';
+}
+
 /**
  * Hop-by-hop headers that must not be forwarded between proxies per RFC 7230.
  */
@@ -49,7 +61,7 @@ async function handler(
   // Resolve active deployment port from DB
   const deployment = await prisma.deployment.findFirst({
     where: { subdomain: slug, status: 'DEPLOYED' },
-    select: { containerPort: true },
+    select: { containerPort: true, projectId: true },
   });
 
   if (!deployment?.containerPort) {
@@ -102,6 +114,18 @@ async function handler(
     if (!HOP_BY_HOP.has(k) && !STRIP_RESPONSE.has(k)) {
       responseHeaders.set(key, value);
     }
+  }
+
+  // Record hit async — skip internal Next.js asset paths
+  if (!targetPath.startsWith('/_next') && targetPath !== '/favicon.ico') {
+    prisma.proxyHit.create({
+      data: {
+        projectId: deployment.projectId,
+        path: targetPath,
+        referer: request.headers.get('referer') ?? null,
+        device: detectDevice(request.headers.get('user-agent') ?? ''),
+      },
+    }).catch(() => {});
   }
 
   return new NextResponse(upstream.body, {

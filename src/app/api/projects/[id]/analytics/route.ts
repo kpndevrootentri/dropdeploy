@@ -21,8 +21,9 @@ export async function GET(
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
-    const [total, deployedCount, failedCount, latestDeployed, recentDeployments] =
+    const [total, deployedCount, failedCount, latestDeployed, recentDeployments, totalHits, hitsThisWeek, rawHits, deviceRows] =
       await Promise.all([
         prisma.deployment.count({ where: { projectId: id } }),
         prisma.deployment.count({ where: { projectId: id, status: 'DEPLOYED' } }),
@@ -36,6 +37,17 @@ export async function GET(
           where: { projectId: id, createdAt: { gte: thirtyDaysAgo } },
           select: { status: true, createdAt: true, startedAt: true, completedAt: true },
           orderBy: { createdAt: 'asc' },
+        }),
+        prisma.proxyHit.count({ where: { projectId: id } }),
+        prisma.proxyHit.count({ where: { projectId: id, createdAt: { gte: weekAgo } } }),
+        prisma.proxyHit.findMany({
+          where: { projectId: id, createdAt: { gte: fourteenDaysAgo } },
+          select: { createdAt: true },
+        }),
+        prisma.proxyHit.groupBy({
+          by: ['device'],
+          where: { projectId: id },
+          _count: { _all: true },
         }),
       ]);
 
@@ -95,6 +107,26 @@ export async function GET(
         status: d.status,
       }));
 
+    // Traffic: bucket proxy hits into 14-day daily slots
+    const hitDayMap = new Map<string, number>();
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      hitDayMap.set(d.toISOString().slice(0, 10), 0);
+    }
+    for (const { createdAt } of rawHits) {
+      const key = createdAt.toISOString().slice(0, 10);
+      hitDayMap.set(key, (hitDayMap.get(key) ?? 0) + 1);
+    }
+    const hitsByDay = Array.from(hitDayMap.entries()).map(([date, count]) => ({ date, count }));
+
+    const deviceBreakdown = { mobile: 0, desktop: 0, bot: 0, unknown: 0 };
+    for (const row of deviceRows) {
+      const key = (row.device ?? 'unknown') as keyof typeof deviceBreakdown;
+      if (key in deviceBreakdown) deviceBreakdown[key] += row._count._all;
+      else deviceBreakdown.unknown += row._count._all;
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -105,6 +137,12 @@ export async function GET(
         liveSinceMs,
         deploysByDay,
         recentBuildTimes,
+        traffic: {
+          totalHits,
+          hitsThisWeek,
+          hitsByDay,
+          deviceBreakdown,
+        },
       },
     });
   } catch (error) {
