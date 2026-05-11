@@ -97,10 +97,10 @@ graph TD
 
 ### Project Type Auto-Detection
 
-- [ ] Parse `package.json` on clone to detect framework
-- [ ] Auto-detect based on file presence (`index.html`, `manage.py`, etc.)
-- [ ] Show detected type to user for confirmation before first deploy
-- [ ] Add more types: Flask, Go, Rust, Java/Spring
+- [x] Parse `package.json` on clone to detect framework
+- [x] Auto-detect based on file presence (`index.html`, `manage.py`, etc.)
+- [x] Show detected type to user for confirmation before first deploy
+- [x] Add more types: Flask, Go, Rust, Java/Spring
 
 ### Build Performance
 

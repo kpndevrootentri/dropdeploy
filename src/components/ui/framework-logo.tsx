@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
-import { FaHtml5, FaNodeJs, FaReact } from 'react-icons/fa';
-import { SiNextdotjs, SiDjango, SiFastapi, SiFlask, SiVuedotjs, SiSvelte } from 'react-icons/si';
+import { FaHtml5, FaNodeJs, FaReact, FaJava, FaRust } from 'react-icons/fa';
+import { SiNextdotjs, SiDjango, SiFastapi, SiFlask, SiVuedotjs, SiSvelte, SiGo } from 'react-icons/si';
 
 const BASE_DOMAIN =
   typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_BASE_DOMAIN
@@ -78,10 +78,31 @@ export const FRAMEWORK_CONFIG = {
     ),
     description: 'Svelte / SvelteKit',
   },
+  GO: {
+    label: 'Go',
+    Logo: ({ size = 24, className }: { size?: number; className?: string }) => (
+      <SiGo size={size} className={cn('shrink-0 text-cyan-500', className)} aria-hidden="true" />
+    ),
+    description: 'Go',
+  },
+  RUST: {
+    label: 'Rust',
+    Logo: ({ size = 24, className }: { size?: number; className?: string }) => (
+      <FaRust size={size} className={cn('shrink-0 text-orange-700', className)} aria-hidden="true" />
+    ),
+    description: 'Rust',
+  },
+  JAVA: {
+    label: 'Java',
+    Logo: ({ size = 24, className }: { size?: number; className?: string }) => (
+      <FaJava size={size} className={cn('shrink-0 text-red-600', className)} aria-hidden="true" />
+    ),
+    description: 'Java / Spring Boot',
+  },
 } as const;
 
 export interface FrameworkLogoProps {
-  framework: 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE';
+  framework: 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'GO' | 'RUST' | 'JAVA';
   size?: number;
   className?: string;
   showLabel?: boolean;

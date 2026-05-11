@@ -9,12 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { FRAMEWORK_CONFIG } from '@/components/ui/framework-logo';
 import { RepoPicker } from '@/components/features/repo-picker';
 import { cn } from '@/lib/utils';
-import { Github, Loader2, CheckCircle2, ChevronDown, AlertCircle, Plus } from 'lucide-react';
+import { Github, Loader2, CheckCircle2, ChevronDown, AlertCircle, Plus, Wand2 } from 'lucide-react';
 
-type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE';
+type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'GO' | 'RUST' | 'JAVA';
 type SourceType = 'GITHUB' | 'GITLAB';
 
-const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE'];
+const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'GO', 'RUST', 'JAVA'];
 
 interface ProviderInfo {
   provider: SourceType;
@@ -57,6 +57,9 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
   const [branch, setBranch] = useState('main');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const [detecting, setDetecting] = useState(false);
+  const [detectedType, setDetectedType] = useState<FrameworkType | null>(null);
 
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [providersLoading, setProvidersLoading] = useState(true);
@@ -136,7 +139,29 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
   const clearSelectedRepo = (): void => {
     setRepoUrl('');
     setSelectedRepoName('');
+    setDetectedType(null);
   };
+
+  const handleUrlBlur = useCallback(async (): Promise<void> => {
+    const url = repoUrl.trim();
+    if (!url || detecting) return;
+    setDetecting(true);
+    try {
+      const res = await fetch('/api/detect-type', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repoUrl: url, branch: branch.trim() || 'main' }),
+      });
+      if (!res.ok) return;
+      const data = await res.json() as { data?: { type: FrameworkType; confidence: string } };
+      const result = data.data;
+      if (result && result.confidence !== 'low') {
+        setDetectedType(result.type);
+        setType(result.type);
+      }
+    } catch { /* non-fatal */ }
+    finally { setDetecting(false); }
+  }, [repoUrl, branch, detecting]);
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
@@ -243,6 +268,7 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
               type="url"
               value={repoUrl}
               onChange={(e) => setRepoUrl(e.target.value)}
+              onBlur={() => { void handleUrlBlur(); }}
               placeholder="https://github.com/username/repo"
               className="font-mono text-sm"
             />
@@ -310,9 +336,17 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
 
       {/* ── Step 3: Framework ── */}
       <section className="space-y-3">
-        <StepHeading n={3} label="Framework" />
+        <div className="flex items-center justify-between">
+          <StepHeading n={3} label="Framework" />
+          {detecting && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Detecting…
+            </span>
+          )}
+        </div>
 
-        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-2">
           {FRAMEWORK_KEYS.map((key) => {
             const { Logo, label } = FRAMEWORK_CONFIG[key];
             const isSelected = type === key;
@@ -320,7 +354,7 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
               <button
                 key={key}
                 type="button"
-                onClick={() => setType(key)}
+                onClick={() => { setType(key); setDetectedType(null); }}
                 className={cn(
                   'flex shrink-0 flex-col items-center gap-2 rounded-xl border-2 px-3.5 py-3 transition-all',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
@@ -337,6 +371,12 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
                 )}>
                   {label}
                 </span>
+                {isSelected && detectedType === key && (
+                  <span className="flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
+                    <Wand2 className="h-2.5 w-2.5" />
+                    detected
+                  </span>
+                )}
               </button>
             );
           })}

@@ -119,6 +119,53 @@ RUN printf 'server {\\n  listen 80;\\n  root /usr/share/nginx/html;\\n  index in
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 `.trim(),
+
+  GO: `
+FROM golang:1.22-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum* ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app/server .
+
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates
+WORKDIR /app
+COPY --from=builder /app/server ./server
+EXPOSE 8080
+CMD ["./server"]
+`.trim(),
+
+  RUST: `
+FROM rust:1.76-slim AS builder
+WORKDIR /app
+COPY . .
+RUN cargo build --release && \\
+    binary=$(find target/release -maxdepth 1 -type f -executable | head -1) && \\
+    cp "$binary" /usr/local/bin/app
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=builder /usr/local/bin/app ./app
+EXPOSE 8080
+CMD ["./app"]
+`.trim(),
+
+  JAVA: `
+FROM maven:3.9-eclipse-temurin-21 AS builder
+WORKDIR /app
+COPY pom.xml .
+RUN mvn dependency:go-offline -q
+COPY src ./src
+RUN mvn package -DskipTests -q
+
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+COPY --from=builder /app/target/*.jar app.jar
+EXPOSE 8080
+CMD ["java", "-jar", "app.jar"]
+`.trim(),
 } as const;
 
 export type DockerfileProjectType = keyof typeof DOCKERFILE_TEMPLATES;
@@ -137,6 +184,9 @@ export const CONTAINER_PORTS: Record<DockerfileProjectType, number> = {
   FLASK:   5000,
   VUE:     80,
   SVELTE:  80,
+  GO:      8080,
+  RUST:    8080,
+  JAVA:    8080,
 };
 
 /**

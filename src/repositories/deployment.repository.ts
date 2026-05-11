@@ -35,6 +35,8 @@ export interface IDeploymentRepository {
    * Returns the number of rows updated.
    */
   markBuildingAsFailed(): Promise<number>;
+  /** Returns true if the project has at least one DEPLOYED deployment. */
+  hasDeployedStatus(projectId: string): Promise<boolean>;
 }
 
 export class DeploymentRepository implements IDeploymentRepository {
@@ -144,6 +146,13 @@ export class DeploymentRepository implements IDeploymentRepository {
       data: { status: 'FAILED', buildStep: null, completedAt: new Date() },
     });
     return result.count;
+  }
+
+  async hasDeployedStatus(projectId: string): Promise<boolean> {
+    const count = await prisma.deployment.count({
+      where: { projectId, status: 'DEPLOYED' },
+    });
+    return count > 0;
   }
 }
 

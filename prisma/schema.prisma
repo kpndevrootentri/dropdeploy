@@ -145,6 +145,9 @@ enum ProjectType {
   FLASK
   VUE
   SVELTE
+  GO
+  RUST
+  JAVA
 }
 
 model EnvironmentVariable {

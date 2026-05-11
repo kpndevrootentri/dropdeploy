@@ -12,6 +12,7 @@ import { getRedisConnection } from '@/lib/redis';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
 import { scanPackages } from './package-scanner';
+import { detectFromFiles } from '@/lib/type-detector';
 import { NotFoundError, ConflictError, ValidationError } from '@/lib/errors';
 import type { Deployment } from '@prisma/client';
 
@@ -299,6 +300,21 @@ export class DeploymentService {
         throw err;
       }
       await this.deploymentRepo.update(deploymentId, { commitHash });
+
+      // Auto-correct project type from repo contents on first deploy
+      const detected = await detectFromFiles(workDir).catch(() => null);
+      if (detected && detected.confidence === 'high' && detected.type !== project.type) {
+        const hasDeployed = await this.deploymentRepo.hasDeployedStatus(project.id);
+        if (!hasDeployed) {
+          log.info('Auto-correcting project type', { from: project.type, to: detected.type, hint: detected.hint });
+          await this.projectRepo.update(project.id, { type: detected.type });
+          addMarker(`Detected framework: ${detected.type} (${detected.hint})`);
+          // Use corrected type for the remainder of this build
+          (project as typeof project & { type: typeof detected.type }).type = detected.type;
+        } else {
+          log.info('Detected type differs from stored type', { stored: project.type, detected: detected.type, hint: detected.hint });
+        }
+      }
 
       await this.deploymentRepo.update(deploymentId, { buildStep: 'SCANNING' });
       addMarker('Scanning packages...');
