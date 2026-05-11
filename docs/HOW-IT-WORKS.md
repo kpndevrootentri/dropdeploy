@@ -76,6 +76,8 @@ erDiagram
     User ||--o{ Project : owns
     User ||--o{ GitProvider : "connects"
     Project ||--o{ Deployment : has
+    Project ||--o| ProjectShowcase : "publishes"
+    Project ||--o{ ProxyHit : "receives"
 
     User {
         string id PK "cuid"
@@ -115,10 +117,41 @@ erDiagram
         string buildStep "CLONING | BUILDING_IMAGE | STARTING"
         int containerPort "host port 8000-9999"
         string subdomain UK
-        text logs
+        text buildLog
+        string commitHash
         datetime startedAt
         datetime completedAt
         string projectId FK
+    }
+
+    ProjectShowcase {
+        string id PK "cuid"
+        string projectId FK UK
+        string shortDescription "max 140 chars"
+        string[] tags
+        string liveUrl
+        string repoUrl
+        string contactUrl
+        boolean isPublished
+        datetime publishedAt
+        int viewCount
+    }
+
+    ProxyHit {
+        string id PK "cuid"
+        string projectId FK
+        string path "default: /"
+        string referer
+        string device "mobile | desktop | bot | unknown"
+        datetime createdAt
+    }
+
+    PlatformEvent {
+        string id PK "cuid"
+        string event "allowlisted event name"
+        string userId "optional"
+        json meta "optional payload"
+        datetime createdAt
     }
 ```
 
@@ -192,13 +225,24 @@ GitLab additionally stores a refresh token and expiry — `GitProviderService.ge
 
 ### 4.4 Project Detail Page
 
-The project detail page has **three tabs**:
+The project detail page has **four tabs**:
 
 | Tab | Contents |
 |-----|----------|
 | **Overview** | Deployment status, live URL, local network URL, deployment history |
+| **Analytics** | Traffic metrics: total visits, visits this week, 14-day visit chart, device breakdown (mobile/desktop/bot) |
+| **Publish** | Publish the project to the public Explore page (short description, tags, links) |
 | **Settings** | Edit name, description, framework type, deploy branch, or delete the project |
 | **Advanced** | Container details, interactive terminal, Docker CLI commands reference |
+
+### 4.5 Public Explore Page
+
+`/explore` lists all published project showcases. Each card links to `/explore/[slug]`, which renders the project's full showcase with:
+- SEO metadata via Next.js `generateMetadata()`
+- JSON-LD structured data (`SoftwareApplication` schema) for search engine indexing
+- View count incremented on each page load (via `showcaseService.getPublicBySlug()`)
+
+The page is indexed by search engines via the dynamic `/sitemap.xml` (Next.js `sitemap.ts`). `/robots.txt` allows `/` and `/explore` while blocking `/api/`, `/dashboard/`, and auth routes.
 
 ---
 
@@ -507,6 +551,8 @@ flowchart LR
 
 ## 10. API Reference
 
+### User-facing routes
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/api/auth/register` | Create account |
@@ -527,11 +573,94 @@ flowchart LR
 | `DELETE` | `/api/projects/:id` | Delete project |
 | `POST` | `/api/projects/:id/deploy` | Trigger deployment |
 | `POST` | `/api/projects/:id/terminal` | Execute container command |
+| `GET` | `/api/projects/:id/analytics` | Project traffic analytics (14-day hits, device breakdown) |
+| `GET` | `/api/projects/:id/showcase` | Get showcase config |
+| `POST` | `/api/projects/:id/showcase` | Create / update showcase |
+| `POST` | `/api/analytics/event` | Fire-and-forget platform event (signup, deploy_triggered, etc.) |
+| `GET` | `/api/proxy/:slug/[...path]` | Reverse proxy to deployed container (records ProxyHit) |
 | `GET` | `/api/health` | Health check |
+
+### Admin-only routes (contributor role required)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/admin/users` | List all users |
+| `POST` | `/api/admin/users` | Invite / create a user |
+| `GET` | `/api/admin/users/:userId` | Get user details |
+| `PATCH` | `/api/admin/users/:userId/role` | Change user role |
+| `POST` | `/api/admin/users/:userId/reset-password` | Reset user password |
+| `DELETE` | `/api/admin/users/:userId` | Delete user |
+| `GET` | `/api/admin/projects` | List all projects across all users |
+| `GET` | `/api/admin/projects/:projectId` | Get project details (any user) |
+| `POST` | `/api/admin/projects/:projectId/deploy` | Force-deploy any project |
+| `POST` | `/api/admin/projects/:projectId/restart` | Restart container |
+| `POST` | `/api/admin/projects/:projectId/stop` | Stop container |
+| `GET` | `/api/admin/projects/:projectId/container` | Container status |
+| `POST` | `/api/admin/projects/:projectId/transfer` | Transfer project to another user |
+| `GET` | `/api/admin/analytics` | Platform-wide analytics (users, deployments, traffic, showcase, events) |
 
 ---
 
-## 11. Running Locally
+## 11. SEO & Analytics
+
+### SEO
+
+| File | Purpose |
+|------|---------|
+| `src/app/sitemap.ts` | Dynamic sitemap — homepage (1.0), /explore (0.9, daily), per-slug showcase pages (0.7, weekly) |
+| `src/app/robots.ts` | Allows `/` and `/explore`; disallows `/api/`, `/dashboard/`, auth routes |
+| `src/app/explore/[slug]/page.tsx` | `generateMetadata()` for Open Graph tags; JSON-LD `SoftwareApplication` schema injected via `<script type="application/ld+json">` |
+
+JSON-LD is XSS-safe: serialized with `.replace(/</g, '\\u003c')`. Metadata is fetched directly from `showcaseRepository.findBySlug()` (not the service) to avoid double-incrementing `viewCount`.
+
+### Traffic Analytics (per project)
+
+Every proxied request through `/api/proxy/:slug/[...path]` records a `ProxyHit` row (fire-and-forget — never blocks the response). Static assets (`/_next/*`, `/favicon.ico`) are excluded.
+
+```
+ProxyHit fields: projectId, path, referer, device (mobile | desktop | bot | unknown)
+Device detection: UA string regex — no external library
+```
+
+The project **Analytics tab** shows:
+- Total visits (all time)
+- Visits this week
+- 14-day daily visit bar chart
+- Device breakdown as horizontal progress bars (mobile / desktop / bot / unknown)
+
+### Platform Events
+
+`POST /api/analytics/event` accepts fire-and-forget event pings from the frontend. Allowlisted events:
+
+| Event | Triggered when |
+|-------|---------------|
+| `signup` | User completes registration |
+| `deploy_triggered` | Deploy button clicked |
+| `deploy_succeeded` | Worker marks deployment DEPLOYED |
+| `deploy_failed` | Worker marks deployment FAILED |
+| `explore_view` | Explore listing page loaded |
+| `explore_click_live` | User clicks live link on a showcase |
+| `publish_flow_start` | Publish tab opened |
+| `publish_flow_done` | Showcase published |
+
+Events are stored in `PlatformEvent` with optional `userId` and `meta` JSON. The endpoint always returns 200 regardless of DB result (non-blocking).
+
+### Admin Analytics Dashboard
+
+`/dashboard/admin/analytics` is a contributor-only page showing platform-wide metrics sourced from `GET /api/admin/analytics`:
+
+| Section | Metrics |
+|---------|---------|
+| **Users** | Total users, new this week, 14-day signups chart |
+| **Projects** | Total projects, new this week, framework distribution, 14-day new-projects chart |
+| **Deployments** | Total, succeeded, failed, success rate, deploys this week, 14-day frequency chart (total / success / failed per day) |
+| **Traffic** | Total proxy hits, hits this week, 14-day hits chart, device breakdown |
+| **Showcase** | Total showcases, published count, total views, top 5 by view count |
+| **Platform Events** | Event counts by type, events this week |
+
+---
+
+## 12. Running Locally
 
 ### Prerequisites
 
@@ -582,7 +711,7 @@ npm run worker         # Terminal 2: BullMQ deployment worker
 
 ---
 
-## 12. Tech Stack
+## 13. Tech Stack
 
 | Layer | Technology |
 |-------|------------|

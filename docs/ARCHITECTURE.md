@@ -95,9 +95,19 @@ dropDeploy/
 │   │   │   ├── register/page.tsx
 │   │   │   └── layout.tsx
 │   │   ├── (dashboard)/               # Protected routes
-│   │   │   ├── dashboard/page.tsx
-│   │   │   ├── projects/[id]/page.tsx # Project detail (3 tabs)
+│   │   │   ├── dashboard/
+│   │   │   │   ├── page.tsx
+│   │   │   │   └── admin/             # Contributor-only admin panel
+│   │   │   │       ├── layout.tsx     # Tab bar (Overview / Projects / Users / Analytics)
+│   │   │   │       ├── page.tsx       # Admin overview
+│   │   │   │       ├── projects/page.tsx
+│   │   │   │       ├── users/page.tsx
+│   │   │   │       └── analytics/page.tsx  # Platform-wide analytics dashboard
+│   │   │   ├── projects/[id]/page.tsx # Project detail (Overview / Analytics / Publish / Settings / Advanced tabs)
 │   │   │   └── layout.tsx
+│   │   ├── explore/
+│   │   │   ├── page.tsx               # Public showcase listing
+│   │   │   └── [slug]/page.tsx        # Per-project showcase with JSON-LD + generateMetadata
 │   │   ├── api/
 │   │   │   ├── auth/                  # login, logout, register, session
 │   │   │   │   ├── github/
@@ -116,8 +126,20 @@ dropDeploy/
 │   │   │   │   └── [id]/
 │   │   │   │       ├── route.ts       # GET / PATCH / DELETE
 │   │   │   │       ├── deploy/route.ts
-│   │   │   │       └── terminal/route.ts
+│   │   │   │       ├── terminal/route.ts
+│   │   │   │       ├── analytics/route.ts   # Traffic metrics (hits, device breakdown)
+│   │   │   │       └── showcase/route.ts    # GET / POST showcase config
+│   │   │   ├── analytics/
+│   │   │   │   └── event/route.ts     # POST — fire-and-forget platform event
+│   │   │   ├── proxy/
+│   │   │   │   └── [slug]/[[...path]]/route.ts  # Reverse proxy + ProxyHit recording
+│   │   │   ├── admin/
+│   │   │   │   ├── users/             # CRUD + role + password reset (contributor only)
+│   │   │   │   ├── projects/          # Admin project management (contributor only)
+│   │   │   │   └── analytics/route.ts # Platform-wide analytics (contributor only)
 │   │   │   └── health/route.ts
+│   │   ├── sitemap.ts                 # Dynamic XML sitemap (Next.js built-in)
+│   │   ├── robots.ts                  # robots.txt (Next.js built-in)
 │   │   ├── globals.css
 │   │   ├── layout.tsx
 │   │   └── page.tsx                   # Landing page
@@ -157,6 +179,7 @@ dropDeploy/
 │   │   ├── project.repository.ts      # IProjectRepository + slug uniqueness
 │   │   ├── deployment.repository.ts   # IDeploymentRepository + subdomain transfer
 │   │   ├── git-provider.repository.ts # IGitProviderRepository — findByUserAndProvider, upsert, delete
+│   │   ├── showcase.repository.ts     # IShowcaseRepository — findBySlug, upsert, incrementViewCount
 │   │   └── index.ts
 │   │
 │   ├── services/                      # Business logic
@@ -191,7 +214,7 @@ dropDeploy/
 │       └── deployment.worker.ts       # BullMQ worker (concurrency: 5)
 │
 ├── prisma/
-│   └── schema.prisma                  # User, Project, Deployment, GitProvider models
+│   └── schema.prisma                  # User, Project, Deployment, GitProvider, ProjectShowcase, ProxyHit, PlatformEvent models
 ├── docker/
 │   ├── templates/                     # Dockerfile templates per project type
 │   └── nginx/                         # Reverse-proxy config
@@ -221,6 +244,9 @@ dropDeploy/
 | **DI pattern** | Services take dependencies via constructor; export both the class and a wired singleton |
 | **Repo pattern** | Each repository defines an interface (e.g., `IUserRepository`) in the same file as its implementation |
 | **Authorization** | Services check `resource.userId === session.userId`; return 404 (not 403) to hide existence |
+| **Admin protection** | `requireContributor(session)` in any admin API route; contributor role stored on User |
+| **Fire-and-forget writes** | Analytics writes (ProxyHit, PlatformEvent) use `.catch(() => {})` so they never block responses |
+| **SEO** | `sitemap.ts` and `robots.ts` use Next.js built-in conventions (no extra package); JSON-LD injected via `dangerouslySetInnerHTML` with `<` escaped to `<` |
 
 ---
 

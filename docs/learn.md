@@ -131,10 +131,10 @@ graph LR
 
 > The source of truth. Read this before repositories.
 
-- [ ] **`prisma/schema.prisma`** -- Three models: `User`, `Project`, `Deployment`. Relationships: User 1→N Project 1→N Deployment. Key unique constraints: `slug`, `subdomain`. Enums: `ProjectType`, `DeploymentStatus`.
-  - **Learn:** Prisma schema syntax, relations, unique constraints, enums, default values
+- [ ] **`prisma/schema.prisma`** -- Seven models: `User`, `Project`, `Deployment`, `GitProvider`, `ProjectShowcase`, `ProxyHit`, `PlatformEvent`. Key relationships: User 1→N Project 1→N Deployment; Project 1→0..1 ProjectShowcase; Project 1→N ProxyHit. Key unique constraints: `slug`, `subdomain`. Enums: `ProjectType`, `DeploymentStatus`, `SourceType`.
+  - **Learn:** Prisma schema syntax, relations, unique constraints, enums, default values, `@@index` for analytics queries
 
-**Checkpoint:** *Draw the ER diagram from memory. What columns have unique constraints and why?*
+**Checkpoint:** *Draw the ER diagram from memory. What is ProxyHit used for, and why are analytics writes fire-and-forget?*
 
 ---
 
@@ -271,6 +271,9 @@ graph LR
 - [ ] **`src/app/api/projects/[id]/route.ts`** -- GET / PATCH / DELETE for a single project.
 - [ ] **`src/app/api/projects/[id]/deploy/route.ts`** -- POST: triggers deployment.
 - [ ] **`src/app/api/projects/[id]/terminal/route.ts`** -- POST: executes command in container, routes slash vs regular commands.
+- [ ] **`src/app/api/projects/[id]/analytics/route.ts`** -- GET: traffic metrics (total hits, this week, 14-day daily chart, device breakdown). Fetches ProxyHit records with JS bucketing.
+- [ ] **`src/app/api/analytics/event/route.ts`** -- POST: fire-and-forget platform event. Allowlisted event names, optional userId + meta. Always returns 200.
+- [ ] **`src/app/api/admin/analytics/route.ts`** -- GET: platform-wide analytics. Protected by `requireContributor()`. 21 parallel Prisma queries via `Promise.all`.
 
 **Checkpoint:** *What's the consistent pattern across all routes? (hint: try/catch, getSession, service call, handleApiError)*
 
@@ -317,7 +320,10 @@ graph LR
 - [ ] **`src/app/(auth)/register/page.tsx`** -- Registration form, redirects to `/dashboard` on success.
 - [ ] **`src/app/(auth)/login/page.tsx`** -- Login form with `redirectFrom` query param support. Uses Suspense boundary.
 - [ ] **`src/app/(dashboard)/dashboard/page.tsx`** -- Welcome banner + create project dialog + project list.
-- [ ] **`src/app/(dashboard)/projects/[id]/page.tsx`** -- Three-tab layout (Overview / Settings / Advanced). The largest file in the codebase.
+- [ ] **`src/app/(dashboard)/projects/[id]/page.tsx`** -- Five-tab layout (Overview / Analytics / Publish / Settings / Advanced). Includes traffic chart and device breakdown in the Analytics tab.
+- [ ] **`src/app/(dashboard)/dashboard/admin/analytics/page.tsx`** -- Contributor-only analytics dashboard. Six metric sections with bar charts, stat cards, and tables.
+- [ ] **`src/app/explore/page.tsx`** -- Public showcase grid. No auth required.
+- [ ] **`src/app/explore/[slug]/page.tsx`** -- Individual showcase with `generateMetadata()`, JSON-LD structured data, and view count increment.
 
 **Checkpoint:** *You've read the entire codebase. Trace: user registers → creates project → deploys → uses terminal. What files are involved?*
 
@@ -385,11 +391,12 @@ sequenceDiagram
 | `lib/` | 10 | Config, errors, DB, Redis, auth utils |
 | `types/` | 3 | Domain types and DTOs |
 | `validators/` | 2 | Zod input validation |
-| `repositories/` | 3 | Database access |
+| `repositories/` | 5 | Database access (+ showcase, git-provider) |
 | `services/` | 7 | Business logic (auth, project, git, docker, deployment) |
 | `workers/` | 1 | Background job processing |
-| `api routes/` | 8 | HTTP endpoints |
+| `api routes/` | 18+ | HTTP endpoints (user, admin, analytics, proxy, showcase) |
 | `hooks/` | 2 | Client-side state logic |
-| `components/` | 6 | UI building blocks |
-| `pages/` | 4 | User-facing routes |
-| **Total** | **~46** | |
+| `components/` | 6+ | UI building blocks |
+| `pages/` | 7+ | User-facing routes (+ explore, admin panel, analytics) |
+| `app/` root | 2 | `sitemap.ts`, `robots.ts` for SEO |
+| **Total** | **~65+** | |
