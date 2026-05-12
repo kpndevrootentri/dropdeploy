@@ -1,6 +1,6 @@
 {
   "name": "dropdeploy-cli",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Claude Code plugin — deploy to DropDeploy with /deploy",
   "type": "module",
   "bin": {

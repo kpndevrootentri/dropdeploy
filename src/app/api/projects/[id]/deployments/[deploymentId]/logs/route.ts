@@ -23,6 +23,7 @@ export async function GET(
         buildLog: deployment.buildLog ?? null,
         status: deployment.status,
         commitHash: deployment.commitHash ?? null,
+        subdomain: deployment.subdomain ?? null,
       },
     });
   } catch (error) {

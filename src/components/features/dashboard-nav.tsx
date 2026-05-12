@@ -21,6 +21,7 @@ import {
   LayoutDashboard,
   ChevronDown,
   User,
+  BookOpen,
 } from 'lucide-react';
 
 interface Session {
@@ -82,6 +83,13 @@ export function DashboardNav(): React.ReactElement {
 
   return (
     <div className="flex items-center gap-1.5">
+      <Link
+        href="/docs"
+        className="hidden sm:flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      >
+        <BookOpen className="h-3.5 w-3.5" />
+        Docs
+      </Link>
       <ThemeToggle variant="ghost" size="icon" />
 
       <DropdownMenu>
@@ -117,6 +125,12 @@ export function DashboardNav(): React.ReactElement {
               <Link href="/dashboard" className="cursor-pointer">
                 <LayoutDashboard />
                 Dashboard
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/docs" className="cursor-pointer">
+                <BookOpen />
+                Docs
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>

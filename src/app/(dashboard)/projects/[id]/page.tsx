@@ -1776,21 +1776,21 @@ export default function ProjectDetailPage(): React.ReactElement {
     fetchProject();
   }, [fetchProject]);
 
-  // Poll when a deployment is in progress
+  // Always poll — fast (2.5s) when a build is running, slow (5s) when idle.
+  // This ensures externally triggered deployments (e.g. from the CLI) appear without a manual refresh.
   useEffect(() => {
-    const hasInProgress = project?.deployments.some(
+    if (!project) return;
+
+    const hasInProgress = project.deployments.some(
       (d) => d.status === 'QUEUED' || d.status === 'BUILDING'
     );
+    const intervalMs = hasInProgress ? POLL_INTERVAL_MS : 5000;
 
-    if (!hasInProgress) {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-      return;
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
     }
 
-    if (pollRef.current) return;
     pollRef.current = setInterval(() => {
       fetch(`/api/projects/${params.id}`)
         .then((res) => res.json())
@@ -1799,7 +1799,6 @@ export default function ProjectDetailPage(): React.ReactElement {
             const updated = data.data as ProjectDetail;
             setProject((prev) => {
               if (prev) {
-                // Detect transitions to FAILED for any deployment that was in-progress
                 for (const dep of updated.deployments) {
                   const prev_dep = prev.deployments.find((d) => d.id === dep.id);
                   if (
@@ -1826,7 +1825,7 @@ export default function ProjectDetailPage(): React.ReactElement {
           }
         })
         .catch(() => { });
-    }, POLL_INTERVAL_MS);
+    }, intervalMs);
 
     return () => {
       if (pollRef.current) {

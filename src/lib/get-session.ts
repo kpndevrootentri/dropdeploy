@@ -16,7 +16,9 @@ export interface Session {
  * Throws UnauthorizedError if not logged in or token invalid.
  */
 export async function getSession(req: NextRequest): Promise<Session> {
-  const token = getTokenFromCookie(req);
+  const bearerHeader = req.headers.get('authorization');
+  const bearerToken = bearerHeader?.match(/^Bearer\s+(.+)$/i)?.[1];
+  const token = getTokenFromCookie(req) ?? bearerToken;
   if (!token) {
     throw new UnauthorizedError('Not authenticated');
   }

@@ -24,6 +24,7 @@ import {
   RefreshCw,
   LayoutDashboard,
   Compass,
+  BookOpen,
 } from 'lucide-react';
 
 function useInView(threshold = 0.12) {
@@ -242,6 +243,10 @@ export function LandingPage() {
                 <Link href="/explore" className="hover:text-foreground transition-colors flex items-center gap-1.5">
                   <Compass className="h-3.5 w-3.5" aria-hidden="true" />
                   Explore
+                </Link>
+                <Link href="/docs" className="hover:text-foreground transition-colors flex items-center gap-1.5">
+                  <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                  Docs
                 </Link>
               </div>
             </div>
@@ -713,9 +718,9 @@ export function LandingPage() {
             <p className="text-sm text-muted-foreground">Your project, live on the internet. No setup required.</p>
             <div className="flex items-center gap-5 text-sm text-muted-foreground">
               <Link href="/explore" className="hover:text-foreground transition-colors">Explore</Link>
+              <Link href="/docs" className="hover:text-foreground transition-colors">Docs</Link>
               <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
               <a href="#" className="hover:text-foreground transition-colors">Terms</a>
-              <a href="#" className="hover:text-foreground transition-colors">GitHub</a>
             </div>
           </div>
         </div>

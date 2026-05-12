@@ -54,10 +54,10 @@ graph TD
 
 ### Documentation
 
-- [ ] Get started with project creation
-- [ ] Git setup in project
-- [ ] Run build locally
-- [ ] Category with framework docs
+- [x] Get started with project creation
+- [x] Git setup in project
+- [x] Run build locally
+- [x] Category with framework docs
 
 ---
 
@@ -95,13 +95,6 @@ graph TD
 
 ## Medium
 
-### Project Type Auto-Detection
-
-- [x] Parse `package.json` on clone to detect framework
-- [x] Auto-detect based on file presence (`index.html`, `manage.py`, etc.)
-- [x] Show detected type to user for confirmation before first deploy
-- [x] Add more types: Flask, Go, Rust, Java/Spring
-
 ### Build Performance
 
 - [ ] Enable Docker BuildKit (`DOCKER_BUILDKIT=1`) for layer caching
@@ -115,13 +108,6 @@ graph TD
 - [ ] Auto-provision SSL via Let's Encrypt (certbot)
 - [ ] Generate Nginx config per custom domain
 - [ ] Domain management UI with status indicators
-
-### Nginx Dynamic Routing
-
-- [ ] Auto-generate Nginx config on deployment (currently manual)
-- [ ] Reload Nginx after each successful deployment
-- [ ] Support WebSocket proxying for real-time apps
-- [ ] Add HTTPS redirect and HSTS headers
 
 ### Database Resilience
 
@@ -169,7 +155,6 @@ graph TD
 
 - [ ] Onboarding wizard for first-time users
 - [ ] Mobile responsiveness improvements
-- [ ] Keyboard shortcuts (D = deploy, R = rollback, T = terminal)
 - [ ] Global error boundary with retry
 
 ### Performance
