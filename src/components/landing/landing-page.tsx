@@ -25,6 +25,8 @@ import {
   LayoutDashboard,
   Compass,
   BookOpen,
+  Terminal,
+  Package,
 } from 'lucide-react';
 
 function useInView(threshold = 0.12) {
@@ -239,7 +241,10 @@ export function LandingPage() {
               <div className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
                 <a href="#features" className="hover:text-foreground transition-colors">Features</a>
                 <a href="#how-it-works" className="hover:text-foreground transition-colors">How It Works</a>
-                <a href="#use-cases" className="hover:text-foreground transition-colors">Who It&apos;s For</a>
+                <a href="#cli" className="hover:text-foreground transition-colors flex items-center gap-1.5">
+                  <Terminal className="h-3.5 w-3.5" aria-hidden="true" />
+                  CLI
+                </a>
                 <Link href="/explore" className="hover:text-foreground transition-colors flex items-center gap-1.5">
                   <Compass className="h-3.5 w-3.5" aria-hidden="true" />
                   Explore
@@ -623,6 +628,121 @@ export function LandingPage() {
                 </AnimatedSection>
               ))}
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── CLI ── */}
+      <section id="cli" className="py-24 border-t border-border" aria-labelledby="cli-heading">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+
+            {/* Terminal mockup */}
+            <AnimatedSection>
+              <div className="rounded-xl border border-border bg-zinc-950 overflow-hidden shadow-2xl">
+                {/* Title bar */}
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800">
+                  <div className="w-3 h-3 rounded-full bg-red-500/80" />
+                  <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
+                  <div className="w-3 h-3 rounded-full bg-green-500/80" />
+                  <span className="ml-2 text-xs text-zinc-500 font-mono">terminal</span>
+                </div>
+                <div className="p-5 font-mono text-sm space-y-1 leading-relaxed">
+                  <p className="text-zinc-500"># install once</p>
+                  <p>
+                    <span className="text-blue-400">$</span>
+                    <span className="text-zinc-200"> npm install -g dropdeploy-cli</span>
+                  </p>
+                  <p className="text-zinc-500 pt-2"># log in</p>
+                  <p>
+                    <span className="text-blue-400">$</span>
+                    <span className="text-zinc-200"> dropdeploy auth login</span>
+                  </p>
+                  <p className="text-zinc-400 pl-2">Email: you@example.com</p>
+                  <p className="text-zinc-400 pl-2">Password: ••••••••</p>
+                  <p className="text-green-400 pl-2">✓ Logged in</p>
+                  <p className="text-zinc-500 pt-2"># deploy from any repo</p>
+                  <p>
+                    <span className="text-blue-400">$</span>
+                    <span className="text-zinc-200"> dropdeploy deploy</span>
+                  </p>
+                  <div className="pt-1 space-y-0.5 text-xs">
+                    <p className="text-zinc-400">  Checking repository… <span className="text-green-400">✓</span></p>
+                    <p className="text-zinc-400">  Detecting framework… <span className="text-green-400">✓  NEXTJS</span></p>
+                    <p className="text-zinc-400">  Triggering deployment… <span className="text-green-400">✓</span></p>
+                    <p className="text-zinc-400">  › Cloning repository</p>
+                    <p className="text-zinc-400">  › Building Docker image</p>
+                    <p className="text-zinc-400">  › Starting container</p>
+                    <p className="text-green-400 pt-1 font-semibold">✓ Deployed successfully</p>
+                    <p className="text-zinc-400">  Live URL → <span className="text-blue-400">https://my-app.dropdeploy.app</span></p>
+                  </div>
+                </div>
+              </div>
+            </AnimatedSection>
+
+            {/* Copy */}
+            <AnimatedSection delay={150} className="space-y-8">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/5 px-3 py-1 text-xs font-medium text-blue-500 uppercase tracking-widest mb-4">
+                  <Terminal className="h-3.5 w-3.5" />
+                  CLI
+                </div>
+                <h2 id="cli-heading" className="text-4xl sm:text-5xl font-bold mb-4">
+                  Deploy without leaving your terminal.
+                </h2>
+                <p className="text-lg text-muted-foreground leading-relaxed">
+                  Install <code className="rounded bg-muted px-1.5 py-0.5 text-sm font-mono">dropdeploy-cli</code> once and deploy any project with a single command — no browser required.
+                </p>
+              </div>
+
+              <div className="space-y-5">
+                {[
+                  {
+                    icon: Package,
+                    title: 'One install, use everywhere',
+                    desc: 'Install globally with npm and the dropdeploy command is available in every project on your machine.',
+                  },
+                  {
+                    icon: Zap,
+                    title: 'Auto-detects your framework',
+                    desc: 'No flags needed. The CLI reads your repo and picks the right build pipeline automatically.',
+                  },
+                  {
+                    icon: Eye,
+                    title: 'Live build output, streamed',
+                    desc: 'Watch every build step in real time — cloning, installing, building, starting — with a live progress bar.',
+                  },
+                  {
+                    icon: Lock,
+                    title: 'CI-ready',
+                    desc: 'Set DROPDEPLOY_TOKEN and DROPDEPLOY_URL as environment variables and deploy from any pipeline.',
+                  },
+                ].map((item) => (
+                  <div key={item.title} className="flex gap-4">
+                    <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <item.icon className="h-4 w-4 text-blue-500" aria-hidden="true" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold mb-0.5 text-sm">{item.title}</h3>
+                      <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <div className="flex-1 rounded-lg border border-border bg-muted/40 px-4 py-2.5 font-mono text-sm text-foreground">
+                  npm install -g dropdeploy-cli
+                </div>
+                <Button variant="outline" size="sm" className="shrink-0" asChild>
+                  <a href="https://www.npmjs.com/package/dropdeploy-cli" target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                    npm
+                  </a>
+                </Button>
+              </div>
+            </AnimatedSection>
+
           </div>
         </div>
       </section>
