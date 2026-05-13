@@ -27,6 +27,8 @@ import {
   BookOpen,
   Terminal,
   Package,
+  Download,
+  Bot,
 } from 'lucide-react';
 
 function useInView(threshold = 0.12) {
@@ -216,6 +218,7 @@ export function LandingPage() {
   const heroRef = useRef<HTMLDivElement>(null);
   const [scrollY, setScrollY] = useState(0);
   const [installCopied, setInstallCopied] = useState(false);
+  const [claudeCmdCopied, setClaudeCmdCopied] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setScrollY(window.scrollY);
@@ -245,6 +248,10 @@ export function LandingPage() {
                 <a href="#cli" className="hover:text-foreground transition-colors flex items-center gap-1.5">
                   <Terminal className="h-3.5 w-3.5" aria-hidden="true" />
                   CLI
+                </a>
+                <a href="#claude-code" className="hover:text-foreground transition-colors flex items-center gap-1.5">
+                  <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+                  Claude Code
                 </a>
                 <Link href="/explore" className="hover:text-foreground transition-colors flex items-center gap-1.5">
                   <Compass className="h-3.5 w-3.5" aria-hidden="true" />
@@ -759,6 +766,141 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* ── Claude Code ── */}
+      <section id="claude-code" className="py-24" aria-labelledby="claude-code-heading">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+
+            {/* Copy */}
+            <AnimatedSection className="space-y-8">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-violet-500/30 bg-violet-500/5 px-3 py-1 text-xs font-medium text-violet-400 uppercase tracking-widest mb-4">
+                  <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+                  Claude Code
+                </div>
+                <h2 id="claude-code-heading" className="text-4xl sm:text-5xl font-bold mb-4">
+                  Deploy with <code className="text-violet-400">/deploy</code> in Claude Code.
+                </h2>
+                <p className="text-lg text-muted-foreground leading-relaxed">
+                  Add the <code className="rounded bg-muted px-1.5 py-0.5 text-sm font-mono">/deploy</code> slash command to Claude Code. One download, then trigger deployments directly from your AI editor — no browser needed.
+                </p>
+              </div>
+
+              {/* Steps */}
+              <ol className="space-y-5" aria-label="Setup steps">
+                {[
+                  {
+                    n: '1',
+                    title: 'Download the command file',
+                    desc: 'Save deploy.md to your Claude commands directory.',
+                  },
+                  {
+                    n: '2',
+                    title: 'Place it in ~/.claude/commands/',
+                    desc: 'Claude Code picks up any .md file in that folder as a slash command automatically.',
+                  },
+                  {
+                    n: '3',
+                    title: 'Type /deploy in Claude Code',
+                    desc: 'The skill checks your CLI, auth, and runs dropdeploy deploy — streaming build output right in the chat.',
+                  },
+                ].map((step) => (
+                  <li key={step.n} className="flex gap-4">
+                    <div className="w-7 h-7 rounded-full bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-xs font-bold text-violet-400">{step.n}</span>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm mb-0.5">{step.title}</p>
+                      <p className="text-muted-foreground text-sm leading-relaxed">{step.desc}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+
+              {/* Actions */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                <Button size="sm" className="gap-2 bg-violet-600 hover:bg-violet-700 text-white" asChild>
+                  <a href="/deploy.md" download="deploy.md">
+                    <Download className="h-4 w-4" aria-hidden="true" />
+                    Download deploy.md
+                  </a>
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      'mkdir -p ~/.claude/commands && curl -o ~/.claude/commands/deploy.md https://app.en3.wtf/deploy.md'
+                    ).then(() => {
+                      setClaudeCmdCopied(true);
+                      setTimeout(() => setClaudeCmdCopied(false), 2000);
+                    });
+                  }}
+                  className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 font-mono text-xs text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors cursor-pointer group text-left"
+                  aria-label="Copy one-line install command"
+                >
+                  <span className="flex-1 truncate">curl -o ~/.claude/commands/deploy.md …</span>
+                  {claudeCmdCopied
+                    ? <Check className="h-3.5 w-3.5 text-green-500 flex-shrink-0" aria-hidden="true" />
+                    : <Copy className="h-3.5 w-3.5 text-muted-foreground/50 group-hover:text-muted-foreground flex-shrink-0 transition-colors" aria-hidden="true" />
+                  }
+                </button>
+              </div>
+            </AnimatedSection>
+
+            {/* Claude Code mockup */}
+            <AnimatedSection delay={150}>
+              <div className="rounded-xl border border-violet-500/20 bg-zinc-950 overflow-hidden shadow-2xl">
+                {/* Title bar */}
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800">
+                  <div className="w-3 h-3 rounded-full bg-red-500/80" />
+                  <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
+                  <div className="w-3 h-3 rounded-full bg-green-500/80" />
+                  <Bot className="ml-2 h-3.5 w-3.5 text-violet-400" aria-hidden="true" />
+                  <span className="text-xs text-zinc-500 font-mono">Claude Code</span>
+                </div>
+                <div className="p-5 font-mono text-sm space-y-3 leading-relaxed">
+                  {/* Chat bubble — user */}
+                  <div className="flex justify-end">
+                    <div className="rounded-2xl rounded-tr-sm bg-violet-600/20 border border-violet-500/20 px-4 py-2 text-sm text-zinc-200 max-w-[80%]">
+                      /deploy
+                    </div>
+                  </div>
+                  {/* Chat bubble — assistant */}
+                  <div className="flex gap-2.5">
+                    <div className="w-6 h-6 rounded-full bg-violet-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <Bot className="h-3.5 w-3.5 text-violet-400" aria-hidden="true" />
+                    </div>
+                    <div className="rounded-2xl rounded-tl-sm bg-zinc-900 border border-zinc-800 px-4 py-3 text-xs text-zinc-300 space-y-1.5 flex-1">
+                      <p className="text-zinc-400">Checking dropdeploy CLI… <span className="text-green-400">✓ found</span></p>
+                      <p className="text-zinc-400">Auth status… <span className="text-green-400">✓ logged in</span></p>
+                      <p className="text-zinc-400">Running deployment…</p>
+                      <div className="pl-2 space-y-0.5 border-l border-zinc-700 mt-2">
+                        <p className="text-zinc-500">  › Cloning repository</p>
+                        <p className="text-zinc-500">  › Building Docker image</p>
+                        <p className="text-zinc-500">  › Starting container</p>
+                      </div>
+                      <p className="text-green-400 font-semibold pt-1">✓ Deployed successfully</p>
+                      <p className="text-zinc-400">Live at → <span className="text-violet-400">https://my-app.en3.wtf</span></p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Install hint below mockup */}
+              <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4 text-xs font-mono text-muted-foreground space-y-1">
+                <p className="text-muted-foreground/60"># one-time setup</p>
+                <p>mkdir -p ~/.claude/commands</p>
+                <p>curl -o ~/.claude/commands/deploy.md \</p>
+                <p className="pl-4">https://app.en3.wtf/deploy.md</p>
+                <p className="text-muted-foreground/60 pt-1"># then in Claude Code:</p>
+                <p className="text-violet-400">/deploy</p>
+              </div>
+            </AnimatedSection>
+
+          </div>
+        </div>
+      </section>
+
       {/* ── Final CTA ── */}
       <section className="py-24 border-t border-border bg-muted/30 relative overflow-hidden" aria-labelledby="cta-heading">
         <div
@@ -809,6 +951,7 @@ export function LandingPage() {
             <div className="flex items-center gap-5 text-sm text-muted-foreground">
               <Link href="/explore" className="hover:text-foreground transition-colors">Explore</Link>
               <Link href="/docs" className="hover:text-foreground transition-colors">Docs</Link>
+              <a href="#claude-code" className="hover:text-foreground transition-colors">Claude Code</a>
               <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
               <a href="#" className="hover:text-foreground transition-colors">Terms</a>
             </div>
