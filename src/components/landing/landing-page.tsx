@@ -215,6 +215,7 @@ const HERO_STEPS: { label: string; done: boolean; active: boolean }[] = [
 export function LandingPage() {
   const heroRef = useRef<HTMLDivElement>(null);
   const [scrollY, setScrollY] = useState(0);
+  const [installCopied, setInstallCopied] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setScrollY(window.scrollY);
@@ -308,7 +309,7 @@ export function LandingPage() {
             DropDeploy builds and hosts your app — share it with anyone in seconds.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-5">
             <Button size="lg" className="text-base px-8 h-12 gap-2" asChild>
               <Link href="/login">
                 Get Started Free
@@ -318,6 +319,28 @@ export function LandingPage() {
             <Button size="lg" variant="outline" className="text-base px-8 h-12" asChild>
               <a href="#how-it-works">See How It Works</a>
             </Button>
+          </div>
+
+          {/* CLI hint */}
+          <div className="flex items-center justify-center gap-2.5 mb-14">
+            <span className="text-xs text-muted-foreground/60">or via CLI</span>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText('npm install -g dropdeploy-cli').then(() => {
+                  setInstallCopied(true);
+                  setTimeout(() => setInstallCopied(false), 2000);
+                });
+              }}
+              className="inline-flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors cursor-pointer group"
+              aria-label="Copy CLI install command"
+            >
+              npm install -g dropdeploy-cli
+              {installCopied
+                ? <Check className="h-3 w-3 text-green-500 flex-shrink-0" aria-hidden="true" />
+                : <Copy className="h-3 w-3 text-muted-foreground/40 group-hover:text-muted-foreground flex-shrink-0 transition-colors" aria-hidden="true" />
+              }
+            </button>
           </div>
 
           {/* Dashboard mockup */}
@@ -372,8 +395,148 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* ── How It Works (combined Problem + Solution + Steps) ── */}
+      <section id="how-it-works" className="py-24 bg-muted/30 border-y border-border" aria-labelledby="hiw-heading">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+
+          {/* Header */}
+          <AnimatedSection className="text-center mb-14">
+            <p className="text-blue-500 text-sm font-medium uppercase tracking-widest mb-4">How It Works</p>
+            <h2 id="hiw-heading" className="text-4xl sm:text-5xl font-bold mb-6">
+              Built for builders, not DevOps engineers.
+            </h2>
+            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+              Getting your project live shouldn&apos;t take hours of setup. We handle the hard part — you just click Deploy.
+            </p>
+          </AnimatedSection>
+
+          {/* Problem strip */}
+          <div className="grid md:grid-cols-3 gap-3 mb-10">
+            {[
+              { icon: Zap,  title: 'Setup takes longer than building', desc: 'Hours of config before anyone can even see your work.' },
+              { icon: Code, title: 'Too much to learn just to share',  desc: "Hosting shouldn't require a completely different skill set." },
+              { icon: Eye,  title: "When it breaks, you're in the dark", desc: 'No feedback, no trace, no idea what went wrong.' },
+            ].map((item, i) => (
+              <AnimatedSection key={item.title} delay={i * 80}>
+                <div className="flex gap-3 p-4 rounded-lg border border-destructive/20 bg-destructive/5">
+                  <item.icon className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" aria-hidden="true" />
+                  <div>
+                    <p className="text-sm font-medium mb-0.5">{item.title}</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{item.desc}</p>
+                  </div>
+                </div>
+              </AnimatedSection>
+            ))}
+          </div>
+
+          {/* Bridge */}
+          <AnimatedSection className="flex items-center gap-4 mb-14">
+            <div className="flex-1 h-px bg-border" aria-hidden="true" />
+            <span className="text-sm font-medium text-blue-500 px-3 whitespace-nowrap">DropDeploy fixes this in four steps</span>
+            <div className="flex-1 h-px bg-border" aria-hidden="true" />
+          </AnimatedSection>
+
+          {/* Steps + mockup */}
+          <div className="grid lg:grid-cols-2 gap-16 items-start">
+
+            <div className="relative">
+              <div
+                className="absolute left-[23px] top-10 bottom-10 w-px bg-gradient-to-b from-blue-500/40 via-border to-border hidden sm:block"
+                aria-hidden="true"
+              />
+              <div className="space-y-10">
+                {HOW_IT_WORKS.map((item, i) => (
+                  <AnimatedSection key={item.step} delay={i * 100}>
+                    <div className="flex gap-6">
+                      <div className="flex-shrink-0">
+                        <div className="w-12 h-12 rounded-full bg-background border-2 border-blue-500/40 flex items-center justify-center relative z-10">
+                          <item.icon className="h-5 w-5 text-blue-500" aria-hidden="true" />
+                        </div>
+                      </div>
+                      <div className="pb-2">
+                        <div className="text-xs font-mono text-blue-500 mb-1">Step {item.step}</div>
+                        <h3 className="font-semibold text-xl mb-2">{item.title}</h3>
+                        <p className="text-muted-foreground leading-relaxed mb-2 text-sm">{item.desc}</p>
+                        <p className="text-xs text-muted-foreground/60 border-l-2 border-blue-500/20 pl-3">
+                          {item.detail}
+                        </p>
+                      </div>
+                    </div>
+                  </AnimatedSection>
+                ))}
+              </div>
+            </div>
+
+            <AnimatedSection delay={200} className="lg:sticky lg:top-24">
+              <div className="rounded-xl border border-border bg-card p-6 shadow-lg">
+                <div className="flex items-center justify-between mb-5">
+                  <div>
+                    <p className="text-sm font-medium">my-portfolio</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">github.com/you/my-portfolio</p>
+                  </div>
+                  <span className="text-xs text-green-500 bg-green-500/10 px-2.5 py-0.5 rounded-full font-medium">
+                    ● Live
+                  </span>
+                </div>
+                <div className="space-y-2.5 mb-5">
+                  {[
+                    'Got your latest code',
+                    'No security issues found',
+                    'App built successfully',
+                    'App is now running',
+                    'Your link is ready to share',
+                  ].map((step) => (
+                    <div key={step} className="flex items-center gap-3 text-sm">
+                      <Check className="h-4 w-4 text-green-500 flex-shrink-0" aria-hidden="true" />
+                      <span className="text-muted-foreground">{step}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-md border bg-muted/40 px-3 py-2 flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground flex-1 truncate">
+                    https://my-portfolio.domain.in
+                  </span>
+                  <Copy className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" aria-hidden="true" />
+                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" aria-hidden="true" />
+                </div>
+              </div>
+            </AnimatedSection>
+
+          </div>
+        </div>
+      </section>
+
+      {/* ── Features ── */}
+      <section id="features" className="py-24" aria-labelledby="features-heading">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <AnimatedSection className="text-center mb-16">
+            <p className="text-blue-500 text-sm font-medium uppercase tracking-widest mb-4">Features</p>
+            <h2 id="features-heading" className="text-4xl sm:text-5xl font-bold mb-6">
+              Everything you need to go from idea to live.
+            </h2>
+            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+              No setup. No expertise. Just your project and a button.
+            </p>
+          </AnimatedSection>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {FEATURES.map((feature, i) => (
+              <AnimatedSection key={feature.title} delay={(i % 3) * 80}>
+                <div className="group p-6 rounded-xl border border-border bg-card hover:border-blue-500/40 hover:shadow-lg hover:shadow-blue-500/5 transition-all duration-300 h-full">
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 group-hover:bg-blue-500/20 flex items-center justify-center mb-4 transition-colors">
+                    <feature.icon className="h-5 w-5 text-blue-500" aria-hidden="true" />
+                  </div>
+                  <h3 className="font-semibold mb-2">{feature.title}</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">{feature.desc}</p>
+                </div>
+              </AnimatedSection>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── Explore ── */}
-      <section id="explore" className="py-24" aria-labelledby="explore-heading">
+      <section id="explore" className="py-24 bg-muted/30 border-y border-border" aria-labelledby="explore-heading">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <AnimatedSection className="text-center mb-12">
             <p className="text-blue-500 text-sm font-medium uppercase tracking-widest mb-4">Explore</p>
@@ -425,215 +588,50 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ── Problem ── */}
-      <section className="py-24 bg-muted/30 border-y border-border" aria-labelledby="problem-heading">
+      {/* ── Who It's For ── */}
+      <section id="use-cases" className="py-24" aria-labelledby="use-cases-heading">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <AnimatedSection className="text-center mb-16">
-            <p className="text-blue-500 text-sm font-medium uppercase tracking-widest mb-4">The Problem</p>
-            <h2 id="problem-heading" className="text-4xl sm:text-5xl font-bold mb-6">
-              Getting your project online is harder than it should be.
+            <p className="text-blue-500 text-sm font-medium uppercase tracking-widest mb-4">Who It&apos;s For</p>
+            <h2 id="use-cases-heading" className="text-4xl sm:text-5xl font-bold mb-6">
+              Built for every kind of builder.
             </h2>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              You built something great. Sharing it with the world shouldn&apos;t take hours of setup.
+              Whether you&apos;re shipping your first project or managing a team, DropDeploy gets out of your way.
             </p>
           </AnimatedSection>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                icon: Zap,
-                title: 'Setup takes longer than building',
-                description:
-                  'Before anyone can see your project, you spend hours on things that have nothing to do with what you actually built.',
-              },
-              {
-                icon: Code,
-                title: 'Too much to learn just to share',
-                description:
-                  "Hosting an app online shouldn't require learning a completely separate set of skills. You should be able to just press publish.",
-              },
-              {
-                icon: Eye,
-                title: "When something breaks, you're in the dark",
-                description:
-                  "Something went wrong, but you have no idea where. No feedback, no way to trace the problem, no idea what to fix.",
-              },
-            ].map((item, i) => (
-              <AnimatedSection key={item.title} delay={i * 100}>
-                <div className="p-6 rounded-xl border border-border bg-card hover:border-red-500/20 transition-colors h-full">
-                  <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center mb-4">
-                    <item.icon className="h-5 w-5 text-destructive" aria-hidden="true" />
+          <div className="grid sm:grid-cols-2 gap-6">
+            {USE_CASES.map((item, i) => (
+              <AnimatedSection key={item.audience} delay={i * 80}>
+                <div className="flex gap-6 p-8 rounded-2xl border border-border bg-card hover:border-blue-500/30 hover:shadow-md transition-all h-full">
+                  <div className="flex-shrink-0">
+                    <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                      <item.icon className="h-6 w-6 text-blue-500" aria-hidden="true" />
+                    </div>
                   </div>
-                  <h3 className="font-semibold text-lg mb-2">{item.title}</h3>
-                  <p className="text-muted-foreground leading-relaxed text-sm">{item.description}</p>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-blue-500 uppercase tracking-widest mb-1">{item.audience}</p>
+                    <h3 className="font-bold text-xl mb-2">{item.tagline}</h3>
+                    <p className="text-muted-foreground text-sm leading-relaxed mb-5">{item.desc}</p>
+                    <ul className="space-y-2" aria-label={`Benefits for ${item.audience}`}>
+                      {item.points.map((p) => (
+                        <li key={p} className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Check className="h-4 w-4 text-green-500 flex-shrink-0" aria-hidden="true" />
+                          {p}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               </AnimatedSection>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Solution ── */}
-      <section className="py-24" aria-labelledby="solution-heading">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <AnimatedSection className="text-center mb-16">
-            <p className="text-blue-500 text-sm font-medium uppercase tracking-widest mb-4">The Solution</p>
-            <h2 id="solution-heading" className="text-4xl sm:text-5xl font-bold mb-6">
-              We handle the hard part. You just click Deploy.
-            </h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              DropDeploy is a simple web dashboard. Fill in three fields, click one button, and your project is live.
-            </p>
-          </AnimatedSection>
-
-          <div className="grid lg:grid-cols-2 gap-16 items-center">
-            <AnimatedSection className="space-y-7">
-              {[
-                {
-                  icon: GitBranch,
-                  title: 'Your code, always up to date',
-                  desc: 'Connect GitHub or GitLab once. Every deploy picks up your latest code automatically — public or private repos.',
-                },
-                {
-                  icon: Code,
-                  title: 'Pick your language, we do the rest',
-                  desc: 'Choose from 9 popular options. DropDeploy knows exactly how to set up each one — you never have to figure it out.',
-                },
-                {
-                  icon: Shield,
-                  title: 'Projects never interfere with each other',
-                  desc: 'Each project runs in its own isolated space. One project going down or acting up never affects another.',
-                },
-                {
-                  icon: Eye,
-                  title: 'Always know what&apos;s happening',
-                  desc: 'Watch your project go live step by step. If something fails, you see exactly where and why — no guessing.',
-                },
-              ].map((item) => (
-                <div key={item.title} className="flex gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <item.icon className="h-5 w-5 text-blue-500" aria-hidden="true" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold mb-1">{item.title}</h3>
-                    <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </AnimatedSection>
-
-            <AnimatedSection delay={200}>
-              <div className="rounded-xl border border-border bg-card p-6 shadow-lg">
-                <div className="flex items-center justify-between mb-5">
-                  <div>
-                    <p className="text-sm font-medium">my-portfolio</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">github.com/you/my-portfolio</p>
-                  </div>
-                  <span className="text-xs text-green-500 bg-green-500/10 px-2.5 py-0.5 rounded-full font-medium">
-                    ● Live
-                  </span>
-                </div>
-                <div className="space-y-2.5 mb-5">
-                  {[
-                    'Got your latest code',
-                    'No security issues found',
-                    'App built successfully',
-                    'App is now running',
-                    'Your link is ready to share',
-                  ].map((step) => (
-                    <div key={step} className="flex items-center gap-3 text-sm">
-                      <Check className="h-4 w-4 text-green-500 flex-shrink-0" aria-hidden="true" />
-                      <span className="text-muted-foreground">{step}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="rounded-md border bg-muted/40 px-3 py-2 flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground flex-1 truncate">
-                    https://my-portfolio.domain.in
-                  </span>
-                  <Copy className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" aria-hidden="true" />
-                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" aria-hidden="true" />
-                </div>
-              </div>
-            </AnimatedSection>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Features ── */}
-      <section id="features" className="py-24 bg-muted/30 border-y border-border" aria-labelledby="features-heading">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <AnimatedSection className="text-center mb-16">
-            <p className="text-blue-500 text-sm font-medium uppercase tracking-widest mb-4">Features</p>
-            <h2 id="features-heading" className="text-4xl sm:text-5xl font-bold mb-6">
-              Everything you need to go from idea to live.
-            </h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              No setup. No expertise. Just your project and a button.
-            </p>
-          </AnimatedSection>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {FEATURES.map((feature, i) => (
-              <AnimatedSection key={feature.title} delay={(i % 3) * 80}>
-                <div className="group p-6 rounded-xl border border-border bg-card hover:border-blue-500/40 hover:shadow-lg hover:shadow-blue-500/5 transition-all duration-300 h-full">
-                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 group-hover:bg-blue-500/20 flex items-center justify-center mb-4 transition-colors">
-                    <feature.icon className="h-5 w-5 text-blue-500" aria-hidden="true" />
-                  </div>
-                  <h3 className="font-semibold mb-2">{feature.title}</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed">{feature.desc}</p>
-                </div>
-              </AnimatedSection>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── How It Works ── */}
-      <section id="how-it-works" className="py-24" aria-labelledby="hiw-heading">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <AnimatedSection className="text-center mb-16">
-            <p className="text-blue-500 text-sm font-medium uppercase tracking-widest mb-4">How It Works</p>
-            <h2 id="hiw-heading" className="text-4xl sm:text-5xl font-bold mb-6">
-              Four steps. That&apos;s it.
-            </h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              No terminal. No config files. No documentation to read first.
-            </p>
-          </AnimatedSection>
-
-          <div className="relative">
-            <div
-              className="absolute left-[23px] top-10 bottom-10 w-px bg-gradient-to-b from-blue-500/40 via-border to-border hidden sm:block"
-              aria-hidden="true"
-            />
-            <div className="space-y-12">
-              {HOW_IT_WORKS.map((item, i) => (
-                <AnimatedSection key={item.step} delay={i * 100}>
-                  <div className="flex gap-6 sm:gap-8">
-                    <div className="flex-shrink-0">
-                      <div className="w-12 h-12 rounded-full bg-background border-2 border-blue-500/40 flex items-center justify-center relative z-10">
-                        <item.icon className="h-5 w-5 text-blue-500" aria-hidden="true" />
-                      </div>
-                    </div>
-                    <div className="pb-2">
-                      <div className="text-xs font-mono text-blue-500 mb-1">Step {item.step}</div>
-                      <h3 className="font-semibold text-xl mb-2">{item.title}</h3>
-                      <p className="text-muted-foreground leading-relaxed mb-2 text-sm">{item.desc}</p>
-                      <p className="text-xs text-muted-foreground/60 border-l-2 border-blue-500/20 pl-3">
-                        {item.detail}
-                      </p>
-                    </div>
-                  </div>
-                </AnimatedSection>
-              ))}
-            </div>
           </div>
         </div>
       </section>
 
       {/* ── CLI ── */}
-      <section id="cli" className="py-24 border-t border-border" aria-labelledby="cli-heading">
+      <section id="cli" className="py-24 bg-muted/30 border-y border-border" aria-labelledby="cli-heading">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
 
@@ -731,9 +729,23 @@ export function LandingPage() {
               </div>
 
               <div className="flex items-center gap-3 pt-2">
-                <div className="flex-1 rounded-lg border border-border bg-muted/40 px-4 py-2.5 font-mono text-sm text-foreground">
-                  npm install -g dropdeploy-cli
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText('npm install -g dropdeploy-cli').then(() => {
+                      setInstallCopied(true);
+                      setTimeout(() => setInstallCopied(false), 2000);
+                    });
+                  }}
+                  className="flex-1 flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-4 py-2.5 font-mono text-sm text-foreground hover:bg-muted/70 transition-colors cursor-pointer group text-left"
+                  aria-label="Copy install command"
+                >
+                  <span className="flex-1">npm install -g dropdeploy-cli</span>
+                  {installCopied
+                    ? <Check className="h-3.5 w-3.5 text-green-500 flex-shrink-0" aria-hidden="true" />
+                    : <Copy className="h-3.5 w-3.5 text-muted-foreground/50 group-hover:text-muted-foreground flex-shrink-0 transition-colors" aria-hidden="true" />
+                  }
+                </button>
                 <Button variant="outline" size="sm" className="shrink-0" asChild>
                   <a href="https://www.npmjs.com/package/dropdeploy-cli" target="_blank" rel="noopener noreferrer">
                     <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
@@ -743,48 +755,6 @@ export function LandingPage() {
               </div>
             </AnimatedSection>
 
-          </div>
-        </div>
-      </section>
-
-      {/* ── Who It's For ── */}
-      <section id="use-cases" className="py-24 bg-muted/30 border-y border-border" aria-labelledby="use-cases-heading">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <AnimatedSection className="text-center mb-16">
-            <p className="text-blue-500 text-sm font-medium uppercase tracking-widest mb-4">Who It&apos;s For</p>
-            <h2 id="use-cases-heading" className="text-4xl sm:text-5xl font-bold mb-6">
-              Built for every kind of builder.
-            </h2>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Whether you&apos;re shipping your first project or managing a team, DropDeploy gets out of your way.
-            </p>
-          </AnimatedSection>
-
-          <div className="grid sm:grid-cols-2 gap-6">
-            {USE_CASES.map((item, i) => (
-              <AnimatedSection key={item.audience} delay={i * 80}>
-                <div className="flex gap-6 p-8 rounded-2xl border border-border bg-card hover:border-blue-500/30 hover:shadow-md transition-all h-full">
-                  <div className="flex-shrink-0">
-                    <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                      <item.icon className="h-6 w-6 text-blue-500" aria-hidden="true" />
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-blue-500 uppercase tracking-widest mb-1">{item.audience}</p>
-                    <h3 className="font-bold text-xl mb-2">{item.tagline}</h3>
-                    <p className="text-muted-foreground text-sm leading-relaxed mb-5">{item.desc}</p>
-                    <ul className="space-y-2" aria-label={`Benefits for ${item.audience}`}>
-                      {item.points.map((p) => (
-                        <li key={p} className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Check className="h-4 w-4 text-green-500 flex-shrink-0" aria-hidden="true" />
-                          {p}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </AnimatedSection>
-            ))}
           </div>
         </div>
       </section>
