@@ -108,8 +108,17 @@ dropDeploy/
 │   │   ├── explore/
 │   │   │   ├── page.tsx               # Public showcase listing
 │   │   │   └── [slug]/page.tsx        # Per-project showcase with JSON-LD + generateMetadata
+│   │   ├── docs/
+│   │   │   ├── getting-started/page.tsx   # Getting-started guide
+│   │   │   ├── git-setup/page.tsx         # Git connection setup
+│   │   │   ├── local-dev/page.tsx         # Run builds locally
+│   │   │   ├── frameworks/[slug]/page.tsx # Per-framework documentation
+│   │   │   ├── claude-code/               # Claude Code /deploy command guide
+│   │   │   ├── layout.tsx                 # Sidebar layout
+│   │   │   └── page.tsx                   # Docs index
 │   │   ├── api/
 │   │   │   ├── auth/                  # login, logout, register, session
+│   │   │   │   ├── token/route.ts         # POST — CLI login (returns JWT in body, not cookie)
 │   │   │   │   ├── github/
 │   │   │   │   │   ├── connect/route.ts   # Start GitHub OAuth flow
 │   │   │   │   │   └── callback/route.ts  # GitHub OAuth callback
@@ -218,6 +227,16 @@ dropDeploy/
 ├── docker/
 │   ├── templates/                     # Dockerfile templates per project type
 │   └── nginx/                         # Reverse-proxy config
+├── plugin/                            # dropdeploy-cli npm package
+│   ├── src/
+│   │   ├── cli.ts                     # Entry point — commands: deploy, projects, auth, help
+│   │   ├── api.ts                     # API client — listProjects, triggerDeploy, streamLogs, detectType
+│   │   ├── auth.ts                    # Credential storage (JSON file) + login via /api/auth/token
+│   │   └── detector.ts                # Local git info (remote URL, branch, dirty check) + framework hint
+│   ├── package.json                   # Published as dropdeploy-cli on npm (binary: dropdeploy)
+│   └── README.md
+├── public/
+│   └── deploy.md                      # Markdown rendered by the Claude Code /deploy command download page
 ├── scripts/
 │   └── setup-dev.sh
 └── docs/
@@ -356,8 +375,9 @@ sequenceDiagram
 | 5.1 Auth | `AuthService`, JWT, `UserRepository`, `/api/auth/*` |
 | 5.2 Projects | `ProjectService`, `ProjectRepository`, `GitService` |
 | 5.2 Git Providers | `GitProviderService`, `GitProviderRepository`, `/api/auth/github/*`, `/api/auth/gitlab/*`, `/api/git-providers/*` |
-| 5.3 Type Detection | `ProjectType` enum, `DOCKERFILE_TEMPLATES` in `services/docker/` |
+| 5.3 Type Detection | `ProjectType` enum, `DOCKERFILE_TEMPLATES` in `services/docker/`, `detector.ts` in CLI |
 | 5.4 Build & Deploy | `DeploymentService`, `DockerService`, `GitService`, `deployment.worker.ts` |
+| 5.4a CLI Access | `plugin/` package (`dropdeploy-cli`), `/api/auth/token`, `DropDeployApi`, credential file |
 | 5.5 Status | `DeploymentStatus` enum, `buildStep` tracking (CLONING / BUILDING_IMAGE / STARTING) |
 | 5.6 URLs | Subdomain routing via Nginx, `BASE_DOMAIN` in config |
 | 5.7 Branches | `project.branch` field, `GitService.ensureRepo()` with branch switching |

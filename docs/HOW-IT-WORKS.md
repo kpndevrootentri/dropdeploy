@@ -556,7 +556,8 @@ flowchart LR
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/api/auth/register` | Create account |
-| `POST` | `/api/auth/login` | Login |
+| `POST` | `/api/auth/login` | Login (sets httpOnly cookie) |
+| `POST` | `/api/auth/token` | CLI login — returns JWT in response body (no cookie) |
 | `POST` | `/api/auth/logout` | Logout (clear cookie) |
 | `GET` | `/api/auth/session` | Validate current session |
 | `GET` | `/api/auth/github/connect` | Start GitHub OAuth flow |
@@ -711,7 +712,90 @@ npm run worker         # Terminal 2: BullMQ deployment worker
 
 ---
 
-## 13. Tech Stack
+## 13. CLI (dropdeploy-cli)
+
+`dropdeploy-cli` is a standalone npm package in `plugin/` that exposes a `dropdeploy` binary.
+
+```bash
+npm install -g dropdeploy-cli
+```
+
+### Authentication flow
+
+```mermaid
+sequenceDiagram
+    participant CLI as dropdeploy CLI
+    participant API as POST /api/auth/token
+    participant FS as ~/.dropdeploy/credentials.json
+
+    CLI->>CLI: Prompt email + password (hidden input)
+    CLI->>API: { email, password }
+    API->>API: authService.login() — same as /api/auth/login
+    API-->>CLI: { token, userId, email }
+    CLI->>FS: Write credentials atomically
+    CLI-->>User: ✓ Logged in as user@example.com
+```
+
+`/api/auth/token` is identical to `/api/auth/login` except it returns the JWT in the response body instead of setting a cookie — so the CLI can store and reuse it as a Bearer token.
+
+### Deploy flow
+
+1. Read `~/.dropdeploy/credentials.json` (or `DROPDEPLOY_TOKEN` env var in CI)
+2. Run `getGitInfo(dir)` — extracts remote URL, branch, dirty state via `git` CLI
+3. Run `validateLocal(dir, gitInfo)` — warns on uncommitted changes, no remote, etc.
+4. Call `api.detectType(remoteUrl, branch)` — server-side framework detection
+5. Call `api.listProjects()` and auto-match by git remote URL; prompt if ambiguous
+6. Call `api.triggerDeploy(projectId)` → `POST /api/projects/:id/deploy`
+7. Stream SSE logs from `GET /api/projects/:id/deployments/:deploymentId/logs`
+8. Poll `api.getDeploymentStatus()` with exponential backoff until DEPLOYED / FAILED
+9. Print live URL on success; print last 20 log lines + probable cause on failure
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `dropdeploy auth login [--email]` | Interactive login; stores credentials locally |
+| `dropdeploy auth status` | Show current login |
+| `dropdeploy auth logout` | Clear stored credentials |
+| `dropdeploy deploy [--project-id] [--dir]` | Trigger deploy with live log stream |
+| `dropdeploy projects` | List all projects with status and live URL |
+| `dropdeploy help` | Command reference |
+| `dropdeploy --version` | Print installed version |
+
+### CI / automation
+
+Skip interactive login by setting environment variables:
+
+```bash
+export DROPDEPLOY_TOKEN=your-jwt-token
+export DROPDEPLOY_URL=https://app.en3.wtf
+
+dropdeploy deploy --project-id my-app
+```
+
+### Error diagnosis
+
+On failure the CLI scans the last 40 lines of the build log against a set of patterns (missing module, blocked package, TypeScript error, npm error, etc.) and prints a **probable cause** and **suggested fix**.
+
+---
+
+## 14. In-App Documentation
+
+`src/app/docs/` provides user-facing documentation accessible from the dashboard nav. It is rendered with a sidebar layout (`docs/layout.tsx`) and covers:
+
+| Page | Content |
+|------|---------|
+| `getting-started` | Project creation, first deployment |
+| `git-setup` | Connecting GitHub / GitLab, private repos |
+| `local-dev` | Running builds locally, environment setup |
+| `frameworks/[slug]` | Per-framework guides (Next.js, React, Vue, Svelte, Django, FastAPI, Flask, Node.js, Static) |
+| `claude-code` | Using the Claude Code `/deploy` command |
+
+The Claude Code `/deploy` skill is also served as a raw Markdown file at `public/deploy.md`, which the landing page download section links to.
+
+---
+
+## 15. Tech Stack
 
 | Layer | Technology |
 |-------|------------|
@@ -723,3 +807,4 @@ npm run worker         # Terminal 2: BullMQ deployment worker
 | Database | PostgreSQL |
 | Git | simple-git |
 | Validation | Zod, TypeScript strict mode |
+| CLI | Node.js ESM, dropdeploy-cli (npm) |

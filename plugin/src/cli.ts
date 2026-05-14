@@ -121,9 +121,7 @@ function buildDeployUrl(apiUrl: string, subdomain: string): string {
     if (u.hostname === 'localhost' || u.hostname.startsWith('127.')) {
       return `${u.origin}/preview/${subdomain}`;
     }
-    const parts = u.hostname.split('.');
-    const baseDomain = parts.length >= 2 ? parts.slice(-2).join('.') : u.hostname;
-    return `${u.protocol}//${subdomain}.${baseDomain}`;
+    return `${u.protocol}//${subdomain}.${u.hostname}`;
   } catch {
     return `${apiUrl}/preview/${subdomain}`;
   }

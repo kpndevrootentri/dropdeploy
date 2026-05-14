@@ -27,7 +27,7 @@ graph LR
 - GitHub and GitLab repo deployment via URL
 - Private repository support via OAuth (GitHub + GitLab)
 - Searchable repo picker for connected accounts
-- Automatic project type detection (Static, Node.js, Next.js, Django)
+- Automatic project type detection (Static, Node.js, Next.js, React, Vue, Svelte, Django, FastAPI, Flask)
 - Containerized build and runtime (Docker)
 - Live deployment URL via subdomain
 - Build status tracking with step-by-step progress
@@ -35,6 +35,8 @@ graph LR
 - Interactive terminal for deployed containers
 - Local network access URLs
 - Secure execution environment
+- CLI tool (`dropdeploy-cli`) for terminal and CI/CD deployments
+- In-app documentation with per-framework guides
 
 ### Non-Goals (Out of Scope)
 
@@ -80,6 +82,12 @@ As a user, I want to connect my GitHub or GitLab account and deploy private repo
 ### US-7: Browse and Select Repositories
 As a user with a connected Git account, I want to search and pick a repository from a list instead of pasting a URL manually.
 
+### US-8: CLI Deployment
+As a developer, I want to trigger a deployment from my terminal using `dropdeploy deploy` so I can deploy without opening the browser, and stream build output in real time.
+
+### US-9: CI/CD Deployment
+As an automation user, I want to deploy using environment variables (`DROPDEPLOY_TOKEN`, `DROPDEPLOY_URL`) so I can integrate DropDeploy into GitHub Actions or other CI pipelines.
+
 ---
 
 ## 5. Functional Requirements
@@ -115,12 +123,54 @@ As a user with a connected Git account, I want to search and pick a repository f
 
 ### 5.3 Project Type Detection
 
-| Detected File | Project Type |
-|--------------|-------------|
-| `index.html` | Static Site |
-| `package.json` | Node.js |
-| `next.config.js` | Next.js |
-| `requirements.txt` + `manage.py` | Django |
+Detection runs server-side (via `POST /api/projects/detect-type`) and client-side in the CLI. The repo picker triggers detection automatically when a repo is selected.
+
+| Detected Signal | Project Type |
+|----------------|-------------|
+| `next.config.js` / `.ts` / `.mjs` | Next.js |
+| `vite.config.*` + React dep | React (Vite) |
+| `vite.config.*` + Vue dep | Vue |
+| `vite.config.*` + Svelte dep | Svelte |
+| `package.json` (Node.js, no framework) | Node.js |
+| `manage.py` + `requirements.txt` | Django |
+| `main.py` with `FastAPI()` | FastAPI |
+| `app.py` with `Flask()` | Flask |
+| `index.html` (no package.json) | Static Site |
+| `go.mod` | Go |
+| `Cargo.toml` | Rust |
+| `pom.xml` | Java / Spring Boot |
+
+### 5.4a CLI Access
+
+`dropdeploy-cli` is an npm package (`npm install -g dropdeploy-cli`) that exposes a `dropdeploy` binary.
+
+**Commands:**
+
+| Command | Description |
+|---------|-------------|
+| `dropdeploy auth login` | Interactive login — stores JWT locally |
+| `dropdeploy auth status` | Show current login |
+| `dropdeploy auth logout` | Clear stored credentials |
+| `dropdeploy deploy` | Trigger deploy, auto-match project by git remote, stream live build log |
+| `dropdeploy projects` | List all projects and their latest status |
+| `dropdeploy help` | Command reference |
+
+**Flags for `deploy`:**
+
+| Flag | Description |
+|------|-------------|
+| `--project-id <id\|slug>` | Skip auto-match; deploy to a named project |
+| `--dir <path>` | Use a different local directory |
+
+**CI/CD environment variables (skip interactive login):**
+
+| Variable | Purpose |
+|----------|---------|
+| `DROPDEPLOY_TOKEN` | Bearer JWT (replaces `auth login`) |
+| `DROPDEPLOY_URL` | API base URL |
+| `DROPDEPLOY_EMAIL` | Email (cosmetic, shown in logs) |
+
+**Backend endpoint:** `POST /api/auth/token` — returns the JWT in the response body (instead of a cookie) for CLI consumption.
 
 ### 5.4 Build & Deployment
 

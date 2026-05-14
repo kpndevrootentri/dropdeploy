@@ -34,6 +34,7 @@ graph TD
     B12 --> B13["Block 13: Feature Components"]
     B13 --> B14["Block 14: Pages"]
     B14 --> B15["Block 15: Full Traces"]
+    B15 --> B16["Block 16: CLI Plugin"]
 
     style B1 fill:#e0f2fe
     style B8 fill:#fef3c7
@@ -384,6 +385,26 @@ sequenceDiagram
 
 ---
 
+## Block 16: CLI Plugin
+
+> The `dropdeploy-cli` npm package lives in `plugin/`. It is a self-contained Node.js ESM project — no Next.js dependency — that calls the same REST API the browser uses.
+
+- [ ] **`plugin/src/auth.ts`** -- `login()` calls `POST /api/auth/token` (JWT in body, not cookie). Credentials written atomically to `~/.dropdeploy/credentials.json`. `readCredentials()` / `clearCredentials()` manage the file. `DROPDEPLOY_TOKEN` env var overrides the file for CI use.
+  - **Learn:** CLI credential storage pattern, atomic writes, env var override
+
+- [ ] **`plugin/src/api.ts`** -- `DropDeployApi` class: `listProjects()`, `triggerDeploy()`, `streamLogs()` (SSE via `EventSource`-style fetch), `getDeploymentStatus()`, `detectType()`. All calls use Bearer token from credentials.
+  - **Learn:** Typed API client, SSE streaming with `fetch`, exponential backoff polling
+
+- [ ] **`plugin/src/detector.ts`** -- `getGitInfo(dir)` runs `git remote get-url origin` and `git status --porcelain` to detect remote URL, current branch, and dirty state. `validateLocal()` returns warnings/errors (no remote, no commits, etc.).
+  - **Learn:** Spawning child processes in Node.js, local git inspection
+
+- [ ] **`plugin/src/cli.ts`** -- Entry point. Parses flags with a hand-rolled parser (no external dep). Commands: `auth login/status/logout`, `deploy`, `projects`, `help`. `cmdDeploy()` runs the full 9-step flow: auth check → git info → validate → detect framework → resolve project → trigger deploy → stream logs → poll status → print result.
+  - **Learn:** CLI UX patterns, ANSI colors without deps, progress bar with `\r` overwriting, error diagnosis from log tail
+
+**Checkpoint:** *How does the CLI authenticate? Trace the path from `dropdeploy auth login` to a stored credential and the first `dropdeploy deploy` call.*
+
+---
+
 ## Summary
 
 | Layer | Files | Purpose |
@@ -394,9 +415,10 @@ sequenceDiagram
 | `repositories/` | 5 | Database access (+ showcase, git-provider) |
 | `services/` | 7 | Business logic (auth, project, git, docker, deployment) |
 | `workers/` | 1 | Background job processing |
-| `api routes/` | 18+ | HTTP endpoints (user, admin, analytics, proxy, showcase) |
+| `api routes/` | 19+ | HTTP endpoints (user, admin, analytics, proxy, showcase, CLI token) |
 | `hooks/` | 2 | Client-side state logic |
 | `components/` | 6+ | UI building blocks |
-| `pages/` | 7+ | User-facing routes (+ explore, admin panel, analytics) |
+| `pages/` | 9+ | User-facing routes (+ explore, admin panel, analytics, docs) |
 | `app/` root | 2 | `sitemap.ts`, `robots.ts` for SEO |
-| **Total** | **~65+** | |
+| `plugin/` | 4 | CLI (dropdeploy-cli npm package) |
+| **Total** | **~70+** | |
