@@ -1,0 +1,52 @@
+# DropDeploy
+
+> Instant web deployment platform — paste a GitHub or GitLab repository URL and get a live subdomain URL. DropDeploy clones, containerizes, and hosts your app automatically.
+
+DropDeploy is a self-hosted deployment platform that supports static sites, Node.js, Next.js, and Django applications. Each deployment runs in an isolated Docker container and is routed via Nginx to a unique `<slug>.domain.in` subdomain. Projects can be deployed from the web dashboard, the `dropdeploy-cli` npm package, or directly from Claude Code using the `/deploy` skill.
+
+Two processes run side by side: the Next.js web app (API + UI) and a BullMQ worker that processes build jobs asynchronously.
+
+## Documentation
+
+- [Getting Started](https://app.en3.wtf/docs/getting-started): Create a project, connect a git repository, and trigger your first deployment from the dashboard.
+- [Git Setup](https://app.en3.wtf/docs/git-setup): Connect GitHub and GitLab OAuth apps for private repository access. Tokens are stored encrypted and auto-refreshed for GitLab.
+- [Local Dev](https://app.en3.wtf/docs/local-dev): Run the Next.js dev server and BullMQ worker locally. Covers environment variables, Prisma setup, and Docker requirements.
+- [Next.js](https://app.en3.wtf/docs/frameworks/nextjs): Multi-stage Docker build (builder + runner stages). The config patcher adjusts `next.config.js` for standalone output automatically.
+- [React / Vue / Svelte](https://app.en3.wtf/docs/frameworks/static): Compiled to static files and served via Nginx.
+- [Node.js](https://app.en3.wtf/docs/frameworks/nodejs): `npm install --omit=dev` + `npm start`. Requires a `start` script in `package.json`.
+- [Django](https://app.en3.wtf/docs/frameworks/django): `pip install -r requirements.txt` + `manage.py runserver 0.0.0.0:8000`.
+- [FastAPI / Flask](https://app.en3.wtf/docs/frameworks/fastapi): Python ASGI/WSGI apps with pip-based installs.
+- [CLI Reference](https://app.en3.wtf/docs/local-dev): Install `dropdeploy-cli` (`npm install -g dropdeploy-cli`) and use `dropdeploy deploy` from any git repo.
+- [Claude Code Integration](https://app.en3.wtf/docs/claude-code): Use the `/deploy` Claude Code skill to deploy the current project without leaving your editor.
+
+## API
+
+All authenticated routes require a valid JWT. Browser clients use an httpOnly session cookie. CLI and CI clients send `Authorization: Bearer <token>`.
+
+- `POST /api/auth/register` — Create an account `{ email, password }`. Sets httpOnly cookie on success.
+- `POST /api/auth/login` — Log in `{ email, password }`. Sets httpOnly cookie.
+- `POST /api/auth/token` — CLI login. Same as `/login` but returns JWT in the response body (no cookie). Used by `dropdeploy auth login`.
+- `POST /api/auth/logout` — Clear the session cookie.
+- `GET /api/auth/session` — Validate current session; returns `{ userId, email }`.
+- `GET /api/auth/github/connect` — Start GitHub OAuth flow.
+- `GET /api/auth/gitlab/connect` — Start GitLab OAuth flow.
+- `GET /api/git-providers` — List connected providers (username + avatar).
+- `DELETE /api/git-providers/:provider` — Disconnect a provider.
+- `GET /api/git-providers/:provider/repos?q=&page=` — Search user's repos (Redis-cached).
+- `GET /api/projects` — List all projects for the authenticated user.
+- `POST /api/projects` — Create a project `{ name, githubUrl, type, branch }`. `type` is one of `STATIC | NODEJS | NEXTJS | DJANGO`.
+- `GET /api/projects/:id` — Get project details including latest deployment status.
+- `PATCH /api/projects/:id` — Update project settings.
+- `DELETE /api/projects/:id` — Delete project and its containers.
+- `POST /api/projects/:id/deploy` — Trigger a deployment. Returns `{ deploymentId }`. Build runs asynchronously.
+- `POST /api/projects/:id/terminal` — Execute a command inside the running container `{ command }`. Validated against an allowlist; 30-second timeout.
+- `GET /api/projects/:id/analytics` — 14-day traffic hits, device breakdown (mobile/desktop/bot).
+- `GET /api/projects/:id/showcase` — Get public showcase config.
+- `POST /api/projects/:id/showcase` — Publish or update the project's showcase listing.
+- `GET /api/health` — Health check.
+
+## Optional
+
+- [Explore](https://app.en3.wtf/explore): Public showcase of deployed projects with SEO metadata and JSON-LD structured data.
+- [dropdeploy-cli on npm](https://www.npmjs.com/package/dropdeploy-cli): CLI package — `dropdeploy deploy`, `dropdeploy projects`, `dropdeploy auth login`. Supports `DROPDEPLOY_TOKEN` env var for CI use.
+- [Claude Code /deploy skill](https://app.en3.wtf/deploy.md): Raw markdown file consumed by the Claude Code `/deploy` skill — handles CLI install, auth check, deploy trigger, and result interpretation.
