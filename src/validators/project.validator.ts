@@ -14,6 +14,7 @@ export const updateProjectSchema = z.object({
   description: z.string().max(500).optional().nullable(),
   type: z.enum(['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'GO', 'RUST', 'JAVA']).optional(),
   branch: z.string().max(100).optional(),
+  isPrivate: z.boolean().optional(),
 });
 
 export type CreateProjectDto = z.infer<typeof createProjectSchema>;

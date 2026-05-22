@@ -41,6 +41,7 @@ model Project {
   githubUrl   String?    @map("github_url")
   type        ProjectType
   branch      String     @default("main")
+  isPrivate   Boolean    @default(false) @map("is_private")
 
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -45,6 +45,7 @@ import {
   Activity,
   Zap,
   BookOpen,
+  Lock,
 } from 'lucide-react';
 import { PublishPanel } from '@/components/features/publish-panel';
 
@@ -74,6 +75,7 @@ interface ProjectDetail {
   type: string;
   githubUrl: string | null;
   branch: string;
+  isPrivate: boolean;
   createdAt: string;
   updatedAt: string;
   deployments: Deployment[];
@@ -954,6 +956,10 @@ function SettingsPanel({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  const [isPrivate, setIsPrivate] = useState(project.isPrivate);
+  const [privacySaving, setPrivacySaving] = useState(false);
+  const [privacyError, setPrivacyError] = useState<string | null>(null);
+
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -964,7 +970,8 @@ function SettingsPanel({
     setDescription(project.description ?? '');
     setType(framework);
     setBranch(project.branch ?? 'main');
-  }, [project.id, project.name, project.description, project.branch, framework]);
+    setIsPrivate(project.isPrivate);
+  }, [project.id, project.name, project.description, project.branch, project.isPrivate, framework]);
 
   const hasChanges = name !== project.name || description !== (project.description ?? '') || type !== framework || branch !== (project.branch ?? 'main');
 
@@ -1002,6 +1009,31 @@ function SettingsPanel({
       setSaveError('Something went wrong');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePrivacyToggle = async (next: boolean): Promise<void> => {
+    setPrivacyError(null);
+    setPrivacySaving(true);
+    setIsPrivate(next);
+    try {
+      const res = await fetch(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPrivate: next }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setIsPrivate(!next); // revert on failure
+        setPrivacyError(data?.error?.message ?? 'Failed to update');
+      } else {
+        onUpdated();
+      }
+    } catch {
+      setIsPrivate(!next);
+      setPrivacyError('Something went wrong');
+    } finally {
+      setPrivacySaving(false);
     }
   };
 
@@ -1128,6 +1160,51 @@ function SettingsPanel({
               )}
             </div>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Privacy */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">URL Privacy</CardTitle>
+          <CardDescription>
+            When enabled, only users signed in with an <strong>@entri.me</strong> account can access the deployed URL.
+            Public URLs remain accessible to everyone.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <Lock className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">Private URL</p>
+                <p className="text-xs text-muted-foreground">
+                  {isPrivate ? 'Only @entri.me users can access this URL' : 'Anyone with the link can access this URL'}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isPrivate}
+              disabled={privacySaving}
+              onClick={() => { void handlePrivacyToggle(!isPrivate); }}
+              className={cn(
+                'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+                isPrivate ? 'bg-primary' : 'bg-input'
+              )}
+            >
+              <span
+                className={cn(
+                  'pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform',
+                  isPrivate ? 'translate-x-5' : 'translate-x-0'
+                )}
+              />
+            </button>
+          </div>
+          {privacyError && (
+            <p className="text-sm text-destructive mt-3" role="alert">{privacyError}</p>
+          )}
         </CardContent>
       </Card>
 
@@ -1556,6 +1633,15 @@ function DeploymentsPanel({
 // OverviewPanel
 // ---------------------------------------------------------------------------
 
+function PrivateBadge(): React.ReactElement {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+      <Lock className="h-3 w-3" />
+      Private
+    </span>
+  );
+}
+
 function OverviewPanel({
   project,
   deployError,
@@ -1613,6 +1699,7 @@ function OverviewPanel({
             <span className="text-sm font-medium truncate flex-1" title={deployUrl}>
               {deployUrl}
             </span>
+            {project.isPrivate && <PrivateBadge />}
             <StatusBadge status="DEPLOYED" />
             <div className="flex shrink-0 gap-1">
               <Button

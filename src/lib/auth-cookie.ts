@@ -6,6 +6,19 @@ export const AUTH_COOKIE_NAME = 'auth-token';
 const DEFAULT_MAX_AGE = 7 * 24 * 60 * 60;
 
 /**
+ * Derives the cookie domain from BASE_DOMAIN so the auth cookie is shared
+ * across all {slug}.BASE_DOMAIN subdomains (needed for private URL auth).
+ * Only applied in production — in development the domain is left unset so
+ * the browser accepts the cookie on localhost.
+ */
+function getCookieDomain(): string | undefined {
+  if (process.env.NODE_ENV !== 'production') return undefined;
+  const base = (process.env.BASE_DOMAIN ?? '').split(':')[0]; // strip port
+  if (!base || base === 'localhost') return undefined;
+  return `.${base}`;
+}
+
+/**
  * Reads the JWT from the auth cookie.
  */
 export function getTokenFromCookie(request: NextRequest): string | undefined {
@@ -26,6 +39,7 @@ export function setAuthCookie(
     sameSite: 'lax',
     maxAge: maxAgeSeconds,
     path: '/',
+    domain: getCookieDomain(),
   });
 }
 
@@ -39,6 +53,7 @@ export function clearAuthCookie(response: NextResponse): void {
     sameSite: 'lax',
     maxAge: 0,
     path: '/',
+    domain: getCookieDomain(),
   });
 }
 

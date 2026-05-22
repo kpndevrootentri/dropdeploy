@@ -20,6 +20,7 @@ export interface UpdateProjectDto {
   description?: string | null;
   type?: ProjectType;
   branch?: string;
+  isPrivate?: boolean;
 }
 
 export interface ProjectWithLatestDeployment {

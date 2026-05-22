@@ -125,7 +125,7 @@ export const config = {
   matcher: [
     /*
      * Run on ALL paths. We cannot exclude _next/static or _next/image here
-     * because subdomain requests (e.g. nextjs.app.ayile.in/_next/static/...)
+     * because subdomain requests (e.g. nextjs.app.en3.wtf/_next/static/...)
      * must be rewritten to the container — skipping them would cause the
      * platform's own static files to be served instead of the deployed app's.
      *
