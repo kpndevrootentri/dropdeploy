@@ -13,6 +13,7 @@ export interface CreateProjectDto {
   githubUrl: string;
   type?: ProjectType;
   branch?: string;
+  useStaticHosting?: boolean;
 }
 
 export interface UpdateProjectDto {
@@ -21,6 +22,7 @@ export interface UpdateProjectDto {
   type?: ProjectType;
   branch?: string;
   isPrivate?: boolean;
+  useStaticHosting?: boolean;
 }
 
 export interface ProjectWithLatestDeployment {

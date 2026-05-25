@@ -141,7 +141,7 @@ dropDeploy/
 │   │   │   ├── analytics/
 │   │   │   │   └── event/route.ts     # POST — fire-and-forget platform event
 │   │   │   ├── proxy/
-│   │   │   │   └── [slug]/[[...path]]/route.ts  # Reverse proxy + ProxyHit recording
+│   │   │   │   └── [slug]/[[...path]]/route.ts  # Reverse proxy: serves static files from disk (STATIC_FILES) or forwards to container (CONTAINER) + ProxyHit recording
 │   │   │   ├── admin/
 │   │   │   │   ├── users/             # CRUD + role + password reset (contributor only)
 │   │   │   │   ├── projects/          # Admin project management (contributor only)
@@ -174,7 +174,7 @@ dropDeploy/
 │   ├── lib/                           # Shared utilities & infra clients
 │   │   ├── api-error.ts               # Centralized error → HTTP response
 │   │   ├── auth-cookie.ts             # httpOnly cookie management
-│   │   ├── config.ts                  # Zod-validated env (PROJECTS_DIR, DOCKER_DATA_DIR, ...)
+│   │   ├── config.ts                  # Zod-validated env (PROJECTS_DIR, DOCKER_DATA_DIR, STATIC_SERVE_DIR, ...)
 │   │   ├── errors.ts                  # AppError hierarchy
 │   │   ├── get-session.ts             # JWT → { userId } extraction
 │   │   ├── local-ip.ts               # WebRTC-based local IP detection
@@ -188,7 +188,7 @@ dropDeploy/
 │   │   ├── project.repository.ts      # IProjectRepository + slug uniqueness
 │   │   ├── deployment.repository.ts   # IDeploymentRepository + subdomain transfer
 │   │   ├── git-provider.repository.ts # IGitProviderRepository — findByUserAndProvider, upsert, delete
-│   │   ├── showcase.repository.ts     # IShowcaseRepository — findBySlug, upsert, incrementViewCount
+│   │   ├── showcase.repository.ts     # IShowcaseRepository — findBySlug, upsert, incrementViewCount; exposes user.handle (email prefix), never user.email
 │   │   └── index.ts
 │   │
 │   ├── services/                      # Business logic
@@ -257,6 +257,7 @@ dropDeploy/
 | **Error handling** | Custom `AppError` hierarchy (`lib/errors.ts`) caught by `handleApiError()` (`lib/api-error.ts`) |
 | **DB access** | Only through repositories — no Prisma imports in API routes or components |
 | **Queue** | `IDeploymentQueue` interface in `lib/queue.ts`; BullMQ implementation behind it |
+| **Static hosting** | STATIC / REACT / VUE / SVELTE types use `servingMethod: STATIC_FILES` — files extracted to `STATIC_SERVE_DIR/<slug>/` after build; no persistent container. Dynamic types use `servingMethod: CONTAINER`. |
 | **Auth** | JWT (HS256 via `jose`) stored in httpOnly `auth-token` cookie |
 | **Session** | `getSession(req)` extracts `{ userId }` from JWT; every protected route calls it |
 | **Config** | Centralized Zod-validated env in `lib/config.ts` via `getConfig()` |

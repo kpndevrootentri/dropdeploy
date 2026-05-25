@@ -32,8 +32,14 @@ export function ThemeToggle({
 
   if (!mounted) {
     return (
-      <Button variant={variant} size={size} className={cn(className)} disabled aria-hidden>
-        <Sun className="h-4 w-4" />
+      <Button
+        variant={variant}
+        size={size}
+        className={cn('pointer-events-none select-none', className)}
+        tabIndex={-1}
+        aria-hidden="true"
+      >
+        <Sun className="h-4 w-4 opacity-0" />
       </Button>
     );
   }

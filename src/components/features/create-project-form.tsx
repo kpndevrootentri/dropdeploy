@@ -15,6 +15,7 @@ type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FAST
 type SourceType = 'GITHUB' | 'GITLAB';
 
 const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'GO', 'RUST', 'JAVA'];
+const STATIC_ELIGIBLE_TYPES = ['STATIC', 'REACT', 'VUE', 'SVELTE'] as const;
 
 interface ProviderInfo {
   provider: SourceType;
@@ -52,6 +53,7 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
   const [description, setDescription] = useState('');
   const [showDescription, setShowDescription] = useState(false);
   const [type, setType] = useState<FrameworkType>('STATIC');
+  const [useStaticHosting, setUseStaticHosting] = useState(true); // default ON for STATIC
   const [repoUrl, setRepoUrl] = useState('');
   const [selectedRepoName, setSelectedRepoName] = useState('');
   const [branch, setBranch] = useState('main');
@@ -143,6 +145,7 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
       if (result && result.confidence !== 'low') {
         setDetectedType(result.type);
         setType(result.type);
+        setUseStaticHosting((STATIC_ELIGIBLE_TYPES as readonly string[]).includes(result.type));
       }
     } catch { /* non-fatal */ }
     finally { setDetecting(false); }
@@ -187,6 +190,7 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
           type,
           githubUrl: repoUrl.trim(),
           branch: branch.trim() || 'main',
+          useStaticHosting: (STATIC_ELIGIBLE_TYPES as readonly string[]).includes(type) ? useStaticHosting : undefined,
         }),
       });
       const data = await res.json();
@@ -360,7 +364,11 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
               <button
                 key={key}
                 type="button"
-                onClick={() => { setType(key); setDetectedType(null); }}
+                onClick={() => {
+                  setType(key);
+                  setDetectedType(null);
+                  setUseStaticHosting((STATIC_ELIGIBLE_TYPES as readonly string[]).includes(key));
+                }}
                 className={cn(
                   'flex shrink-0 flex-col items-center gap-2 rounded-xl border-2 px-3.5 py-3 transition-all',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
@@ -388,6 +396,30 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
           })}
         </div>
       </section>
+
+      {/* ── Step 4: Hosting (static-eligible types only) ── */}
+      {(STATIC_ELIGIBLE_TYPES as readonly string[]).includes(type) && (
+        <section className="space-y-3">
+          <StepHeading n={4} label="Hosting" />
+          <div className="flex items-center justify-between rounded-lg border p-4 opacity-90">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">Static hosting</p>
+              <p className="text-xs text-muted-foreground">
+                Optimized for this framework. Always enabled.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={true}
+              disabled
+              className="relative inline-flex h-6 w-11 shrink-0 cursor-not-allowed rounded-full border-2 border-transparent bg-primary opacity-70 transition-colors"
+            >
+              <span className="pointer-events-none block h-5 w-5 translate-x-5 rounded-full bg-background shadow-lg ring-0 transition-transform" />
+            </button>
+          </div>
+        </section>
+      )}
 
       {error && (
         <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">

@@ -42,6 +42,7 @@ model Project {
   type        ProjectType
   branch      String     @default("main")
   isPrivate   Boolean    @default(false) @map("is_private")
+  useStaticHosting Boolean @default(false) @map("use_static_hosting")
 
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -80,6 +81,11 @@ model ProjectShowcase {
   @@map("project_showcases")
 }
 
+enum ServingMethod {
+  CONTAINER
+  STATIC_FILES
+}
+
 model Deployment {
   id            String           @id @default(cuid())
   status        DeploymentStatus @default(QUEUED)
@@ -88,6 +94,7 @@ model Deployment {
   buildStep     String?          @map("build_step")
   buildLog      String?          @map("build_log") @db.Text
   commitHash    String?          @map("commit_hash")
+  servingMethod ServingMethod    @default(CONTAINER) @map("serving_method")
   startedAt     DateTime?        @map("started_at")
   completedAt   DateTime?        @map("completed_at")
 

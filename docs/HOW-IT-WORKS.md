@@ -106,8 +106,9 @@ erDiagram
         string slug UK "used as subdomain"
         string githubUrl
         enum source "GITHUB | GITLAB"
-        enum type "STATIC | NODEJS | NEXTJS | DJANGO"
+        enum type "STATIC | NODEJS | NEXTJS | DJANGO | REACT | VUE | SVELTE | ..."
         string branch "default: main"
+        boolean useStaticHosting "default: false — user preference for static types"
         string userId FK
     }
 
@@ -115,7 +116,8 @@ erDiagram
         string id PK "cuid"
         enum status "QUEUED | BUILDING | DEPLOYED | FAILED"
         string buildStep "CLONING | BUILDING_IMAGE | STARTING"
-        int containerPort "host port 8000-9999"
+        int containerPort "host port 4000-9999 (null for static)"
+        enum servingMethod "CONTAINER | STATIC_FILES — default: CONTAINER"
         string subdomain UK
         text buildLog
         string commitHash
@@ -248,7 +250,7 @@ The page is indexed by search engines via the dynamic `/sitemap.xml` (Next.js `s
 
 ## 5. Deployment Pipeline
 
-This is the core of DropDeploy. When a user clicks **"Deploy"**, the following 9-step pipeline executes:
+This is the core of DropDeploy. When a user clicks **"Deploy"**, the following pipeline executes. Static types (STATIC, REACT, VUE, SVELTE) follow a different path after the Docker build — files are extracted to disk and the container is destroyed. Dynamic types (NODEJS, NEXTJS, DJANGO, FASTAPI, FLASK, GO, RUST, JAVA) run a persistent container as before.
 
 ```mermaid
 flowchart TB
@@ -266,15 +268,21 @@ flowchart TB
         S3 --> S4["Step 4: Clone or update repo"]
         S4 --> S5["Step 5: Select Dockerfile template"]
         S5 --> S6["Step 6: Build Docker image"]
-        S6 --> S7["Step 7: Run container"]
-        S7 --> S8["Step 8: Finalize deployment"]
+        S6 --> BRANCH{Static type?}
+        BRANCH -->|Yes| S7A["Step 7A: Extract /usr/share/nginx/html to STATIC_SERVE_DIR/slug/"]
+        S7A --> S7B["Destroy container + image"]
+        S7B --> S8A["Finalize: servingMethod=STATIC_FILES"]
+        BRANCH -->|No| S7["Step 7: Run container (persistent)"]
+        S7 --> S8["Finalize: servingMethod=CONTAINER"]
     end
 
-    S8 --> S9["Step 9: Nginx routes traffic to container"]
+    S8A --> LIVE_S["Served by in-app proxy from disk"]
+    S8 --> S9["Nginx routes traffic to container"]
     S9 --> LIVE["Live at my-app.domain.in"]
 
     style T fill:#e0f2fe
     style LIVE fill:#dcfce7
+    style LIVE_S fill:#dcfce7
 ```
 
 ### Step 1: Trigger deploy
@@ -338,14 +346,19 @@ flowchart TD
 
 **File:** `src/services/docker/dockerfile.templates.ts`
 
-Updates `buildStep` to `BUILDING_IMAGE`. Based on `project.type`, one of four templates is used:
+Updates `buildStep` to `BUILDING_IMAGE`. Based on `project.type`, one of the following templates is used:
 
 | Type | Base Image | Internal Port | Strategy |
 |------|-----------|--------------|----------|
-| **STATIC** | `nginx:alpine` | 80 | Copy files into Nginx html directory |
-| **NODEJS** | `node:18-alpine` | 3000 | `npm install --omit=dev` + `npm start` |
-| **NEXTJS** | `node:18-alpine` | 3000 | Multi-stage build (builder + runner) |
-| **DJANGO** | `python:3.12-slim` | 8000 | `pip install -r requirements.txt` + `manage.py runserver` |
+| **STATIC** | `nginx:alpine` | 80 | Copy files into Nginx html dir; container destroyed after extraction |
+| **REACT** | `node:18-alpine` | — | Vite/CRA build + Nginx static serving; container destroyed after extraction |
+| **VUE** | `node:18-alpine` | — | Vite build + Nginx static serving; container destroyed after extraction |
+| **SVELTE** | `node:18-alpine` | — | Vite/SvelteKit build + Nginx; container destroyed after extraction |
+| **NODEJS** | `node:18-alpine` | 3000 | `npm install --omit=dev` + `npm start` (persistent container) |
+| **NEXTJS** | `node:18-alpine` | 3000 | Multi-stage build (builder + runner) (persistent container) |
+| **DJANGO** | `python:3.12-slim` | 8000 | `pip install -r requirements.txt` + `manage.py runserver` (persistent container) |
+| **FASTAPI** | `python:3.12-slim` | 8000 | `pip install -r requirements.txt` + `uvicorn` (persistent container) |
+| **FLASK** | `python:3.12-slim` | 8000 | `pip install -r requirements.txt` + `flask run` (persistent container) |
 
 > **Note:** `nextjs-config-patcher.ts` adjusts Next.js config for standalone output when needed.
 
@@ -358,14 +371,27 @@ Updates `buildStep` to `BUILDING_IMAGE`. Based on `project.type`, one of four te
 3. Follows the build stream and checks for errors in each output chunk.
 4. Verifies the image exists via `docker.getImage(tag).inspect()`.
 
-### Step 7: Run container
+### Step 7A: Static file extraction (STATIC / REACT / VUE / SVELTE only)
+
+**File:** `src/services/deployment/deployment.service.ts` -- `buildAndDeploy()`
+
+For projects with `servingMethod: STATIC_FILES`:
+
+1. Creates a throwaway container from the built image.
+2. Uses `tar-stream` to extract `/usr/share/nginx/html` from the container into `STATIC_SERVE_DIR/<slug>/` on the host.
+3. Immediately stops and removes the container.
+4. Removes the Docker image (`dropdeploy/<slug>:latest`).
+
+No container remains running. RAM usage drops from ~128 MB to ~0 MB per static project. There is no port assignment.
+
+### Step 7: Run container (NODEJS / NEXTJS / DJANGO / FASTAPI / FLASK / GO / RUST / JAVA)
 
 **File:** `src/services/docker/docker.service.ts` -- `runContainer()`
 
 Updates `buildStep` to `STARTING`.
 
 1. Selects the internal container port based on project type (80 / 3000 / 8000).
-2. Picks a random **host port** in range **8000--9999**.
+2. Picks a random **host port** in range **4000--9999** (6,000-slot pool).
 3. Creates the container with resource limits:
    - **Memory:** 512 MB hard limit
    - **CPU:** 1024 shares (default weight)
@@ -374,28 +400,36 @@ Updates `buildStep` to `STARTING`.
 
 ### Step 8: Finalize deployment
 
-Back in `buildAndDeploy()`:
+Back in `buildAndDeploy()`, which now returns `{ slug, servingMethod, containerPort, commitHash, projectType }`:
 
 1. Clears stale subdomains (previous deployment's subdomain set to `null` due to unique constraint).
 2. Updates the deployment record:
    - `status: DEPLOYED`
-   - `containerPort: <assigned port>`
+   - `servingMethod: CONTAINER | STATIC_FILES`
+   - `containerPort: <assigned port>` (null for static)
    - `subdomain: <project-slug>`
    - `completedAt: <timestamp>`
    - `buildStep: null` (cleared)
+3. Worker logs serving method, type, and commit hash on completion.
 
 ### Step 9: Traffic routing
 
 ```mermaid
 graph LR
     U["User Browser"] -->|"my-app.domain.in"| NG["Nginx Reverse Proxy"]
-    NG -->|"localhost:8472"| C["Docker Container"]
+    NG -->|"/api/proxy/slug/..."| PROXY["In-App Proxy Route"]
+    PROXY -->|"servingMethod=STATIC_FILES"| FS["Disk: STATIC_SERVE_DIR/slug/"]
+    PROXY -->|"servingMethod=CONTAINER"| C["Docker Container (localhost:PORT)"]
 
     style U fill:#e0f2fe
+    style FS fill:#dcfce7
     style C fill:#dcfce7
 ```
 
-Nginx routes wildcard subdomain traffic to the correct container port. The app is accessible at `https://<slug>.domain.in`.
+All subdomain traffic is routed through the in-app proxy at `/api/proxy/[slug]/[[...path]]`. The proxy checks `deployment.servingMethod`:
+
+- **`STATIC_FILES`:** Reads files directly from `STATIC_SERVE_DIR/<slug>/` on disk. Serves correct MIME types, sets `Cache-Control: immutable` for hashed assets and `no-cache` for HTML. Unknown paths fall back to `index.html` (SPA support). Response is instant — no container boot.
+- **`CONTAINER`:** Forwards the request to the container's host port on `localhost`.
 
 For local development, the UI also shows a **local network URL** (e.g., `http://192.168.1.x:8472`) so other devices on the same network can access the deployed app.
 
@@ -467,6 +501,8 @@ sequenceDiagram
 ### Safety
 
 - Commands validated against an **allowlist** (ls, cat, pwd, echo, env, npm, node, python, curl, etc.).
+- User commands are parsed into argv arrays and executed directly (no shell). Metacharacters (`;`, `|`, `&`, `` ` ``) are blocked to prevent command injection.
+- Slash commands that require shell pipes (e.g., `env | sort`) are server-controlled and run via `/bin/sh -c` — not user input.
 - **30-second timeout** per command.
 - Docker's multiplexed stdout/stderr stream is properly demuxed.
 
@@ -702,6 +738,7 @@ npm run worker         # Terminal 2: BullMQ deployment worker
 | `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | Frontend URL |
 | `PROJECTS_DIR` | `~/.dropdeploy/projects` | Cloned repo storage (default) |
 | `DOCKER_DATA_DIR` | `~/.dropdeploy/docker` | Docker data storage (default) |
+| `STATIC_SERVE_DIR` | `~/.dropdeploy/static-sites` | Extracted static site files served by the in-app proxy (default) |
 | `APP_URL` | `https://yourdomain.com` | Base URL for OAuth callback URIs |
 | `GITHUB_CLIENT_ID` | `Ov23li...` | GitHub OAuth App client ID (optional) |
 | `GITHUB_CLIENT_SECRET` | `...` | GitHub OAuth App client secret (optional) |

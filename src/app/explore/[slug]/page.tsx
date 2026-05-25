@@ -60,7 +60,7 @@ export default async function ExploreToolPage({ params }: PageProps) {
   const fw = showcase.project.type as keyof typeof FRAMEWORK_CONFIG;
   const config = FRAMEWORK_CONFIG[fw] ?? FRAMEWORK_CONFIG.STATIC;
   const { Logo } = config;
-  const ownerHandle = showcase.project.user.email.split('@')[0];
+  const ownerHandle = showcase.project.user.handle;
 
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
   const jsonLd = {

@@ -63,6 +63,7 @@ export class ProjectRepository implements IProjectRepository {
         githubUrl: data.githubUrl,
         type: data.type ?? 'STATIC',
         branch: data.branch ?? 'main',
+        useStaticHosting: data.useStaticHosting ?? false,
       },
     });
   }

@@ -153,6 +153,9 @@ graph LR
 - [ ] **`src/repositories/deployment.repository.ts`** -- `clearSubdomain()` nullifies old subdomain before assigning to new deployment. `updateStatus()` with partial field updates.
   - **Learn:** Subdomain transfer logic, partial updates
 
+- [ ] **`src/repositories/showcase.repository.ts`** -- `ShowcaseWithProject` type exposes `user.handle` (derived as `email.split('@')[0]`), not `user.email`. The email never leaves this layer.
+  - **Learn:** PII isolation at the repository boundary
+
 **Checkpoint:** *Why does `clearSubdomain()` exist? What would break without it?*
 
 ---
@@ -202,7 +205,7 @@ graph LR
 - [ ] **`src/services/docker/nextjs-config-patcher.ts`** -- Detects ESM vs CJS `next.config` and patches it. Disables eslint/typescript errors during build.
   - **Learn:** Config file patching, ESM/CJS detection
 
-- [ ] **`src/services/docker/docker.service.ts`** -- `buildImage()`: write Dockerfile → build via dockerode → follow stream → verify image. `runContainer()`: pick random host port (8000-9999) → create container with memory/CPU limits → start. `stopAndRemoveContainer()`: cleanup.
+- [ ] **`src/services/docker/docker.service.ts`** -- `buildImage()`: write Dockerfile → build via dockerode → follow stream → verify image. `runContainer()`: pick random host port (4000-9999) → create container with memory/CPU limits → start. `stopAndRemoveContainer()`: cleanup.
   - **Learn:** dockerode API, image building, container lifecycle, resource limits
 
 - [ ] **`src/services/docker/docker-terminal.service.ts`** -- `executeCommand()`: validate against allowlist → Docker exec → demux stdout/stderr. `executeSlashCommand()`: routes `/show-logs`, `/env`, `/files`, `/help`. Docker stream demultiplexing (8-byte header protocol).
@@ -220,27 +223,31 @@ graph LR
 
   **`createDeployment()`:** Verify ownership → create DB record (QUEUED) → enqueue BullMQ job → graceful fallback if Redis is down.
 
-  **`buildAndDeploy()`:** The full pipeline:
+  **`buildAndDeploy()`:** The full pipeline. Returns `{ slug, servingMethod, containerPort, commitHash, projectType }`.
 
   ```mermaid
   flowchart LR
       A[BUILDING] --> B[CLONING]
       B --> C[BUILDING_IMAGE]
-      C --> D[STARTING]
-      D --> E[DEPLOYED]
-      B -.-> F[FAILED]
-      C -.-> F
-      D -.-> F
+      C --> D{Static type?}
+      D -->|Yes| E[Extract files to STATIC_SERVE_DIR]
+      D -->|No| F[STARTING]
+      E --> G[DEPLOYED, servingMethod=STATIC_FILES]
+      F --> G2[DEPLOYED, servingMethod=CONTAINER]
+      B -.-> H[FAILED]
+      C -.-> H
+      F -.-> H
   ```
 
   1. Set status `BUILDING` + `startedAt`
   2. buildStep `CLONING` → `gitService.ensureRepo()`
   3. buildStep `BUILDING_IMAGE` → `dockerService.buildImage()`
-  4. buildStep `STARTING` → `dockerService.runContainer()`
-  5. Clear old subdomain → set `DEPLOYED` + `completedAt`
+  4. **Static types:** extract `/usr/share/nginx/html` to `STATIC_SERVE_DIR/<slug>/` via tar-stream, destroy container + image, set `servingMethod: STATIC_FILES`
+  5. **Dynamic types:** buildStep `STARTING` → `dockerService.runContainer()`, set `servingMethod: CONTAINER`
+  6. Clear old subdomain → set `DEPLOYED` + `completedAt`
 
   On failure: set `FAILED` + log error + `completedAt`
-  - **Learn:** Orchestration pattern, state machine transitions, error recovery
+  - **Learn:** Orchestration pattern, state machine transitions, static vs container branching, error recovery
 
 **Checkpoint:** *What happens if Docker build fails at step 3? What state is the deployment in?*
 

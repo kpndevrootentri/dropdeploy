@@ -76,6 +76,7 @@ interface ProjectDetail {
   githubUrl: string | null;
   branch: string;
   isPrivate: boolean;
+  useStaticHosting: boolean;
   createdAt: string;
   updatedAt: string;
   deployments: Deployment[];
@@ -104,6 +105,7 @@ interface AnalyticsData {
 
 const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE'];
 const POLL_INTERVAL_MS = 2500;
+const STATIC_ELIGIBLE_TYPES = ['STATIC', 'REACT', 'VUE', 'SVELTE'] as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -383,12 +385,15 @@ function DeploymentRow({
   const isInProgress = deployment.status === 'QUEUED' || deployment.status === 'BUILDING';
   const isFinished = deployment.status === 'DEPLOYED' || deployment.status === 'FAILED';
   const isFailed = deployment.status === 'FAILED';
+  const canCancel = deployment.status === 'QUEUED';
   const canRedeploy = deployment.status === 'DEPLOYED' || deployment.status === 'CANCELLED';
 
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
   const [redeploying, setRedeploying] = useState(false);
   const [redeployError, setRedeployError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const buildDuration =
     isFinished && deployment.startedAt && deployment.completedAt
@@ -413,6 +418,27 @@ function DeploymentRow({
       setRetryError('Something went wrong');
     } finally {
       setRetrying(false);
+    }
+  };
+
+  const handleCancel = async (): Promise<void> => {
+    setCancelError(null);
+    setCancelling(true);
+    try {
+      const res = await fetch(
+        `/api/projects/${projectId}/deployments/${deployment.id}/cancel`,
+        { method: 'POST' }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setCancelError(data?.error?.message ?? 'Cancel failed');
+      } else {
+        onRetried();
+      }
+    } catch {
+      setCancelError('Something went wrong');
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -475,6 +501,9 @@ function DeploymentRow({
           {isInProgress && deployment.status === 'BUILDING' && (
             <BuildProgress currentStep={deployment.buildStep} />
           )}
+          {cancelError && (
+            <p className="text-xs text-destructive mt-1">{cancelError}</p>
+          )}
           {retryError && (
             <p className="text-xs text-destructive mt-1">{retryError}</p>
           )}
@@ -482,6 +511,21 @@ function DeploymentRow({
             <p className="text-xs text-destructive mt-1">{redeployError}</p>
           )}
         </div>
+        {canCancel && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 h-7 px-2 text-xs text-destructive border-destructive/40 hover:bg-destructive/10"
+            onClick={() => { void handleCancel(); }}
+            disabled={cancelling}
+          >
+            {cancelling ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              'Cancel'
+            )}
+          </Button>
+        )}
         {isFailed && (
           <Button
             variant="outline"
@@ -960,6 +1004,8 @@ function SettingsPanel({
   const [privacySaving, setPrivacySaving] = useState(false);
   const [privacyError, setPrivacyError] = useState<string | null>(null);
 
+  const [useStaticHosting] = useState(project.useStaticHosting);
+
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -973,6 +1019,7 @@ function SettingsPanel({
     setIsPrivate(project.isPrivate);
   }, [project.id, project.name, project.description, project.branch, project.isPrivate, framework]);
 
+  const isStaticEligible = (STATIC_ELIGIBLE_TYPES as readonly string[]).includes(type);
   const hasChanges = name !== project.name || description !== (project.description ?? '') || type !== framework || branch !== (project.branch ?? 'main');
 
   const handleSave = async (e: React.FormEvent): Promise<void> => {
@@ -995,6 +1042,7 @@ function SettingsPanel({
           description: description.trim() || null,
           type,
           branch: branch.trim() || 'main',
+          useStaticHosting: (STATIC_ELIGIBLE_TYPES as readonly string[]).includes(type) ? useStaticHosting : undefined,
         }),
       });
       const data = await res.json();
@@ -1134,6 +1182,26 @@ function SettingsPanel({
                 })}
               </div>
             </div>
+
+            {isStaticEligible && (
+              <div className="flex items-center justify-between rounded-lg border p-4 opacity-90">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium">Static hosting</p>
+                  <p className="text-xs text-muted-foreground">
+                    Optimized for this framework. Always enabled.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={true}
+                  disabled
+                  className="relative inline-flex h-6 w-11 shrink-0 cursor-not-allowed rounded-full border-2 border-transparent bg-primary opacity-70 transition-colors"
+                >
+                  <span className="pointer-events-none block h-5 w-5 translate-x-5 rounded-full bg-background shadow-lg ring-0 transition-transform" />
+                </button>
+              </div>
+            )}
 
             {saveError && (
               <p className="text-sm text-destructive" role="alert">{saveError}</p>

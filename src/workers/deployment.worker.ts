@@ -32,11 +32,19 @@ async function processJob(job: Job<DeploymentJob>): Promise<void> {
   });
 
   try {
-    await Promise.race([
+    const result = await Promise.race([
       deploymentService.buildAndDeploy(deploymentId),
       timeoutPromise,
     ]);
-    log.info('Deployment completed', { deploymentId });
+    if (result) {
+      const details =
+        result.servingMethod === 'STATIC_FILES'
+          ? { slug: result.slug, type: result.projectType, serving: 'static-files', commit: result.commitHash }
+          : { slug: result.slug, type: result.projectType, serving: 'container', port: result.containerPort, commit: result.commitHash };
+      log.info('Deployment completed', { deploymentId, ...details });
+    } else {
+      log.info('Deployment completed (no-op)', { deploymentId });
+    }
   } catch (error) {
     log.error('Deployment failed', { deploymentId, error: error instanceof Error ? error.message : String(error) });
     throw error;

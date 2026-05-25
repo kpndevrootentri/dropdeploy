@@ -116,7 +116,7 @@ export function ExploreGrid({ initialItems, initialTotal, tag, q }: ExploreGridP
           const fw = item.project.type as keyof typeof FRAMEWORK_CONFIG;
           const config = FRAMEWORK_CONFIG[fw] ?? FRAMEWORK_CONFIG.STATIC;
           const { Logo } = config;
-          const ownerHandle = item.project.user.email.split('@')[0];
+          const ownerHandle = item.project.user.handle;
 
           return (
             <Link

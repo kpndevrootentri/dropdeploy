@@ -186,6 +186,7 @@ DOCKER_SOCKET="/var/run/docker.sock"
 # Storage — use absolute paths in production
 PROJECTS_DIR="/home/ubuntu/.dropdeploy/projects"
 DOCKER_DATA_DIR="/home/ubuntu/.dropdeploy/docker"
+STATIC_SERVE_DIR="/home/ubuntu/.dropdeploy/static-sites"
 
 # App URL — use your actual domain
 NEXT_PUBLIC_APP_URL="https://app.yourdomain.com"
@@ -214,8 +215,9 @@ LOG_LEVEL="info"
 Create storage directories:
 
 ```bash
-mkdir -p /home/ubuntu/.dropdeploy /projects
+mkdir -p /home/ubuntu/.dropdeploy/projects
 mkdir -p /home/ubuntu/.dropdeploy/docker
+mkdir -p /home/ubuntu/.dropdeploy/static-sites
 ```
 
 ---
@@ -468,21 +470,23 @@ pm2 logs --lines 50
 
 ## Step 13b — Supported Project Types
 
-DropDeploy auto-selects a Dockerfile template based on the `type` set on the project:
+DropDeploy auto-selects a Dockerfile template based on the `type` set on the project. Static types (STATIC, REACT, VUE, SVELTE) extract built files to disk after the Docker build and run no persistent container. Dynamic types run a persistent container on a random host port in the 4000–9999 range.
 
-| Type | Base Image | Internal Port | Notes |
-|------|-----------|--------------|-------|
-| `STATIC` | `nginx:alpine` | 80 | Serves static files via Nginx |
-| `NODEJS` | `node:18-alpine` | 3000 | `npm install --omit=dev` + `npm start` |
-| `REACT` | `node:18-alpine` | 3000 | Vite/CRA build + Nginx static serving |
-| `NEXTJS` | `node:18-alpine` | 3000 | Multi-stage build (builder + runner) |
-| `VUE` | `node:18-alpine` | 3000 | Vite build + Nginx static serving |
-| `SVELTE` | `node:18-alpine` | 3000 | Vite/SvelteKit build |
-| `DJANGO` | `python:3.12-slim` | 8000 | `pip install -r requirements.txt` + `manage.py runserver` |
-| `FASTAPI` | `python:3.12-slim` | 8000 | `pip install -r requirements.txt` + `uvicorn` |
-| `FLASK` | `python:3.12-slim` | 8000 | `pip install -r requirements.txt` + `flask run` |
+| Type | Base Image | Serving | Notes |
+|------|-----------|---------|-------|
+| `STATIC` | `nginx:alpine` | Static files on disk | Extracted to `STATIC_SERVE_DIR/<slug>/`; container destroyed |
+| `REACT` | `node:18-alpine` | Static files on disk | Vite/CRA build; extracted to `STATIC_SERVE_DIR/<slug>/`; container destroyed |
+| `VUE` | `node:18-alpine` | Static files on disk | Vite build; extracted to `STATIC_SERVE_DIR/<slug>/`; container destroyed |
+| `SVELTE` | `node:18-alpine` | Static files on disk | Vite/SvelteKit build; extracted to `STATIC_SERVE_DIR/<slug>/`; container destroyed |
+| `NODEJS` | `node:18-alpine` | Container (port 4000–9999) | `npm install --omit=dev` + `npm start` |
+| `NEXTJS` | `node:18-alpine` | Container (port 4000–9999) | Multi-stage build (builder + runner) |
+| `DJANGO` | `python:3.12-slim` | Container (port 4000–9999) | `pip install -r requirements.txt` + `manage.py runserver` |
+| `FASTAPI` | `python:3.12-slim` | Container (port 4000–9999) | `pip install -r requirements.txt` + `uvicorn` |
+| `FLASK` | `python:3.12-slim` | Container (port 4000–9999) | `pip install -r requirements.txt` + `flask run` |
 
 No additional configuration is needed on the server — templates are built into the application.
+
+> **Static sites** require `STATIC_SERVE_DIR` to be set (or use the default `~/.dropdeploy/static-sites`). Ensure the directory is readable by the app process. Add it to `.env` alongside `PROJECTS_DIR`.
 
 ---
 
@@ -627,9 +631,7 @@ pm2 set pm2-logrotate:retain 7
 ```
 VPS
 ├── Nginx (80/443)
-│   ├── app.yourdomain.com       → 127.0.0.1:3000
-│   ├── proj-a.yourdomain.com    → 127.0.0.1:8042
-│   └── proj-b.yourdomain.com    → 127.0.0.1:8107
+│   └── app.yourdomain.com  → 127.0.0.1:3000  (all traffic, including subdomains via in-app proxy)
 │
 ├── PM2
 │   ├── dropdeploy-app    (Next.js,  port 3000)
@@ -637,10 +639,15 @@ VPS
 │
 ├── PostgreSQL  (localhost:5432)
 ├── Redis       (localhost:6379)
-└── Docker Engine (/var/run/docker.sock)
-    ├── container: proj-a  → host port 8042
-    └── container: proj-b  → host port 8107
+├── Docker Engine (/var/run/docker.sock)
+│   ├── container: nodejs-proj  → host port 4042  (dynamic types only)
+│   └── container: nextjs-proj  → host port 4107  (dynamic types only)
+└── ~/.dropdeploy/static-sites/
+    ├── react-proj/   (STATIC_FILES — served directly from disk)
+    └── vue-proj/     (STATIC_FILES — served directly from disk)
 ```
+
+In-app proxy (`/api/proxy/[slug]/[[...path]]`) routes requests: static types are served from `~/.dropdeploy/static-sites/<slug>/`; dynamic types are forwarded to `localhost:<containerPort>`.
 
 ---
 

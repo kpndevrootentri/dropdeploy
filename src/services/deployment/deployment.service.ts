@@ -18,6 +18,8 @@ import type { Deployment } from '@prisma/client';
 
 const log = createLogger('deployment-service');
 
+const ALWAYS_STATIC_TYPES = new Set(['STATIC', 'REACT', 'VUE', 'SVELTE']);
+
 export class DeploymentService {
   constructor (
     private readonly deploymentRepo: IDeploymentRepository,
@@ -219,19 +221,26 @@ export class DeploymentService {
   }
 
   /**
-   * Process job: clone/pull repo, build image, run container. Called by worker.
-   * Uses clone-once strategy: first deploy clones, subsequent deploys pull latest.
+   * Process job: clone/pull repo, build image, run container or extract static files.
+   * Called by worker. Uses clone-once strategy: first deploy clones, subsequent deploys pull latest.
+   * Returns a summary of the completed deployment for the worker to log.
    */
-  async buildAndDeploy(deploymentId: string): Promise<void> {
+  async buildAndDeploy(deploymentId: string): Promise<{
+    slug: string;
+    servingMethod: 'STATIC_FILES' | 'CONTAINER';
+    containerPort: number | null;
+    commitHash: string;
+    projectType: string;
+  } | null> {
     const deployment = await this.deploymentRepo.findByIdWithProject(deploymentId);
     if (!deployment) {
       log.warn('Deployment not found (stale or deleted job)', { deploymentId });
-      return;
+      return null;
     }
     const { project } = deployment;
     if (!project.githubUrl) {
       await this.deploymentRepo.update(deploymentId, { status: 'FAILED' });
-      return;
+      return null;
     }
 
     const startedAt = new Date();
@@ -347,39 +356,72 @@ export class DeploymentService {
       // Clean up build artifacts from work directory
       await this.cleanBuildArtifacts(workDir);
 
-      await this.deploymentRepo.update(deploymentId, { buildStep: 'STARTING' });
-      addMarker('Starting container...');
-      const activePorts = await this.deploymentRepo.findActiveContainerPorts();
-      const containerPort = await this.docker.runContainer(
-        imageName,
-        project.type,
-        `dropdeploy-${project.slug}`,
-        runtimeEnv,
-        activePorts,
-      );
+      const isStaticDeploy = ALWAYS_STATIC_TYPES.has(project.type) && project.useStaticHosting;
 
-      await this.deploymentRepo.clearSubdomainForOtherDeployments(
-        project.id,
-        project.slug,
-        deploymentId
-      );
-      await this.deploymentRepo.clearPortForOtherDeployments(project.id, deploymentId);
+      if (isStaticDeploy) {
+        await this.deploymentRepo.update(deploymentId, { buildStep: 'EXTRACTING' });
+        addMarker('Extracting static files...');
 
-      await this.deploymentRepo.update(deploymentId, {
-        status: 'DEPLOYED',
-        buildStep: null,
-        buildLog: logLines.join(''),
-        containerPort,
-        subdomain: project.slug,
-        completedAt: new Date(),
-      });
+        const { STATIC_SERVE_DIR } = getConfig();
+        const slugServePath = path.join(STATIC_SERVE_DIR, project.slug);
 
-      // Signal SSE subscribers that the build is done
-      getRedisConnection().publish(redisChannel, '__DONE__').catch(() => {});
+        await fs.promises.rm(slugServePath, { recursive: true, force: true }).catch(() => {});
+        await this.docker.extractStaticFiles(imageName, slugServePath);
+        await this.docker.removeImage(imageName);
 
-      // Routing is handled by the in-app reverse proxy (src/app/api/proxy/[slug]).
-      // No per-project nginx config file is written or reloaded.
-      log.info('Deployment live — routed via in-app proxy', { slug: project.slug, containerPort });
+        await this.deploymentRepo.clearSubdomainForOtherDeployments(
+          project.id,
+          project.slug,
+          deploymentId,
+        );
+
+        await this.deploymentRepo.update(deploymentId, {
+          status: 'DEPLOYED',
+          buildStep: null,
+          buildLog: logLines.join(''),
+          containerPort: null,
+          servingMethod: 'STATIC_FILES',
+          subdomain: project.slug,
+          completedAt: new Date(),
+        });
+
+        getRedisConnection().publish(redisChannel, '__DONE__').catch(() => {});
+        log.info('Static deployment live — served from filesystem', { slug: project.slug });
+        return { slug: project.slug, servingMethod: 'STATIC_FILES', containerPort: null, commitHash, projectType: project.type };
+
+      } else {
+        await this.deploymentRepo.update(deploymentId, { buildStep: 'STARTING' });
+        addMarker('Starting container...');
+        const activePorts = await this.deploymentRepo.findActiveContainerPorts();
+        const containerPort = await this.docker.runContainer(
+          imageName,
+          project.type,
+          `dropdeploy-${project.slug}`,
+          runtimeEnv,
+          activePorts,
+        );
+
+        await this.deploymentRepo.clearSubdomainForOtherDeployments(
+          project.id,
+          project.slug,
+          deploymentId,
+        );
+        await this.deploymentRepo.clearPortForOtherDeployments(project.id, deploymentId);
+
+        await this.deploymentRepo.update(deploymentId, {
+          status: 'DEPLOYED',
+          buildStep: null,
+          buildLog: logLines.join(''),
+          containerPort,
+          servingMethod: 'CONTAINER',
+          subdomain: project.slug,
+          completedAt: new Date(),
+        });
+
+        getRedisConnection().publish(redisChannel, '__DONE__').catch(() => {});
+        log.info('Deployment live — routed via in-app proxy', { slug: project.slug, containerPort });
+        return { slug: project.slug, servingMethod: 'CONTAINER', containerPort, commitHash, projectType: project.type };
+      }
     } catch (err) {
       await this.deploymentRepo.update(deploymentId, {
         status: 'FAILED',

@@ -174,13 +174,11 @@ Detection runs server-side (via `POST /api/projects/detect-type`) and client-sid
 
 ### 5.4 Build & Deployment
 
-- Each deployment runs in an **isolated Docker container**
 - Dockerfile generated dynamically based on project type
-- Build image → run container → assign port
-- Random available host port (8000--9999)
-- Map project slug to subdomain
 - Clone-once strategy: repos persist locally for faster rebuilds
 - Branch switching supported between deploys
+- **Static types (STATIC, REACT, VUE, SVELTE):** Docker builds the image, files are extracted from `/usr/share/nginx/html` into `STATIC_SERVE_DIR/<slug>/`, then the container and image are destroyed. The in-app proxy serves files directly from disk. RAM per project: ~0 MB. Cold start: instant.
+- **Dynamic types (NODEJS, NEXTJS, DJANGO, FASTAPI, FLASK, GO, RUST, JAVA):** Build image → run persistent container → assign random host port (4000–9999). Map project slug to subdomain.
 
 ### 5.5 Deployment Status
 
@@ -235,8 +233,9 @@ stateDiagram-v2
 
 - Docker sandboxing with resource limits (512 MB memory, CPU shares)
 - Non-root containers
-- Terminal command allowlist
+- Terminal command allowlist; user commands exec'd directly (no shell) — metacharacters blocked
 - No host filesystem access from containers
+- Email PII never leaves the repository layer — `ShowcaseWithProject` exposes `user.handle` (email prefix) only
 
 ### Reliability
 

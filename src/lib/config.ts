@@ -17,6 +17,7 @@ const envSchema = z.object({
   ENV_ENCRYPTION_KEY: z.string().length(64, 'Must be a 64-char hex string (32 bytes)'),
   DOCKER_SOCKET: z.string().optional(),
   PROJECTS_DIR: z.string().default(path.join(defaultBaseDir, 'projects')),
+  STATIC_SERVE_DIR: z.string().default(path.join(defaultBaseDir, 'static-sites')),
   DOCKER_DATA_DIR: z.string().default(path.join(defaultBaseDir, 'docker')),
   NGINX_CONFIG_PATH: z.string().default('/etc/nginx/sites-enabled'),
   BULLMQ_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(5),

@@ -100,12 +100,37 @@ const ALLOWED_COMMANDS = new Set([
     'which', 'printenv', 'hostname', 'uname',
     'id', 'free', 'stat', 'file', 'sort', 'uniq',
     'tr', 'cut', 'awk', 'sed', 'less', 'more',
-    'mkdir', 'touch', 'cp', 'mv', 'cd',
+    'mkdir', 'touch', 'cp', 'mv',
     'npm', 'node', 'python', 'pip',
     'curl', 'wget',
 ]);
 
 const EXEC_TIMEOUT_MS = 30_000;
+
+function parseArgv(command: string): string[] {
+    const args: string[] = [];
+    let current = '';
+    let i = 0;
+    while (i < command.length) {
+        const ch = command[i];
+        if (ch === '"' || ch === "'") {
+            const quote = ch;
+            i++;
+            while (i < command.length && command[i] !== quote) {
+                current += command[i++];
+            }
+            i++; // skip closing quote
+        } else if (ch === ' ' || ch === '\t') {
+            if (current.length > 0) { args.push(current); current = ''; }
+            i++;
+        } else {
+            current += ch;
+            i++;
+        }
+    }
+    if (current.length > 0) args.push(current);
+    return args;
+}
 
 // ---------------------------------------------------------------------------
 // Service
@@ -134,6 +159,13 @@ export class DockerTerminalService {
         if (!baseCommand || !ALLOWED_COMMANDS.has(baseCommand)) {
             throw new Error(
                 `Command "${baseCommand}" is not allowed. Permitted commands: ${[...ALLOWED_COMMANDS].sort().join(', ')}`
+            );
+        }
+
+        if (/[;|&`\n\r]/.test(trimmed)) {
+            throw new Error(
+                'Command contains disallowed shell operators (; | & ` newline). ' +
+                'Run a single command at a time.'
             );
         }
     }
@@ -172,7 +204,7 @@ export class DockerTerminalService {
         command: string,
     ): Promise<TerminalExecResult> {
         this.validateCommand(command);
-        return this.runInContainer(containerName, command);
+        return this.runInContainer(containerName, parseArgv(command));
     }
 
     /**
@@ -282,7 +314,7 @@ export class DockerTerminalService {
      */
     private async runInContainer(
         containerName: string,
-        command: string,
+        command: string | string[],
     ): Promise<TerminalExecResult> {
         const container = await this.resolveContainer(containerName);
 
@@ -292,8 +324,12 @@ export class DockerTerminalService {
             throw new Error('Container is not running');
         }
 
+        // string[] = user command (direct exec, no shell); string = server-controlled
+        // slash command that may use shell features like pipes.
+        const cmd = Array.isArray(command) ? command : ['/bin/sh', '-c', command];
+
         const exec = await container.exec({
-            Cmd: ['/bin/sh', '-c', command],
+            Cmd: cmd,
             AttachStdout: true,
             AttachStderr: true,
         });

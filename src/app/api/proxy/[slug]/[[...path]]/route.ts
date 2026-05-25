@@ -1,9 +1,64 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import * as jose from 'jose';
+import * as fs from 'fs';
+import * as nodePath from 'path';
 import { AUTH_COOKIE_NAME } from '@/lib/auth-cookie';
+import { getConfig } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
+
+function getMimeType(filePath: string): string {
+  const ext = nodePath.extname(filePath).toLowerCase();
+  const map: Record<string, string> = {
+    '.html': 'text/html; charset=utf-8',
+    '.css':  'text/css; charset=utf-8',
+    '.js':   'application/javascript; charset=utf-8',
+    '.mjs':  'application/javascript; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.svg':  'image/svg+xml',
+    '.png':  'image/png',
+    '.jpg':  'image/jpeg', '.jpeg': 'image/jpeg',
+    '.gif':  'image/gif',  '.webp': 'image/webp',
+    '.ico':  'image/x-icon',
+    '.woff': 'font/woff',  '.woff2': 'font/woff2',
+    '.ttf':  'font/ttf',
+    '.map':  'application/json',
+    '.webmanifest': 'application/manifest+json',
+  };
+  return map[ext] ?? 'application/octet-stream';
+}
+
+async function serveStaticFile(serveDir: string, requestPath: string): Promise<NextResponse | null> {
+  const sanitized = requestPath.replace(/^\/+/, '').replace(/\.\.\//g, '');
+  const candidates = sanitized
+    ? [nodePath.join(serveDir, sanitized), nodePath.join(serveDir, sanitized, 'index.html')]
+    : [nodePath.join(serveDir, 'index.html')];
+
+  for (const candidate of candidates) {
+    try {
+      const stat = await fs.promises.stat(candidate);
+      if (!stat.isFile()) continue;
+      const content = await fs.promises.readFile(candidate);
+      const mime = getMimeType(candidate);
+      const isHashed = candidate.includes('/assets/');
+      const cacheControl = isHashed
+        ? 'public, max-age=31536000, immutable'
+        : mime.startsWith('text/html') ? 'no-cache' : 'public, max-age=3600';
+      return new NextResponse(content, {
+        headers: { 'Content-Type': mime, 'Cache-Control': cacheControl },
+      });
+    } catch { /* try next */ }
+  }
+
+  // SPA fallback: any unknown path → index.html
+  try {
+    const content = await fs.promises.readFile(nodePath.join(serveDir, 'index.html'));
+    return new NextResponse(content, {
+      headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' },
+    });
+  } catch { return null; }
+}
 
 const ENTRI_DOMAIN = '@entri.me';
 
@@ -220,12 +275,13 @@ async function handler(
     where: { subdomain: slug, status: 'DEPLOYED' },
     select: {
       containerPort: true,
+      servingMethod: true,
       projectId: true,
       project: { select: { isPrivate: true } },
     },
   });
 
-  if (!deployment?.containerPort) {
+  if (!deployment) {
     return NextResponse.json(
       { error: `No active deployment found for "${slug}"` },
       { status: 404 }
@@ -261,6 +317,36 @@ async function handler(
   // ─────────────────────────────────────────────────────────────────────────
 
   const targetPath = path.length > 0 ? `/${path.join('/')}` : '/';
+
+  if (deployment.servingMethod === 'STATIC_FILES') {
+    const serveDir = nodePath.join(getConfig().STATIC_SERVE_DIR, slug);
+    const response = await serveStaticFile(serveDir, targetPath);
+    if (!response) {
+      return NextResponse.json(
+        { error: 'Static files not found. Try redeploying.' },
+        { status: 404 }
+      );
+    }
+    if (!targetPath.startsWith('/_next') && targetPath !== '/favicon.ico') {
+      prisma.proxyHit.create({
+        data: {
+          projectId: deployment.projectId,
+          path: targetPath,
+          referer: request.headers.get('referer') ?? null,
+          device: detectDevice(request.headers.get('user-agent') ?? ''),
+        },
+      }).catch(() => {});
+    }
+    return response;
+  }
+
+  if (!deployment.containerPort) {
+    return NextResponse.json(
+      { error: `No active deployment found for "${slug}"` },
+      { status: 404 }
+    );
+  }
+
   const targetUrl = `http://127.0.0.1:${deployment.containerPort}${targetPath}${request.nextUrl.search}`;
 
   // Build forwarded headers — strip hop-by-hop, host, accept-encoding, and

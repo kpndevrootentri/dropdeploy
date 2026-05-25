@@ -8,7 +8,7 @@ export type ShowcaseWithProject = ProjectShowcase & {
     slug: string;
     type: string;
     githubUrl: string | null;
-    user: { email: string };
+    user: { handle: string };
   };
 };
 
@@ -47,7 +47,7 @@ export class ShowcaseRepository implements IShowcaseRepository {
   }
 
   async findBySlug(slug: string): Promise<ShowcaseWithProject | null> {
-    return prisma.projectShowcase.findFirst({
+    const raw = await prisma.projectShowcase.findFirst({
       where: { project: { slug }, isPublished: true },
       include: {
         project: {
@@ -55,6 +55,8 @@ export class ShowcaseRepository implements IShowcaseRepository {
         },
       },
     });
+    if (!raw) return null;
+    return { ...raw, project: { ...raw.project, user: { handle: raw.project.user.email.split('@')[0] } } };
   }
 
   async findPublished({ skip = 0, take = 12, tag, q }: FindPublishedOptions = {}): Promise<PagedShowcase> {
@@ -75,12 +77,16 @@ export class ShowcaseRepository implements IShowcaseRepository {
       },
     };
 
-    const [items, total] = await Promise.all([
+    const [rawItems, total] = await Promise.all([
       prisma.projectShowcase.findMany({ where, include, orderBy: { publishedAt: 'desc' }, skip, take }),
       prisma.projectShowcase.count({ where }),
     ]);
 
-    return { items: items as ShowcaseWithProject[], total };
+    const items: ShowcaseWithProject[] = rawItems.map((raw) => ({
+      ...raw,
+      project: { ...raw.project, user: { handle: raw.project.user.email.split('@')[0] } },
+    }));
+    return { items, total };
   }
 
   async upsert(projectId: string, data: UpsertShowcaseDto): Promise<ProjectShowcase> {

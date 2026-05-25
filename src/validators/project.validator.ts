@@ -7,6 +7,7 @@ export const createProjectSchema = z.object({
   githubUrl: z.string().url(),
   type: z.enum(['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'GO', 'RUST', 'JAVA']).optional(),
   branch: z.string().max(100).optional(),
+  useStaticHosting: z.boolean().optional(),
 });
 
 export const updateProjectSchema = z.object({
@@ -15,6 +16,7 @@ export const updateProjectSchema = z.object({
   type: z.enum(['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'GO', 'RUST', 'JAVA']).optional(),
   branch: z.string().max(100).optional(),
   isPrivate: z.boolean().optional(),
+  useStaticHosting: z.boolean().optional(),
 });
 
 export type CreateProjectDto = z.infer<typeof createProjectSchema>;

@@ -1,4 +1,6 @@
 import * as bcrypt from 'bcryptjs';
+import * as fs from 'fs';
+import * as path from 'path';
 import type { User, UserRole, Project } from '@prisma/client';
 import type { IUserRepository } from '@/repositories/user.repository';
 import { userRepository } from '@/repositories/user.repository';
@@ -6,6 +8,7 @@ import type { IProjectRepository } from '@/repositories/project.repository';
 import { projectRepository } from '@/repositories/project.repository';
 import { dockerService, type DockerService } from '@/services/docker';
 import { deploymentService } from '@/services/deployment';
+import { getConfig } from '@/lib/config';
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/errors';
 
 const SALT_ROUNDS = 10;
@@ -85,6 +88,8 @@ export class AdminService {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
     await this.docker.stopAndRemoveContainer(`dropdeploy-${project.slug}`);
+    const { STATIC_SERVE_DIR } = getConfig();
+    await fs.promises.rm(path.join(STATIC_SERVE_DIR, project.slug), { recursive: true, force: true }).catch(() => {});
     await this.projectRepo.delete(projectId);
   }
 

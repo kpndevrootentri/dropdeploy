@@ -6,6 +6,7 @@ import Docker from 'dockerode';
 import * as fs from 'fs';
 import * as net from 'net';
 import * as path from 'path';
+import * as tarStream from 'tar-stream';
 import type { Project } from '@prisma/client';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
@@ -274,15 +275,15 @@ export class DockerService {
    * Uses a sequential scan from a random offset so concurrent workers diverge quickly.
    */
   async findAvailablePort(excludePorts: number[] = []): Promise<number> {
-    const base = 8000;
-    const range = 2000;
+    const base = 4000;
+    const range = 6000;
     const excluded = new Set(excludePorts);
     const start = Math.floor(Math.random() * range);
     for (let i = 0; i < range; i++) {
       const port = base + ((start + i) % range);
       if (!excluded.has(port) && await this.isPortAvailable(port)) return port;
     }
-    throw new Error('No available port found in range 8000–9999');
+    throw new Error('No available port found in range 4000–9999');
   }
 
   /**
@@ -380,6 +381,60 @@ export class DockerService {
       .join('\n')
       // Strip --mount=... flags (with their trailing whitespace) from RUN lines
       .replace(/--mount=\S+\s*/g, '');
+  }
+
+  /**
+   * Extracts /usr/share/nginx/html from a built image into destPath on the host filesystem.
+   * Creates a throwaway container (never started), copies the archive, then removes it.
+   */
+  async extractStaticFiles(imageName: string, destPath: string): Promise<void> {
+    await fs.promises.mkdir(destPath, { recursive: true });
+    const container = await this.docker.createContainer({ Image: imageName });
+    try {
+      const archiveStream = await container.getArchive({ path: '/usr/share/nginx/html' });
+      await new Promise<void>((resolve, reject) => {
+        const extract = tarStream.extract();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        extract.on('entry', (header: any, stream: any, next: () => void) => {
+          const entryName = header.name.replace(/^html\/?/, '');
+          if (!entryName) { stream.resume(); stream.on('end', next); return; }
+          const destFile = path.join(destPath, entryName);
+          if (header.type === 'directory') {
+            fs.promises.mkdir(destFile, { recursive: true })
+              .then(() => { stream.resume(); stream.on('end', next); })
+              .catch(reject);
+          } else {
+            fs.promises.mkdir(path.dirname(destFile), { recursive: true })
+              .then(() => {
+                const w = fs.createWriteStream(destFile);
+                w.on('error', reject);
+                w.on('finish', next);
+                stream.pipe(w);
+              })
+              .catch(reject);
+          }
+        });
+        extract.on('finish', resolve);
+        extract.on('error', reject);
+        (archiveStream as NodeJS.ReadableStream).pipe(extract);
+      });
+    } finally {
+      await container.remove().catch(() => {});
+    }
+  }
+
+  /**
+   * Removes a Docker image by name. Silently ignores missing images.
+   */
+  async removeImage(imageName: string): Promise<void> {
+    try {
+      await this.docker.getImage(imageName).remove({ force: true });
+    } catch (err) {
+      const msg = String(err);
+      if (!msg.includes('No such image') && !msg.includes('404')) {
+        log.warn('Failed to remove image', { imageName, error: msg });
+      }
+    }
   }
 
   private isPortAvailable(port: number): Promise<boolean> {
