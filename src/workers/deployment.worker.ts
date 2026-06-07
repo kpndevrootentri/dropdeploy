@@ -37,10 +37,13 @@ async function processJob(job: Job<DeploymentJob>): Promise<void> {
       timeoutPromise,
     ]);
     if (result) {
-      const details =
-        result.servingMethod === 'STATIC_FILES'
-          ? { slug: result.slug, type: result.projectType, serving: 'static-files', commit: result.commitHash }
-          : { slug: result.slug, type: result.projectType, serving: 'container', port: result.containerPort, commit: result.commitHash };
+      let details: Record<string, unknown>;
+      if (result.servingMethod === 'STATIC_FILES') {
+        const serving = result.projectType === 'NEXTJS' ? 'static-export' : 'static-files';
+        details = { slug: result.slug, type: result.projectType, serving, commit: result.commitHash };
+      } else {
+        details = { slug: result.slug, type: result.projectType, serving: 'container', port: result.containerPort, commit: result.commitHash };
+      }
       log.info('Deployment completed', { deploymentId, ...details });
     } else {
       log.info('Deployment completed (no-op)', { deploymentId });

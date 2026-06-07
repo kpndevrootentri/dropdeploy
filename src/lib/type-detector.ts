@@ -6,6 +6,11 @@ export interface DetectionResult {
   type: ProjectType;
   confidence: 'high' | 'medium' | 'low';
   hint: string;
+  hasStaticExport?: boolean;
+}
+
+function isNextjsStaticExport(content: string): boolean {
+  return /output\s*:\s*['"]export['"]/.test(content);
 }
 
 // ---------------------------------------------------------------------------
@@ -19,7 +24,10 @@ export async function detectFromFiles(workDir: string): Promise<DetectionResult>
     fs.promises.readFile(path.join(workDir, file), 'utf8').catch(() => null);
 
   for (const f of ['next.config.js', 'next.config.ts', 'next.config.mjs', 'next.config.cjs']) {
-    if (await has(f)) return { type: 'NEXTJS', confidence: 'high', hint: f };
+    const content = await read(f);
+    if (content !== null) {
+      return { type: 'NEXTJS', confidence: 'high', hint: f, hasStaticExport: isNextjsStaticExport(content) };
+    }
   }
 
   const pkgRaw = await read('package.json');
@@ -163,9 +171,9 @@ export async function detectFromRawUrl(
     probe('index.html'),
   ]);
 
-  if (nextConfigJs) return { type: 'NEXTJS', confidence: 'high', hint: 'next.config.js' };
-  if (nextConfigTs) return { type: 'NEXTJS', confidence: 'high', hint: 'next.config.ts' };
-  if (nextConfigMjs) return { type: 'NEXTJS', confidence: 'high', hint: 'next.config.mjs' };
+  if (nextConfigJs) return { type: 'NEXTJS', confidence: 'high', hint: 'next.config.js', hasStaticExport: isNextjsStaticExport(nextConfigJs) };
+  if (nextConfigTs) return { type: 'NEXTJS', confidence: 'high', hint: 'next.config.ts', hasStaticExport: isNextjsStaticExport(nextConfigTs) };
+  if (nextConfigMjs) return { type: 'NEXTJS', confidence: 'high', hint: 'next.config.mjs', hasStaticExport: isNextjsStaticExport(nextConfigMjs) };
 
   if (packageJson) {
     try {

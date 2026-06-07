@@ -105,7 +105,8 @@ interface AnalyticsData {
 
 const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE'];
 const POLL_INTERVAL_MS = 2500;
-const STATIC_ELIGIBLE_TYPES = ['STATIC', 'REACT', 'VUE', 'SVELTE'] as const;
+const LOCKED_STATIC_TYPES = ['STATIC', 'REACT', 'VUE', 'SVELTE'] as const;
+const STATIC_ELIGIBLE_TYPES = [...LOCKED_STATIC_TYPES, 'NEXTJS'] as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1004,7 +1005,7 @@ function SettingsPanel({
   const [privacySaving, setPrivacySaving] = useState(false);
   const [privacyError, setPrivacyError] = useState<string | null>(null);
 
-  const [useStaticHosting] = useState(project.useStaticHosting);
+  const [useStaticHosting, setUseStaticHosting] = useState(project.useStaticHosting);
 
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -1020,7 +1021,13 @@ function SettingsPanel({
   }, [project.id, project.name, project.description, project.branch, project.isPrivate, framework]);
 
   const isStaticEligible = (STATIC_ELIGIBLE_TYPES as readonly string[]).includes(type);
-  const hasChanges = name !== project.name || description !== (project.description ?? '') || type !== framework || branch !== (project.branch ?? 'main');
+  const isLockedStatic = (LOCKED_STATIC_TYPES as readonly string[]).includes(type);
+  const hasChanges =
+    name !== project.name ||
+    description !== (project.description ?? '') ||
+    type !== framework ||
+    branch !== (project.branch ?? 'main') ||
+    (type === 'NEXTJS' && useStaticHosting !== project.useStaticHosting);
 
   const handleSave = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
@@ -1042,7 +1049,7 @@ function SettingsPanel({
           description: description.trim() || null,
           type,
           branch: branch.trim() || 'main',
-          useStaticHosting: (STATIC_ELIGIBLE_TYPES as readonly string[]).includes(type) ? useStaticHosting : undefined,
+          useStaticHosting: isStaticEligible ? useStaticHosting : undefined,
         }),
       });
       const data = await res.json();
@@ -1164,7 +1171,12 @@ function SettingsPanel({
                     <button
                       key={key}
                       type="button"
-                      onClick={() => setType(key)}
+                      onClick={() => {
+                        setType(key);
+                        if ((LOCKED_STATIC_TYPES as readonly string[]).includes(key)) {
+                          setUseStaticHosting(true);
+                        }
+                      }}
                       className={cn(
                         'flex flex-col items-center gap-1.5 rounded-lg border-2 px-3 py-3 text-center transition-colors',
                         'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
@@ -1184,23 +1196,49 @@ function SettingsPanel({
             </div>
 
             {isStaticEligible && (
-              <div className="flex items-center justify-between rounded-lg border p-4 opacity-90">
-                <div className="space-y-0.5">
-                  <p className="text-sm font-medium">Static hosting</p>
-                  <p className="text-xs text-muted-foreground">
-                    Optimized for this framework. Always enabled.
-                  </p>
+              type === 'NEXTJS' ? (
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">Static export</p>
+                    <p className="text-xs text-muted-foreground">
+                      Builds as static HTML/CSS/JS — no server, no RAM, instant load. Disable only if you need API routes or server-side rendering.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={useStaticHosting}
+                    onClick={() => setUseStaticHosting(!useStaticHosting)}
+                    className={cn(
+                      'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+                      useStaticHosting ? 'bg-primary' : 'bg-input'
+                    )}
+                  >
+                    <span className={cn(
+                      'pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform',
+                      useStaticHosting ? 'translate-x-5' : 'translate-x-0'
+                    )} />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={true}
-                  disabled
-                  className="relative inline-flex h-6 w-11 shrink-0 cursor-not-allowed rounded-full border-2 border-transparent bg-primary opacity-70 transition-colors"
-                >
-                  <span className="pointer-events-none block h-5 w-5 translate-x-5 rounded-full bg-background shadow-lg ring-0 transition-transform" />
-                </button>
-              </div>
+              ) : isLockedStatic && (
+                <div className="flex items-center justify-between rounded-lg border p-4 opacity-90">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">Static hosting</p>
+                    <p className="text-xs text-muted-foreground">
+                      Optimized for this framework. Always enabled.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={true}
+                    disabled
+                    className="relative inline-flex h-6 w-11 shrink-0 cursor-not-allowed rounded-full border-2 border-transparent bg-primary opacity-70 transition-colors"
+                  >
+                    <span className="pointer-events-none block h-5 w-5 translate-x-5 rounded-full bg-background shadow-lg ring-0 transition-transform" />
+                  </button>
+                </div>
+              )
             )}
 
             {saveError && (

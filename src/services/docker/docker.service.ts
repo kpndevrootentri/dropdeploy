@@ -56,10 +56,13 @@ export class DockerService {
    * For NEXTJS projects, injects ARG/ENV lines for NEXT_PUBLIC_* build args.
    */
   getDockerfileForProject(project: Project, buildArgKeys: string[] = []): string {
-    const key =
-      project.type in DOCKERFILE_TEMPLATES ? project.type : 'STATIC';
-    let template = DOCKERFILE_TEMPLATES[key as keyof typeof DOCKERFILE_TEMPLATES];
-    if (key === 'NEXTJS') {
+    let key: keyof typeof DOCKERFILE_TEMPLATES =
+      project.type in DOCKERFILE_TEMPLATES ? project.type as keyof typeof DOCKERFILE_TEMPLATES : 'STATIC';
+    if (project.type === 'NEXTJS' && project.useStaticHosting) {
+      key = 'NEXTJS_STATIC';
+    }
+    let template = DOCKERFILE_TEMPLATES[key];
+    if (key === 'NEXTJS' || key === 'NEXTJS_STATIC') {
       template = injectNextPublicBuildArgs(template, buildArgKeys);
     }
     return template;
@@ -79,26 +82,16 @@ export class DockerService {
   ): Promise<string> {
     const imageName = `dropdeploy/${project.slug}:latest`;
     const dockerfilePath = path.join(contextPath, 'Dockerfile');
-    const hasCustomDockerfile = await fs.promises.access(dockerfilePath).then(() => true).catch(() => false);
-    if (hasCustomDockerfile) {
-      // Strip BuildKit-only directives so the classic builder doesn't choke on
-      // user-supplied Dockerfiles that contain `# syntax=...` or `--mount=...`.
-      const raw = await fs.promises.readFile(dockerfilePath, 'utf8');
-      const sanitized = this.stripBuildKitDirectives(raw);
-      if (sanitized !== raw) {
-        await fs.promises.writeFile(dockerfilePath, sanitized, 'utf8');
-      }
-    } else {
-      const dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs));
-      await fs.promises.writeFile(dockerfilePath, dockerfile, 'utf8');
-    }
+    const dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs));
+    await fs.promises.writeFile(dockerfilePath, dockerfile, 'utf8');
 
     // Write .dockerignore to prevent .env files from leaking into image
     await this.writeDockerignore(contextPath);
 
-    // Patch Next.js config to skip lint/type errors during build
+    // Patch Next.js config to skip lint/type errors during build;
+    // also inject output: 'export' for static builds so the out/ dir is generated
     if (project.type === 'NEXTJS') {
-      await patchNextConfig(contextPath);
+      await patchNextConfig(contextPath, { addStaticExport: project.useStaticHosting });
     }
 
     log.info('Building image', { imageName });
@@ -368,22 +361,6 @@ export class DockerService {
   }
 
   /**
-   * Removes BuildKit-only directives from a Dockerfile so the classic builder
-   * can process it.  Specifically:
-   *   • `# syntax = ...` directives (trigger remote BuildKit frontend pull)
-   *   • `--mount=...` flags on RUN instructions (BuildKit cache/secret mounts)
-   */
-  private stripBuildKitDirectives(content: string): string {
-    return content
-      .split('\n')
-      // Drop `# syntax=docker/dockerfile:...` lines
-      .filter((line) => !/^\s*#\s*syntax\s*=/i.test(line))
-      .join('\n')
-      // Strip --mount=... flags (with their trailing whitespace) from RUN lines
-      .replace(/--mount=\S+\s*/g, '');
-  }
-
-  /**
    * Extracts /usr/share/nginx/html from a built image into destPath on the host filesystem.
    * Creates a throwaway container (never started), copies the archive, then removes it.
    */
@@ -445,6 +422,7 @@ export class DockerService {
       server.listen(port, '127.0.0.1');
     });
   }
+
 }
 
 export const dockerService = new DockerService();

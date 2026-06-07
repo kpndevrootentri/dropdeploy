@@ -70,6 +70,11 @@ graph TD
 - [ ] Keep previous container available (tagged with version) until rollback window expires
 - [ ] Add rollback button in project detail UI
 
+## AI
+
+[ ] implement an ai code review with project code
+
+[ ] implement ai security check with project code
 ### Environment Variables
 
 - [ ] Support `.env` file upload

@@ -35,13 +35,18 @@ async function serveStaticFile(serveDir: string, requestPath: string): Promise<N
     ? [nodePath.join(serveDir, sanitized), nodePath.join(serveDir, sanitized, 'index.html')]
     : [nodePath.join(serveDir, 'index.html')];
 
+  const resolvedBase = nodePath.resolve(serveDir);
+
   for (const candidate of candidates) {
+    // Reject any path that escapes the serve directory (guards against encoded traversal)
+    if (!nodePath.resolve(candidate).startsWith(resolvedBase + nodePath.sep) &&
+        nodePath.resolve(candidate) !== resolvedBase) continue;
     try {
       const stat = await fs.promises.stat(candidate);
       if (!stat.isFile()) continue;
       const content = await fs.promises.readFile(candidate);
       const mime = getMimeType(candidate);
-      const isHashed = candidate.includes('/assets/');
+      const isHashed = candidate.includes('/assets/') || candidate.includes('/_next/static/');
       const cacheControl = isHashed
         ? 'public, max-age=31536000, immutable'
         : mime.startsWith('text/html') ? 'no-cache' : 'public, max-age=3600';

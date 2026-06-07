@@ -18,7 +18,7 @@ import type { Deployment } from '@prisma/client';
 
 const log = createLogger('deployment-service');
 
-const ALWAYS_STATIC_TYPES = new Set(['STATIC', 'REACT', 'VUE', 'SVELTE']);
+const STATIC_CAPABLE_TYPES = new Set(['STATIC', 'REACT', 'VUE', 'SVELTE', 'NEXTJS']);
 
 export class DeploymentService {
   constructor (
@@ -356,7 +356,7 @@ export class DeploymentService {
       // Clean up build artifacts from work directory
       await this.cleanBuildArtifacts(workDir);
 
-      const isStaticDeploy = ALWAYS_STATIC_TYPES.has(project.type) && project.useStaticHosting;
+      const isStaticDeploy = STATIC_CAPABLE_TYPES.has(project.type) && project.useStaticHosting;
 
       if (isStaticDeploy) {
         await this.deploymentRepo.update(deploymentId, { buildStep: 'EXTRACTING' });
@@ -367,6 +367,7 @@ export class DeploymentService {
 
         await fs.promises.rm(slugServePath, { recursive: true, force: true }).catch(() => {});
         await this.docker.extractStaticFiles(imageName, slugServePath);
+        await this.docker.stopAndRemoveContainer(`dropdeploy-${project.slug}`);
         await this.docker.removeImage(imageName);
 
         await this.deploymentRepo.clearSubdomainForOtherDeployments(

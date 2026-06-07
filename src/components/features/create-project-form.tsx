@@ -15,7 +15,8 @@ type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FAST
 type SourceType = 'GITHUB' | 'GITLAB';
 
 const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'GO', 'RUST', 'JAVA'];
-const STATIC_ELIGIBLE_TYPES = ['STATIC', 'REACT', 'VUE', 'SVELTE'] as const;
+const LOCKED_STATIC_TYPES = ['STATIC', 'REACT', 'VUE', 'SVELTE'] as const;
+const STATIC_CAPABLE_TYPES = [...LOCKED_STATIC_TYPES, 'NEXTJS'] as const;
 
 interface ProviderInfo {
   provider: SourceType;
@@ -140,12 +141,16 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
         body: JSON.stringify({ repoUrl: trimmedUrl, branch: branchVal.trim() || 'main' }),
       });
       if (!res.ok) return;
-      const data = await res.json() as { data?: { type: FrameworkType; confidence: string } };
+      const data = await res.json() as { data?: { type: FrameworkType; confidence: string; hasStaticExport?: boolean } };
       const result = data.data;
       if (result && result.confidence !== 'low') {
         setDetectedType(result.type);
         setType(result.type);
-        setUseStaticHosting((STATIC_ELIGIBLE_TYPES as readonly string[]).includes(result.type));
+        if (result.type === 'NEXTJS') {
+          setUseStaticHosting(result.hasStaticExport ?? false);
+        } else {
+          setUseStaticHosting((LOCKED_STATIC_TYPES as readonly string[]).includes(result.type));
+        }
       }
     } catch { /* non-fatal */ }
     finally { setDetecting(false); }
@@ -190,7 +195,7 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
           type,
           githubUrl: repoUrl.trim(),
           branch: branch.trim() || 'main',
-          useStaticHosting: (STATIC_ELIGIBLE_TYPES as readonly string[]).includes(type) ? useStaticHosting : undefined,
+          useStaticHosting: (STATIC_CAPABLE_TYPES as readonly string[]).includes(type) ? useStaticHosting : undefined,
         }),
       });
       const data = await res.json();
@@ -367,7 +372,8 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
                 onClick={() => {
                   setType(key);
                   setDetectedType(null);
-                  setUseStaticHosting((STATIC_ELIGIBLE_TYPES as readonly string[]).includes(key));
+                  // NEXTJS defaults OFF — only auto-ON if output:'export' was detected
+                  setUseStaticHosting((LOCKED_STATIC_TYPES as readonly string[]).includes(key));
                 }}
                 className={cn(
                   'flex shrink-0 flex-col items-center gap-2 rounded-xl border-2 px-3.5 py-3 transition-all',
@@ -397,27 +403,53 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
         </div>
       </section>
 
-      {/* ── Step 4: Hosting (static-eligible types only) ── */}
-      {(STATIC_ELIGIBLE_TYPES as readonly string[]).includes(type) && (
+      {/* ── Step 4: Hosting (static-capable types only) ── */}
+      {(STATIC_CAPABLE_TYPES as readonly string[]).includes(type) && (
         <section className="space-y-3">
           <StepHeading n={4} label="Hosting" />
-          <div className="flex items-center justify-between rounded-lg border p-4 opacity-90">
-            <div className="space-y-0.5">
-              <p className="text-sm font-medium">Static hosting</p>
-              <p className="text-xs text-muted-foreground">
-                Optimized for this framework. Always enabled.
-              </p>
+          {type === 'NEXTJS' ? (
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">Static export</p>
+                <p className="text-xs text-muted-foreground">
+                  Builds as static HTML/CSS/JS — no server, no RAM, instant load. Disable only if you need API routes or server-side rendering.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={useStaticHosting}
+                onClick={() => setUseStaticHosting(!useStaticHosting)}
+                className={cn(
+                  'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+                  useStaticHosting ? 'bg-primary' : 'bg-input'
+                )}
+              >
+                <span className={cn(
+                  'pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform',
+                  useStaticHosting ? 'translate-x-5' : 'translate-x-0'
+                )} />
+              </button>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={true}
-              disabled
-              className="relative inline-flex h-6 w-11 shrink-0 cursor-not-allowed rounded-full border-2 border-transparent bg-primary opacity-70 transition-colors"
-            >
-              <span className="pointer-events-none block h-5 w-5 translate-x-5 rounded-full bg-background shadow-lg ring-0 transition-transform" />
-            </button>
-          </div>
+          ) : (
+            <div className="flex items-center justify-between rounded-lg border p-4 opacity-90">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">Static hosting</p>
+                <p className="text-xs text-muted-foreground">
+                  Optimized for this framework. Always enabled.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={true}
+                disabled
+                className="relative inline-flex h-6 w-11 shrink-0 cursor-not-allowed rounded-full border-2 border-transparent bg-primary opacity-70 transition-colors"
+              >
+                <span className="pointer-events-none block h-5 w-5 translate-x-5 rounded-full bg-background shadow-lg ring-0 transition-transform" />
+              </button>
+            </div>
+          )}
         </section>
       )}
 

@@ -29,8 +29,7 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
-ARG {{NEXT_PUBLIC_BUILD_ARGS}}
-ENV {{NEXT_PUBLIC_BUILD_ARGS}}={{NEXT_PUBLIC_BUILD_ARGS}}
+{{NEXT_PUBLIC_BUILD_ARGS}}
 RUN if [ -f prisma/schema.prisma ]; then npx prisma generate; fi
 RUN npm run build
 
@@ -43,6 +42,25 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/public ./public
 EXPOSE 3000
 CMD ["npm", "start"]
+`.trim(),
+
+  NEXTJS_STATIC: `
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
+
+{{NEXT_PUBLIC_BUILD_ARGS}}
+RUN if [ -f prisma/schema.prisma ]; then npx prisma generate; fi
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=builder /app/out /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
 `.trim(),
 
   DJANGO: `
@@ -175,18 +193,19 @@ export type DockerfileProjectType = keyof typeof DOCKERFILE_TEMPLATES;
  * a new project type only requires changes in this one file.
  */
 export const CONTAINER_PORTS: Record<DockerfileProjectType, number> = {
-  STATIC:  80,
-  NODEJS:  3000,
-  NEXTJS:  3000,
-  DJANGO:  8000,
-  REACT:   80,
-  FASTAPI: 8000,
-  FLASK:   5000,
-  VUE:     80,
-  SVELTE:  80,
-  GO:      8080,
-  RUST:    8080,
-  JAVA:    8080,
+  STATIC:       80,
+  NODEJS:       3000,
+  NEXTJS:       3000,
+  NEXTJS_STATIC: 80,  // never used for containers; required by Record type
+  DJANGO:       8000,
+  REACT:        80,
+  FASTAPI:      8000,
+  FLASK:        5000,
+  VUE:          80,
+  SVELTE:       80,
+  GO:           8080,
+  RUST:         8080,
+  JAVA:         8080,
 };
 
 /**
