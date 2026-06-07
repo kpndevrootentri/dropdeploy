@@ -111,6 +111,13 @@ export class AdminService {
     await this.docker.restartContainer(`dropdeploy-${project.slug}`);
   }
 
+  async updateUserQuota(userId: string, quota: number): Promise<User> {
+    if (quota < 0) throw new ValidationError('Quota must be a non-negative integer');
+    const user = await this.userRepo.findById(userId);
+    if (!user) throw new NotFoundError('User');
+    return this.userRepo.updateQuota(userId, quota);
+  }
+
   async resetUserPassword(userId: string, newPassword: string): Promise<void> {
     const user = await this.userRepo.findById(userId);
     if (!user) throw new NotFoundError('User');

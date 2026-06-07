@@ -44,3 +44,9 @@ export class ConflictError extends AppError {
     super('CONFLICT', message, 409);
   }
 }
+
+export class QuotaExceededError extends AppError {
+  constructor(message: string = 'Project quota exceeded') {
+    super('QUOTA_EXCEEDED', message, 403);
+  }
+}

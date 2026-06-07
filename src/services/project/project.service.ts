@@ -1,9 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { projectRepository, type IProjectRepository } from '@/repositories/project.repository';
+import { userRepository, type IUserRepository } from '@/repositories/user.repository';
 import { dockerService, type DockerService } from '@/services/docker';
 import { getConfig } from '@/lib/config';
-import { NotFoundError } from '@/lib/errors';
+import { NotFoundError, QuotaExceededError } from '@/lib/errors';
 import type { CreateProjectDto, UpdateProjectDto } from '@/types/project.types';
 import type { Project } from '@prisma/client';
 
@@ -21,6 +22,7 @@ export class ProjectService {
   constructor(
     private readonly projectRepo: IProjectRepository,
     private readonly docker: DockerService,
+    private readonly userRepo: IUserRepository,
   ) {}
 
   async getById(id: string, userId: string): Promise<Project> {
@@ -53,6 +55,16 @@ export class ProjectService {
   }
 
   async create(userId: string, dto: CreateProjectDto): Promise<Project> {
+    const user = await this.userRepo.findById(userId);
+    if (!user) throw new NotFoundError('User');
+
+    const existing = await this.projectRepo.findByUserId(userId);
+    if (existing.length >= user.projectQuota) {
+      throw new QuotaExceededError(
+        `You have reached your project limit of ${user.projectQuota}. Contact an admin to increase your quota.`
+      );
+    }
+
     return this.projectRepo.create(userId, dto);
   }
 
@@ -70,4 +82,4 @@ export class ProjectService {
   }
 }
 
-export const projectService = new ProjectService(projectRepository, dockerService);
+export const projectService = new ProjectService(projectRepository, dockerService, userRepository);

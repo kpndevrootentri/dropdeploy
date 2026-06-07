@@ -9,30 +9,43 @@ const POLL_INTERVAL_MS = 2500;
 
 export type { ProjectItem };
 
+export interface ProjectQuota {
+  used: number;
+  limit: number;
+  available: number;
+}
+
 export function ProjectList({
   onRefresh,
+  onQuota,
   className,
 }: {
   onRefresh?: number;
+  onQuota?: (quota: ProjectQuota) => void;
   className?: string;
 }): React.ReactElement {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const onQuotaRef = useRef(onQuota);
+  onQuotaRef.current = onQuota;
+
+  const applyResponse = useCallback((data: { success: boolean; data: ProjectItem[]; quota?: ProjectQuota }) => {
+    if (data?.success && Array.isArray(data.data)) {
+      setProjects(data.data);
+      if (data.quota) onQuotaRef.current?.(data.quota);
+    }
+  }, []);
 
   const fetchProjects = useCallback((): void => {
     setLoading(true);
     fetch('/api/projects')
       .then((res) => res.json())
-      .then((data) => {
-        if (data?.success && Array.isArray(data.data)) {
-          setProjects(data.data);
-        }
-      })
+      .then(applyResponse)
       .catch(() => setProjects([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [applyResponse]);
 
   const hasInProgressDeployment = useCallback((list: ProjectItem[]): boolean => {
     return list.some((p) => {
@@ -47,9 +60,7 @@ export function ProjectList({
     fetch('/api/projects')
       .then((res) => res.json())
       .then((data) => {
-        if (!cancelled && data?.success && Array.isArray(data.data)) {
-          setProjects(data.data);
-        }
+        if (!cancelled) applyResponse(data);
       })
       .catch(() => {
         if (!cancelled) setProjects([]);
@@ -60,7 +71,7 @@ export function ProjectList({
     return () => {
       cancelled = true;
     };
-  }, [onRefresh]);
+  }, [onRefresh, applyResponse]);
 
   useEffect(() => {
     if (!hasInProgressDeployment(projects)) {
@@ -74,11 +85,7 @@ export function ProjectList({
     pollRef.current = setInterval(() => {
       fetch('/api/projects')
         .then((res) => res.json())
-        .then((data) => {
-          if (data?.success && Array.isArray(data.data)) {
-            setProjects(data.data);
-          }
-        })
+        .then(applyResponse)
         .catch(() => {});
     }, POLL_INTERVAL_MS);
     return () => {
@@ -87,7 +94,7 @@ export function ProjectList({
         pollRef.current = null;
       }
     };
-  }, [projects, hasInProgressDeployment, fetchProjects]);
+  }, [projects, hasInProgressDeployment, fetchProjects, applyResponse]);
 
   const handleCopyUrl = (url: string): void => {
     void navigator.clipboard.writeText(url).then(() => {

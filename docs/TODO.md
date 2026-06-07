@@ -54,11 +54,6 @@ graph TD
 
 ### Documentation
 
-- [x] Get started with project creation
-- [x] Git setup in project
-- [x] Run build locally
-- [x] Category with framework docs
-
 ---
 
 ## High
@@ -168,6 +163,11 @@ graph TD
 - [ ] HTTP cache headers (ETag, Cache-Control) on API responses
 - [ ] Pagination on all list endpoints
 - [ ] Lazy-load deployment history and terminal output
+
+
+[] show quota availability for users
+[] dropdeploy monitor architecture with grafana etc..
+[] plan the feature Drag and drop your project folder, zip file, or a single HTML file to deploy instantly.
 
 ---
 

@@ -11,12 +11,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Eye, EyeOff, KeyRound, ShieldCheck, ShieldOff, Trash2, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Gauge, ShieldCheck, ShieldOff, Trash2, Loader2 } from 'lucide-react';
 
 interface AdminUser {
   id: string;
   email: string;
   role: string;
+  projectQuota: number;
   createdAt: string;
   _count: { projects: number };
 }
@@ -43,6 +44,13 @@ export default function AdminUsersPage(): React.ReactElement {
 
   // Show/hide for create user password
   const [showInvitePassword, setShowInvitePassword] = useState(false);
+
+  // Quota modal
+  const [quotaOpen, setQuotaOpen] = useState(false);
+  const [quotaTarget, setQuotaTarget] = useState<AdminUser | null>(null);
+  const [quotaValue, setQuotaValue] = useState('');
+  const [quotaError, setQuotaError] = useState<string | null>(null);
+  const [quotaSaving, setQuotaSaving] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -136,6 +144,43 @@ export default function AdminUsersPage(): React.ReactElement {
     }
   };
 
+  const openQuotaModal = (user: AdminUser): void => {
+    setQuotaTarget(user);
+    setQuotaValue(String(user.projectQuota));
+    setQuotaError(null);
+    setQuotaOpen(true);
+  };
+
+  const handleUpdateQuota = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    if (!quotaTarget) return;
+    const parsed = parseInt(quotaValue, 10);
+    if (isNaN(parsed) || parsed < 0) {
+      setQuotaError('Quota must be a non-negative integer');
+      return;
+    }
+    setQuotaError(null);
+    setQuotaSaving(true);
+    try {
+      const res = await fetch(`/api/admin/users/${quotaTarget.id}/quota`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectQuota: parsed }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setQuotaError(body?.error?.message ?? body?.error ?? 'Failed to update quota');
+        return;
+      }
+      setQuotaOpen(false);
+      load();
+    } catch {
+      setQuotaError('Network error');
+    } finally {
+      setQuotaSaving(false);
+    }
+  };
+
   const handleInvite = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     setInviteError(null);
@@ -176,7 +221,7 @@ export default function AdminUsersPage(): React.ReactElement {
               <tr className="border-b text-left text-muted-foreground">
                 <th className="pb-2 pr-4">Email</th>
                 <th className="pb-2 pr-4">Role</th>
-                <th className="pb-2 pr-4">Projects</th>
+                <th className="pb-2 pr-4">Projects / Quota</th>
                 <th className="pb-2 pr-4">Created</th>
                 <th className="pb-2">Actions</th>
               </tr>
@@ -199,7 +244,11 @@ export default function AdminUsersPage(): React.ReactElement {
                         {u.role}
                       </span>
                     </td>
-                    <td className="py-3 pr-4">{u._count?.projects ?? 0}</td>
+                    <td className="py-3 pr-4">
+                      <span className={`tabular-nums ${(u._count?.projects ?? 0) >= u.projectQuota ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''}`}>
+                        {u._count?.projects ?? 0} / {u.projectQuota}
+                      </span>
+                    </td>
                     <td className="py-3 pr-4 text-muted-foreground">
                       {new Date(u.createdAt).toLocaleDateString()}
                     </td>
@@ -232,6 +281,17 @@ export default function AdminUsersPage(): React.ReactElement {
                         >
                           <KeyRound className="w-4 h-4" />
                           <span className="text-[10px] leading-none font-medium">Reset PW</span>
+                        </button>
+
+                        {/* Set Quota */}
+                        <button
+                          title="Set Quota — Change how many projects this user can create"
+                          disabled={!!isActing}
+                          onClick={() => openQuotaModal(u)}
+                          className="inline-flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-md border border-transparent text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <Gauge className="w-4 h-4" />
+                          <span className="text-[10px] leading-none font-medium">Quota</span>
                         </button>
 
                         <div className="w-px h-8 bg-border" />
@@ -313,6 +373,52 @@ export default function AdminUsersPage(): React.ReactElement {
             </Button>
             <Button type="submit" form="reset-password-form" disabled={resetting}>
               {resetting ? 'Saving…' : 'Reset Password'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quota Dialog */}
+      <Dialog open={quotaOpen} onOpenChange={setQuotaOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Set Project Quota</DialogTitle>
+          </DialogHeader>
+          <div className="px-1 py-2 space-y-5">
+            <p className="text-sm text-muted-foreground border-b border-border pb-4">
+              Updating quota for{' '}
+              <span className="font-semibold text-foreground">{quotaTarget?.email}</span>
+            </p>
+            <form id="quota-form" onSubmit={handleUpdateQuota} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="quota-value">Max projects</Label>
+                <Input
+                  id="quota-value"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={quotaValue}
+                  onChange={(e) => setQuotaValue(e.target.value)}
+                  required
+                  placeholder="5"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Default is 5. Set to 0 to block project creation.
+                </p>
+              </div>
+              {quotaError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {quotaError}
+                </p>
+              )}
+            </form>
+          </div>
+          <DialogFooter className="pt-2 border-t border-border">
+            <Button variant="outline" onClick={() => setQuotaOpen(false)} disabled={quotaSaving}>
+              Cancel
+            </Button>
+            <Button type="submit" form="quota-form" disabled={quotaSaving}>
+              {quotaSaving ? 'Saving…' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>

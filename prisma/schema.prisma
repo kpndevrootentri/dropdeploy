@@ -22,6 +22,8 @@ model User {
   role              UserRole @default(USER)
   mustResetPassword Boolean  @default(false) @map("must_reset_password")
 
+  projectQuota  Int      @default(5) @map("project_quota")
+
   projects      Project[]
   auditLogs     AuditLog[]
   gitProviders  GitProvider[]

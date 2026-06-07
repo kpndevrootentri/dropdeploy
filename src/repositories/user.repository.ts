@@ -7,6 +7,7 @@ export interface IUserRepository {
   findAll(): Promise<User[]>;
   create(data: { email: string; passwordHash: string; role?: UserRole; mustResetPassword?: boolean }): Promise<User>;
   updateRole(id: string, role: UserRole): Promise<User>;
+  updateQuota(id: string, quota: number): Promise<User>;
   setPassword(id: string, passwordHash: string): Promise<User>;
   delete(id: string): Promise<void>;
 }
@@ -37,6 +38,10 @@ export class UserRepository implements IUserRepository {
 
   async updateRole(id: string, role: UserRole): Promise<User> {
     return prisma.user.update({ where: { id }, data: { role } });
+  }
+
+  async updateQuota(id: string, quota: number): Promise<User> {
+    return prisma.user.update({ where: { id }, data: { projectQuota: quota } });
   }
 
   async setPassword(id: string, passwordHash: string): Promise<User> {
