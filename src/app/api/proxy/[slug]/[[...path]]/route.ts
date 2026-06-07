@@ -357,8 +357,13 @@ async function handler(
   const targetPath = path.length > 0 ? `/${path.join('/')}` : '/';
 
   if (deployment.servingMethod === 'STATIC_FILES') {
-    const serveDir = nodePath.join(getConfig().STATIC_SERVE_DIR, slug);
-    const response = await serveStaticFile(serveDir, targetPath, slug);
+    const { STATIC_SERVE_DIR, NODE_ENV, NEXT_PUBLIC_APP_URL } = getConfig();
+    const serveDir = nodePath.join(STATIC_SERVE_DIR, slug);
+    // Path rewriting is only needed in localhost dev where the site is served under
+    // /api/proxy/{slug}/. In production the site owns its own subdomain so absolute
+    // paths (/_next/static/...) resolve correctly without any rewriting.
+    const isLocalDev = NODE_ENV !== 'production' && !!NEXT_PUBLIC_APP_URL?.includes('localhost');
+    const response = await serveStaticFile(serveDir, targetPath, isLocalDev ? slug : undefined);
     if (!response) {
       return NextResponse.json(
         { error: 'Static files not found. Try redeploying.' },
