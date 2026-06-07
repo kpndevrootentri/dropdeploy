@@ -167,7 +167,7 @@ graph TD
 
 [] show quota availability for users
 [] dropdeploy monitor architecture with grafana etc..
-[] plan the feature Drag and drop your project folder, zip file, or a single HTML file to deploy instantly.
+[x] plan the feature Drag and drop your project folder, zip file, or a single HTML file to deploy instantly.
 
 ---
 

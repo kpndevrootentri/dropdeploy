@@ -2,7 +2,7 @@
  * Project domain types (PRD-aligned).
  */
 
-export type SourceType = 'GITHUB' | 'GITLAB';
+export type SourceType = 'GITHUB' | 'GITLAB' | 'UPLOAD';
 
 export type ProjectType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'GO' | 'RUST' | 'JAVA';
 
@@ -10,7 +10,7 @@ export interface CreateProjectDto {
   name: string;
   description?: string;
   source: SourceType;
-  githubUrl: string;
+  githubUrl?: string;
   type?: ProjectType;
   branch?: string;
   useStaticHosting?: boolean;

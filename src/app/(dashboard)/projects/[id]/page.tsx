@@ -48,6 +48,7 @@ import {
   Lock,
 } from 'lucide-react';
 import { PublishPanel } from '@/components/features/publish-panel';
+import { ReuploadCard } from '@/components/features/reupload-card';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -376,13 +377,16 @@ function DeploymentRow({
   branch,
   isDeployInProgress,
   onRetried,
+  source,
 }: {
   deployment: Deployment;
   projectId: string;
   branch: string;
   isDeployInProgress: boolean;
   onRetried: () => void;
+  source?: string;
 }): React.ReactElement {
+  const isUpload = source === 'UPLOAD';
   const isInProgress = deployment.status === 'QUEUED' || deployment.status === 'BUILDING';
   const isFinished = deployment.status === 'DEPLOYED' || deployment.status === 'FAILED';
   const isFailed = deployment.status === 'FAILED';
@@ -490,10 +494,12 @@ function DeploymentRow({
                 &middot; {formatDuration(buildDuration)}
               </span>
             )}
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              &middot; <GitBranch className="h-3 w-3" />{branch}
-            </span>
-            {deployment.commitHash && (
+            {!isUpload && (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                &middot; <GitBranch className="h-3 w-3" />{branch}
+              </span>
+            )}
+            {!isUpload && deployment.commitHash && (
               <span className="text-xs font-mono text-muted-foreground">
                 &middot; {deployment.commitHash.slice(0, 7)}
               </span>
@@ -542,7 +548,7 @@ function DeploymentRow({
             )}
           </Button>
         )}
-        {canRedeploy && (
+        {canRedeploy && !isUpload && (
           <Button
             variant="outline"
             size="sm"
@@ -1666,24 +1672,26 @@ function DeploymentsPanel({
                 : allDeployments.length}{' '}
               deployment{(deploymentTotal ?? allDeployments.length) !== 1 ? 's' : ''}
             </span>
-            <div className="flex flex-col items-end gap-1">
-              <Button
-                size="sm"
-                onClick={onDeploy}
-                disabled={deploying}
-                title={isInProgress ? 'A build is running — clicking will queue a new deployment' : undefined}
-              >
-                {deploying ? (
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Rocket className="mr-2 h-3.5 w-3.5" />
+            {project.source !== 'UPLOAD' && (
+              <div className="flex flex-col items-end gap-1">
+                <Button
+                  size="sm"
+                  onClick={onDeploy}
+                  disabled={deploying}
+                  title={isInProgress ? 'A build is running — clicking will queue a new deployment' : undefined}
+                >
+                  {deploying ? (
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Rocket className="mr-2 h-3.5 w-3.5" />
+                  )}
+                  {deploying ? 'Deploying…' : allDeployments.length === 0 ? 'Deploy' : 'Redeploy'}
+                </Button>
+                {deployMessage && (
+                  <p className="text-xs text-muted-foreground">{deployMessage}</p>
                 )}
-                {deploying ? 'Deploying…' : allDeployments.length === 0 ? 'Deploy' : 'Redeploy'}
-              </Button>
-              {deployMessage && (
-                <p className="text-xs text-muted-foreground">{deployMessage}</p>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </CardHeader>
@@ -1706,6 +1714,7 @@ function DeploymentsPanel({
                 branch={project.branch}
                 isDeployInProgress={isInProgress}
                 onRetried={onRetried}
+                source={project.source}
               />
             ))}
             {hasMoreDeployments && (
@@ -1752,6 +1761,7 @@ function OverviewPanel({
   project,
   deployError,
   isInProgress,
+  onRetried,
 }: {
   project: ProjectDetail;
   deploying: boolean;
@@ -1885,15 +1895,17 @@ function OverviewPanel({
             </div>
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Source</p>
-              <span className="text-sm">{project.source}</span>
+              <span className="text-sm">{project.source === 'UPLOAD' ? 'File upload' : project.source}</span>
             </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Branch</p>
-              <span className="inline-flex items-center gap-1.5 text-sm font-mono">
-                <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
-                {project.branch}
-              </span>
-            </div>
+            {project.source !== 'UPLOAD' && (
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Branch</p>
+                <span className="inline-flex items-center gap-1.5 text-sm font-mono">
+                  <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
+                  {project.branch}
+                </span>
+              </div>
+            )}
             <div>
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Status</p>
               <span className="text-sm">{isDeployed ? 'Live' : isInProgress ? 'Deploying' : 'Inactive'}</span>
@@ -1929,6 +1941,11 @@ function OverviewPanel({
           </div>
         </CardContent>
       </Card>
+
+      {/* Re-upload section for UPLOAD projects */}
+      {project.source === 'UPLOAD' && (
+        <ReuploadCard projectId={project.id} onSuccess={onRetried} disabled={isInProgress} />
+      )}
 
     </div>
   );

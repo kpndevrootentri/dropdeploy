@@ -73,6 +73,12 @@ export class ProjectService {
     return this.projectRepo.update(id, dto);
   }
 
+  /** Deletes only the DB record — no docker/static cleanup. Use for aborting a project that was
+   *  never fully initialised (e.g. upload failed before any files or containers were created). */
+  async deleteById(id: string): Promise<void> {
+    await this.projectRepo.delete(id);
+  }
+
   async delete(id: string, userId: string): Promise<void> {
     const project = await this.getById(id, userId);
     await this.docker.stopAndRemoveContainer(`dropdeploy-${project.slug}`);

@@ -114,6 +114,7 @@ model Deployment {
 enum SourceType {
   GITHUB
   GITLAB
+  UPLOAD
 }
 
 model GitProvider {

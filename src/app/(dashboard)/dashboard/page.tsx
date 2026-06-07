@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { CreateProjectForm } from '@/components/features/create-project-form';
+import { DragDropZone } from '@/components/features/drag-drop-zone';
 import { ProjectList, type ProjectQuota } from '@/components/features/project-list';
 import { Plus, X } from 'lucide-react';
 
@@ -102,6 +103,8 @@ export default function DashboardPage(): React.ReactElement {
         </div>
       </div>
 
+      <DragDropZone onSuccess={handleCreateSuccess} disabled={atLimit} />
+
       {showWelcome && (
         <Card className="relative">
           <Button
@@ -116,9 +119,9 @@ export default function DashboardPage(): React.ReactElement {
             <X className="h-4 w-4" />
           </Button>
           <CardHeader>
-            <CardTitle>Welcome</CardTitle>
+            <CardTitle>Welcome to DropDeploy</CardTitle>
             <CardDescription>
-              Create a project with a name, framework, and description. Paste a GitHub repo URL and deploy to get a live link.
+              Get your site online in two ways: drop a ZIP, HTML file, or folder directly onto the zone below for instant publishing — or click <strong>Create project</strong> to connect a GitHub repository.
             </CardDescription>
           </CardHeader>
         </Card>

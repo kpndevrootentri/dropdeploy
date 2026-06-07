@@ -127,11 +127,25 @@ export function FrameworkLogo({
 
 /**
  * Returns the public URL for a deployed project.
- * In localhost dev (NEXT_PUBLIC_APP_URL has localhost), uses http://localhost:<containerPort> when port is set.
+ *
+ * Dev (localhost):
+ *   - Container deploy → http://localhost:{containerPort}  (direct port access)
+ *   - Static / upload  → http://localhost:3001/api/proxy/{slug}  (in-app proxy)
+ *
+ * Production:
+ *   - Always → https://{slug}.{BASE_DOMAIN}  (nginx + middleware handle routing)
  */
 export function getProjectUrl(slug: string, containerPort?: number | null): string {
-  if (containerPort != null && isLocalhostDev()) {
-    return `http://localhost:${containerPort}`;
+  if (isLocalhostDev()) {
+    if (containerPort != null) {
+      return `http://localhost:${containerPort}`;
+    }
+    // Static sites: served through the in-app proxy route on the same port
+    const appUrl =
+      typeof process !== 'undefined'
+        ? (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3001')
+        : 'http://localhost:3001';
+    return `${appUrl}/api/proxy/${slug}`;
   }
   return `https://${slug}.${BASE_DOMAIN}`;
 }

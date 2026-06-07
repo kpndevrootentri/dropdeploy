@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+export const uploadProjectSchema = z.object({
+  name: z.string().min(3).max(50).regex(/^[a-zA-Z0-9 _-]+$/, 'Only letters, numbers, spaces, hyphens, and underscores are allowed'),
+});
+
 export const createProjectSchema = z.object({
   name: z.string().min(3).max(50),
   description: z.string().max(500).optional(),

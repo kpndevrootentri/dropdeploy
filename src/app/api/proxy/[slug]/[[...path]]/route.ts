@@ -29,7 +29,31 @@ function getMimeType(filePath: string): string {
   return map[ext] ?? 'application/octet-stream';
 }
 
-async function serveStaticFile(serveDir: string, requestPath: string): Promise<NextResponse | null> {
+/**
+ * Rewrites absolute-path asset references in HTML so they resolve through the
+ * in-app proxy instead of hitting the Next.js root.
+ *
+ * Vite and other bundlers emit paths like src="/assets/index.js" which are
+ * correct when the site owns the root, but break when served under a sub-path
+ * such as /api/proxy/{slug}/. This rewrites those paths at serve time so the
+ * browser fetches /api/proxy/{slug}/assets/index.js.
+ *
+ * A <base> tag is also injected so that dynamic imports and runtime-constructed
+ * relative URLs resolve against the proxy base.
+ */
+function rewriteHtmlPaths(html: string, slug: string): string {
+  const prefix = `/api/proxy/${slug}`;
+  const withBase = html.replace(/(<head\b[^>]*>)/i, `$1\n  <base href="${prefix}/">`);
+  return withBase.replace(
+    /(src|href|action)="(\/[^"]*?)"/g,
+    (match, attr: string, path: string) => {
+      if (path.startsWith('//') || path.startsWith('/api/proxy/')) return match;
+      return `${attr}="${prefix}${path}"`;
+    }
+  );
+}
+
+async function serveStaticFile(serveDir: string, requestPath: string, slug?: string): Promise<NextResponse | null> {
   const sanitized = requestPath.replace(/^\/+/, '').replace(/\.\.\//g, '');
   const candidates = sanitized
     ? [nodePath.join(serveDir, sanitized), nodePath.join(serveDir, sanitized, 'index.html')]
@@ -50,16 +74,25 @@ async function serveStaticFile(serveDir: string, requestPath: string): Promise<N
       const cacheControl = isHashed
         ? 'public, max-age=31536000, immutable'
         : mime.startsWith('text/html') ? 'no-cache' : 'public, max-age=3600';
+
+      if (slug && mime.startsWith('text/html')) {
+        const rewritten = rewriteHtmlPaths(content.toString('utf-8'), slug);
+        return new NextResponse(rewritten, { headers: { 'Content-Type': mime, 'Cache-Control': cacheControl } });
+      }
+
       return new NextResponse(content, {
         headers: { 'Content-Type': mime, 'Cache-Control': cacheControl },
       });
     } catch { /* try next */ }
   }
 
-  // SPA fallback: any unknown path → index.html
+  // SPA fallback: any unknown path → index.html (with path rewriting)
   try {
     const content = await fs.promises.readFile(nodePath.join(serveDir, 'index.html'));
-    return new NextResponse(content, {
+    const html = slug
+      ? rewriteHtmlPaths(content.toString('utf-8'), slug)
+      : content.toString('utf-8');
+    return new NextResponse(html, {
       headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' },
     });
   } catch { return null; }
@@ -325,7 +358,7 @@ async function handler(
 
   if (deployment.servingMethod === 'STATIC_FILES') {
     const serveDir = nodePath.join(getConfig().STATIC_SERVE_DIR, slug);
-    const response = await serveStaticFile(serveDir, targetPath);
+    const response = await serveStaticFile(serveDir, targetPath, slug);
     if (!response) {
       return NextResponse.json(
         { error: 'Static files not found. Try redeploying.' },
