@@ -31,7 +31,10 @@ services:
       # Check the real port — nginx proxied to 3000, not 3001.
       APP_UPSTREAM: ${APP_UPSTREAM:-127.0.0.1:3000}
       INTERNAL_EDGE_TOKEN: ${INTERNAL_EDGE_TOKEN}
-      ACME_EMAIL: ${ACME_EMAIL}
+      # Required: an empty value is a Caddyfile parse error, which surfaces as
+      # "Caddy won't start" with no obvious cause. Fail here instead, with a
+      # message that says what to do.
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in caddy/.env — an empty value is a Caddyfile parse error}
       WILDCARD_CERT: ${WILDCARD_CERT:-/etc/letsencrypt/live/app.en3.wtf/fullchain.pem}
       WILDCARD_KEY: ${WILDCARD_KEY:-/etc/letsencrypt/live/app.en3.wtf/privkey.pem}
 

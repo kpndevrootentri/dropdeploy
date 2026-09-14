@@ -14,14 +14,13 @@
 #   {$WILDCARD_CERT} / {$WILDCARD_KEY}  paths to the existing certbot wildcard
 
 {
-	# Contact address for Let's Encrypt. Caddy registers fine without one — as
-	# this platform's certbot account already does — but with an address you get
-	# warned about issuance and renewal problems instead of finding out when a
-	# certificate expires. Uncomment and set it before enabling custom domains.
+	# Contact address for Let's Encrypt — where issuance and expiry warnings go.
 	#
 	# NOTE: `email` with an empty value is a Caddyfile PARSE ERROR, not a no-op,
-	# so this must stay commented rather than be wired to an unset variable.
-	# email {$ACME_EMAIL}
+	# so ACME_EMAIL must always be set. docker-compose.caddy.yml enforces that
+	# with `${ACME_EMAIL:?...}`, which fails at `up` with a readable message
+	# rather than letting Caddy refuse to start on a config it cannot parse.
+	email {$ACME_EMAIL}
 
 	# ── On-demand TLS ─────────────────────────────────────────────────────
 	# Caddy calls `ask` during the TLS handshake for any hostname it has no
