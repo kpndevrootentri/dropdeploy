@@ -415,25 +415,54 @@ export class DomainService implements IDomainService {
   // ── Presentation ─────────────────────────────────────────────────────────
 
   /**
-   * Apex detection for DNS advice only. Two labels is an apex; three labels
-   * ending in a known two-label public suffix (`co.uk`) is too.
+   * The registrable domain — the zone the user actually administers at their
+   * registrar. `todo.example.com` → `example.com`; `shop.example.co.uk` →
+   * `example.co.uk`.
+   *
+   * Presentation only: it decides how DNS advice is phrased, never who may
+   * claim a hostname. A miss produces slightly wrong copy, never a wrong
+   * authorisation, which is why a short suffix list is acceptable here in place
+   * of the full public suffix list.
    */
-  private isApex(hostname: string): boolean {
+  private apexOf(hostname: string): string {
     const labels = hostname.split('.');
-    if (labels.length === 2) return true;
-    if (labels.length === 3 && TWO_LABEL_SUFFIXES.has(labels.slice(1).join('.'))) return true;
-    return false;
+    if (labels.length <= 2) return hostname;
+    const lastTwo = labels.slice(-2).join('.');
+    const take = TWO_LABEL_SUFFIXES.has(lastTwo) ? 3 : 2;
+    return labels.slice(-take).join('.');
+  }
+
+  /** Apex detection for DNS advice only. */
+  private isApex(hostname: string): boolean {
+    return this.apexOf(hostname) === hostname;
+  }
+
+  /**
+   * The record name as a registrar's "Host"/"Name" field expects it: relative
+   * to the zone, with `@` standing for the zone root.
+   *
+   * @example hostField('_dropdeploy-verify.todo.example.com', 'example.com') // '_dropdeploy-verify.todo'
+   * @example hostField('example.com', 'example.com')                         // '@'
+   */
+  private hostField(name: string, zone: string): string {
+    if (name === zone) return '@';
+    return name.endsWith(`.${zone}`) ? name.slice(0, -(zone.length + 1)) : name;
   }
 
   private dnsRecords(domain: CustomDomain): DnsInstruction[] {
     const config = this.cfg();
+    const zone = this.apexOf(domain.hostname);
     const apex = this.isApex(domain.hostname);
+
+    const verifyName = `${VERIFY_LABEL}.${domain.hostname}`;
     const records: DnsInstruction[] = [
       {
         kind: 'TXT',
-        name: `${VERIFY_LABEL}.${domain.hostname}`,
+        name: verifyName,
+        host: this.hostField(verifyName, zone),
+        zone,
         value: `${VERIFY_PREFIX}${domain.verificationToken}`,
-        note: 'Proves you own this domain. Required before a certificate is issued.',
+        note: 'Proves you own this domain. We check for it before requesting a certificate.',
       },
     ];
 
@@ -441,14 +470,19 @@ export class DomainService implements IDomainService {
       records.push({
         kind: 'A',
         name: domain.hostname,
+        host: this.hostField(domain.hostname, zone),
+        zone,
         value: config.PLATFORM_INGRESS_IP ?? 'contact your administrator',
-        note: 'Root domains usually cannot use CNAME. If your DNS provider supports ALIAS or ANAME, that works too.',
+        note: 'Root domains usually cannot use a CNAME. If your provider offers ALIAS or ANAME, either works too.',
       });
     } else {
       records.push({
         kind: 'CNAME',
         name: domain.hostname,
+        host: this.hostField(domain.hostname, zone),
+        zone,
         value: config.CUSTOM_DOMAIN_CNAME_TARGET ?? config.PLATFORM_INGRESS_IP ?? 'contact your administrator',
+        note: 'Sends visitors to us. Point it here rather than at an IP so the address keeps working if ours changes.',
       });
     }
 
