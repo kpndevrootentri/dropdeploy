@@ -36,6 +36,30 @@ const MIN_RECHECK_MS = 2 * 60_000;
 const MAX_RECHECK_MS = 60 * 60_000;
 
 /**
+ * Hostnames we have already asked the edge to issue for, and the earliest we
+ * may ask again.
+ *
+ * In-process rather than persisted: a worker restart costs at most one extra
+ * request, which is cheaper than a migration and a column. `instances: 1` in
+ * the PM2 config is what makes a single in-memory map sufficient.
+ */
+const issuanceAttempts = new Map<string, { attempts: number; nextAt: number }>();
+
+function mayTriggerIssuance(hostname: string): boolean {
+  const state = issuanceAttempts.get(hostname);
+  return state === undefined || Date.now() >= state.nextAt;
+}
+
+/** Same doubling curve as the DNS re-check, so both back off alike. */
+function recordIssuanceAttempt(hostname: string): void {
+  const attempts = (issuanceAttempts.get(hostname)?.attempts ?? 0) + 1;
+  issuanceAttempts.set(hostname, {
+    attempts,
+    nextAt: Date.now() + nextCheckDelayMs(attempts - 1),
+  });
+}
+
+/**
  * Exponential back-off keyed on consecutive failures. A domain whose owner has
  * not touched DNS in an hour does not need to be probed every two minutes, and
  * backing off is what keeps a large set of abandoned domains from becoming a
@@ -53,6 +77,7 @@ async function sweep(): Promise<void> {
   );
 
   let checked = 0;
+  let triggered = 0;
   for (const domain of candidates) {
     const due =
       domain.lastCheckedAt === null ||
@@ -67,6 +92,22 @@ async function sweep(): Promise<void> {
         from: domain.status,
         to: result.status,
       });
+
+      // PROVISIONING is the one state nothing else will move. DNS is right and
+      // issuance is authorised, but the certificate is only created by a real
+      // TLS handshake — so make one, rather than waiting for a human to.
+      if (result.status === 'PROVISIONING' && mayTriggerIssuance(domain.hostname)) {
+        recordIssuanceAttempt(domain.hostname);
+        const reached = await domainService.triggerIssuance(domain.hostname);
+        log.info('Requested certificate', { hostname: domain.hostname, reached });
+        triggered++;
+      }
+
+      // Once it is serving, forget the back-off so a future re-issue starts
+      // from a clean slate instead of inheriting an hour-long delay.
+      if (result.status === 'ACTIVE') {
+        issuanceAttempts.delete(domain.hostname);
+      }
     } catch (err) {
       // One bad domain must not abort the sweep for the rest of the batch.
       log.warn('Domain re-check failed', {
@@ -77,7 +118,7 @@ async function sweep(): Promise<void> {
   }
 
   if (checked > 0) {
-    log.info('Domain sweep complete', { candidates: candidates.length, checked });
+    log.info('Domain sweep complete', { candidates: candidates.length, checked, triggered });
   }
 }
 

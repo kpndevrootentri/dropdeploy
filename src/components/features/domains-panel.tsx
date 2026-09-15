@@ -33,9 +33,9 @@ import {
 //   · the DNS record is the hero, laid out the way registrar forms are laid out
 //   · the relative host name comes first, because pasting the full one is the
 //     commonest way this fails (it silently creates host.example.com.example.com)
-//   · every state names the next action, and says who has to take it — the
-//     certificate step in particular waits on the *user* opening their site,
-//     which no amount of waiting will do for them
+//   · every state names the next action, and says who has to take it — which,
+//     after the worker started triggering issuance itself, is nobody past the
+//     DNS step
 // ---------------------------------------------------------------------------
 
 /** Statuses that are still moving — the panel polls while any domain is in one. */
@@ -45,7 +45,7 @@ const POLL_INTERVAL_MS = 15_000;
 const CLOCK_TICK_MS = 5_000;
 const COPIED_FEEDBACK_MS = 1500;
 
-const STEPS = ['Add DNS records', 'We confirm them', 'Open your site'] as const;
+const STEPS = ['Add DNS records', 'We confirm them', 'We secure it'] as const;
 
 /**
  * Which step the user is on. `STEPS.length` means finished.
@@ -86,9 +86,9 @@ function statusCopy(domain: DomainView): StatusCopy {
       };
     case 'PROVISIONING':
       return {
-        label: 'Ready for its certificate',
+        label: 'Getting its certificate',
         detail:
-          'DNS is correct. The certificate is created the first time someone opens the site over HTTPS — so open it once and this finishes.',
+          'DNS is correct, and we are requesting the certificate now. This usually finishes within a couple of minutes — nothing for you to do.',
         tone: 'progress',
       };
     case 'ACTIVE':
@@ -374,13 +374,13 @@ function DomainCard({
             wins over the generic status copy whenever it is present. */}
         <p className="text-xs leading-relaxed text-muted-foreground">{domain.lastError ?? copy.detail}</p>
 
-        {/* The certificate step is the one place the system cannot finish on its
-            own — it waits for a real HTTPS request. Say so, and give them the
-            button that produces one. */}
+        {/* The background worker now makes the request that triggers issuance,
+            so this is a shortcut rather than a requirement — secondary styling,
+            and copy that offers rather than instructs. */}
         {domain.status === 'PROVISIONING' && (
-          <Button size="sm" className="gap-1.5" asChild>
+          <Button variant="outline" size="sm" className="gap-1.5" asChild>
             <a href={`https://${domain.hostname}`} target="_blank" rel="noreferrer noopener">
-              Open {domain.hostname} to finish
+              Open it now instead of waiting
               <ArrowUpRight className="h-3.5 w-3.5" />
             </a>
           </Button>

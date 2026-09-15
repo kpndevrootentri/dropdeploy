@@ -49,6 +49,16 @@ const MAX_CONSECUTIVE_FAILURES = 5;
  */
 const VERIFICATION_TOKEN_BYTES = 24;
 
+/**
+ * How long to wait on the request that triggers certificate issuance.
+ *
+ * Generous on purpose: the ACME order happens *inside* the TLS handshake, so
+ * this connection legitimately hangs for as long as Let's Encrypt takes. Real
+ * issuances on this platform have taken 8–10s; 45s leaves room for a slow one
+ * without wedging the sweep.
+ */
+const ISSUANCE_TIMEOUT_MS = 45_000;
+
 /** Certificate authority the platform expects to be allowed by any CAA record. */
 const CA_IDENTIFIER = 'letsencrypt.org';
 
@@ -81,6 +91,7 @@ export interface IDomainService {
   update(projectId: string, ownerId: string, domainId: string, dto: UpdateDomainDto): Promise<DomainView>;
   remove(projectId: string, ownerId: string, domainId: string): Promise<void>;
   isIssuanceAllowed(hostname: string): Promise<boolean>;
+  triggerIssuance(hostname: string): Promise<boolean>;
   markCertObserved(hostname: string): Promise<void>;
   runCheck(domain: CustomDomain): Promise<CheckResult>;
 }
@@ -238,6 +249,41 @@ export class DomainService implements IDomainService {
     const domain = await this.domainRepo.findByHostname(host);
     if (!domain) return false;
     return ISSUABLE_STATUSES.includes(domain.status);
+  }
+
+  /**
+   * Makes one HTTPS request to the hostname so the edge orders its certificate.
+   *
+   * On-demand TLS issues a certificate during the handshake for a host it does
+   * not already have one for. That makes `PROVISIONING` a state the platform
+   * cannot leave on its own: DNS is correct, issuance is authorised, and
+   * nothing at all happens until somebody connects. Before this existed, every
+   * domain sat there until a human opened it — three for three in testing, one
+   * of them for 34 minutes.
+   *
+   * So the platform connects to itself. The response is irrelevant; a 404 or a
+   * 502 from the tenant's app still means the handshake completed, which is the
+   * only thing being tested here. Only a thrown error — DNS, TCP, or a failed
+   * handshake — counts as failure.
+   *
+   * Safe to call for any verified host: it reaches the same ask endpoint as a
+   * stranger would, and is refused on exactly the same terms.
+   */
+  async triggerIssuance(hostname: string): Promise<boolean> {
+    try {
+      await fetch(`https://${hostname}/`, {
+        method: 'HEAD',
+        redirect: 'manual',
+        signal: AbortSignal.timeout(ISSUANCE_TIMEOUT_MS),
+      });
+      return true;
+    } catch (err) {
+      log.warn('Certificate trigger failed', {
+        hostname,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+      return false;
+    }
   }
 
   /**

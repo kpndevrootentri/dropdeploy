@@ -484,6 +484,59 @@ describe('DNS instructions', () => {
 });
 
 // ---------------------------------------------------------------------------
+// triggerIssuance
+// ---------------------------------------------------------------------------
+
+describe('triggerIssuance', () => {
+  const realFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = realFetch;
+  });
+
+  it('makes a HEAD request to the host over HTTPS', async () => {
+    // The scheme is the whole point: only a TLS handshake causes the edge to
+    // order a certificate. An http:// request would just be redirected.
+    const fetchMock = jest.fn().mockResolvedValue({ status: 200 });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(harness().service.triggerIssuance('myapp.com')).resolves.toBe(true);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://myapp.com/');
+    expect(init.method).toBe('HEAD');
+  });
+
+  it('counts any HTTP response as success, including an error status', async () => {
+    // A 502 from the tenant's own app still means the handshake completed,
+    // which is the only thing this is testing.
+    global.fetch = jest.fn().mockResolvedValue({ status: 502 }) as unknown as typeof fetch;
+    await expect(harness().service.triggerIssuance('myapp.com')).resolves.toBe(true);
+  });
+
+  it('reports failure when the connection throws, without propagating', async () => {
+    // A failed trigger must never abort the sweep for the other domains.
+    global.fetch = jest.fn().mockRejectedValue(new Error('ETIMEDOUT')) as unknown as typeof fetch;
+    await expect(harness().service.triggerIssuance('myapp.com')).resolves.toBe(false);
+  });
+
+  it('does not follow redirects', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({ status: 301 });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await harness().service.triggerIssuance('myapp.com');
+    expect(fetchMock.mock.calls[0][1].redirect).toBe('manual');
+  });
+
+  it('bounds how long it will hang', async () => {
+    // The ACME order happens inside the handshake, so this connection hangs
+    // legitimately — but it must not hang forever and wedge the sweep.
+    const fetchMock = jest.fn().mockResolvedValue({ status: 200 });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await harness().service.triggerIssuance('myapp.com');
+    expect(fetchMock.mock.calls[0][1].signal).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Registrar "Host" field
 // ---------------------------------------------------------------------------
 
