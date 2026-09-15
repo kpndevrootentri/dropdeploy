@@ -1,13 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import type { DomainStatus, DomainView, DnsInstruction } from '@/types/domain.types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import type { DomainStatus, DomainView, DnsInstruction } from '@/types/domain.types';
 import {
   Plus,
   Trash2,
@@ -17,80 +17,137 @@ import {
   Globe,
   RefreshCw,
   Star,
-  ShieldCheck,
   AlertTriangle,
-  Clock,
+  ArrowUpRight,
+  HelpCircle,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
-// Types
+// Setup is a task, not a list
+//
+// Someone adding a custom domain is doing something they have never done before
+// and will likely never do again. They are not "managing domains" — they are
+// trying to finish one job, in a registrar's admin panel, in another tab.
+// Everything here is shaped around that:
+//
+//   · the DNS record is the hero, laid out the way registrar forms are laid out
+//   · the relative host name comes first, because pasting the full one is the
+//     commonest way this fails (it silently creates host.example.com.example.com)
+//   · every state names the next action, and says who has to take it — the
+//     certificate step in particular waits on the *user* opening their site,
+//     which no amount of waiting will do for them
 // ---------------------------------------------------------------------------
-
-// Shapes come from the API contract itself (`@/types/domain.types`) rather than
-// being restated here — `import type` is erased at compile time, so a client
-// component can share them freely, and they cannot drift from the server.
 
 /** Statuses that are still moving — the panel polls while any domain is in one. */
 const IN_FLIGHT: DomainStatus[] = ['PENDING_DNS', 'VERIFYING', 'VERIFIED', 'PROVISIONING'];
 
-const STATUS_META: Record<
-  DomainStatus,
-  { label: string; hint: string; icon: React.ReactNode; className: string }
-> = {
-  PENDING_DNS: {
-    label: 'Waiting for DNS',
-    hint: 'Add the records below at your DNS provider. We re-check automatically.',
-    icon: <Clock className="h-3.5 w-3.5" />,
-    className: 'text-muted-foreground',
-  },
-  VERIFYING: {
-    label: 'Checking',
-    hint: 'Looking up your DNS records.',
-    icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />,
-    className: 'text-muted-foreground',
-  },
-  VERIFIED: {
-    label: 'Ownership confirmed',
-    hint: 'Now point the domain at us so traffic can arrive.',
-    icon: <ShieldCheck className="h-3.5 w-3.5" />,
-    className: 'text-blue-600 dark:text-blue-400',
-  },
-  PROVISIONING: {
-    label: 'Issuing certificate',
-    hint: 'The first visit over HTTPS triggers the certificate. This usually takes under a minute.',
-    icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />,
-    className: 'text-amber-600 dark:text-amber-400',
-  },
-  ACTIVE: {
-    label: 'Live',
-    hint: 'Serving over HTTPS.',
-    icon: <Check className="h-3.5 w-3.5" />,
-    className: 'text-emerald-600 dark:text-emerald-400',
-  },
-  FAILED: {
-    label: 'Needs attention',
-    hint: 'Fix the problem below, then re-check.',
-    icon: <AlertTriangle className="h-3.5 w-3.5" />,
-    className: 'text-destructive',
-  },
-};
-
-// ---------------------------------------------------------------------------
-// CopyField
-// ---------------------------------------------------------------------------
-
-/** How long the copy button shows its confirmation tick. */
+const POLL_INTERVAL_MS = 15_000;
+const CLOCK_TICK_MS = 5_000;
 const COPIED_FEEDBACK_MS = 1500;
 
-function CopyField({ value }: { value: string }): React.ReactElement {
+const STEPS = ['Add DNS records', 'We confirm them', 'Open your site'] as const;
+
+/**
+ * Which step the user is on. `STEPS.length` means finished.
+ *
+ * `VERIFIED` sits on step 2 rather than step 1: ownership is proven, so the
+ * records are partly in place, but traffic still is not reaching us.
+ */
+function stepOf(status: DomainStatus): number {
+  if (status === 'ACTIVE') return STEPS.length;
+  if (status === 'PROVISIONING') return 2;
+  if (status === 'VERIFIED') return 1;
+  return 0;
+}
+
+interface StatusCopy {
+  label: string;
+  /** What is happening, in the user's terms. */
+  detail: string;
+  tone: 'idle' | 'progress' | 'good' | 'bad';
+}
+
+function statusCopy(domain: DomainView): StatusCopy {
+  switch (domain.status) {
+    case 'PENDING_DNS':
+      return {
+        label: 'Waiting for your DNS records',
+        detail:
+          'Add the two records below at whoever manages your domain. We re-check every couple of minutes, so you can close this page.',
+        tone: 'idle',
+      };
+    case 'VERIFYING':
+      return { label: 'Checking your DNS', detail: 'Reading the records now.', tone: 'progress' };
+    case 'VERIFIED':
+      return {
+        label: 'Ownership confirmed',
+        detail: `We found your TXT record. Now add the ${domain.isApex ? 'A' : 'CNAME'} record so visitors reach us.`,
+        tone: 'progress',
+      };
+    case 'PROVISIONING':
+      return {
+        label: 'Ready for its certificate',
+        detail:
+          'DNS is correct. The certificate is created the first time someone opens the site over HTTPS — so open it once and this finishes.',
+        tone: 'progress',
+      };
+    case 'ACTIVE':
+      return { label: 'Live', detail: 'Serving over HTTPS. The certificate renews on its own.', tone: 'good' };
+    case 'FAILED':
+      return { label: 'Needs a fix', detail: 'Something in DNS is not right yet.', tone: 'bad' };
+  }
+}
+
+const TONE_CLASS: Record<StatusCopy['tone'], string> = {
+  idle: 'text-muted-foreground',
+  progress: 'text-amber-600 dark:text-amber-400',
+  good: 'text-emerald-600 dark:text-emerald-400',
+  bad: 'text-destructive',
+};
+
+/** "2 minutes ago" — coarse on purpose; precision here would be noise. */
+function timeAgo(iso: string | null, now: number): string | null {
+  if (!iso) return null;
+  const seconds = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
+  if (seconds < 45) return 'just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.round(minutes / 60);
+  return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+}
+
+/** Ticks so relative timestamps stay honest without a re-fetch. */
+function useClock(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
+    return () => clearInterval(id);
+  }, [active]);
+  return now;
+}
+
+// ---------------------------------------------------------------------------
+// CopyValue — a value you are meant to paste somewhere else
+// ---------------------------------------------------------------------------
+
+function CopyValue({
+  label,
+  value,
+  hint,
+  emphasis = false,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  emphasis?: boolean;
+}): React.ReactElement {
   const [copied, setCopied] = useState(false);
 
-  // Finding 13: the timeout has to be cancellable, otherwise unmounting within
-  // the feedback window sets state on a component that is gone.
   useEffect(() => {
     if (!copied) return;
-    const timeoutId = setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
-    return () => clearTimeout(timeoutId);
+    const id = setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
+    return () => clearTimeout(id);
   }, [copied]);
 
   const copy = async (): Promise<void> => {
@@ -98,58 +155,137 @@ function CopyField({ value }: { value: string }): React.ReactElement {
       await navigator.clipboard.writeText(value);
       setCopied(true);
     } catch {
-      // Clipboard is unavailable outside a secure context — the value is
-      // still selectable on screen, so there is nothing to report.
+      // No clipboard outside a secure context. The value is selectable on
+      // screen, so there is nothing useful to report here.
     }
   };
 
   return (
-    <div className="flex items-center gap-1.5 min-w-0">
-      <code className="text-xs font-mono truncate flex-1 select-all">{value}</code>
-      <Button
+    <div className="min-w-0">
+      <div className="flex items-baseline gap-2">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        {hint && <span className="text-[11px] text-muted-foreground/70">{hint}</span>}
+      </div>
+      <button
         type="button"
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6 shrink-0"
         onClick={copy}
-        title="Copy"
+        title={`Copy ${label.toLowerCase()}`}
+        className={cn(
+          'group mt-1 flex w-full items-center gap-2 rounded-md border bg-muted/40 px-2.5 py-1.5 text-left',
+          'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          emphasis && 'border-foreground/20',
+        )}
       >
-        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-      </Button>
+        <code
+          className={cn(
+            'min-w-0 flex-1 truncate font-mono text-[13px]',
+            emphasis ? 'font-semibold' : 'font-medium',
+          )}
+        >
+          {value}
+        </code>
+        {copied ? (
+          <Check className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+        ) : (
+          <Copy className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60 group-hover:text-foreground" />
+        )}
+      </button>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// DnsRecordTable
+// RecordCard — laid out like the form the user is copying into
 // ---------------------------------------------------------------------------
 
-function DnsRecordTable({ records }: { records: DnsInstruction[] }): React.ReactElement {
+function RecordCard({ record, index }: { record: DnsInstruction; index: number }): React.ReactElement {
+  const isRoot = record.host === '@';
+
   return (
-    <div className="rounded-lg border divide-y">
-      {records.map((record) => (
-        <div key={`${record.kind}-${record.name}`} className="p-3 space-y-1.5">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-[10px] font-mono shrink-0">
+    <div className="rounded-lg border p-3 sm:p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-foreground/10 text-[11px] font-semibold">
+          {index + 1}
+        </span>
+        <span className="text-sm font-medium">
+          {record.kind === 'TXT' ? 'Prove you own it' : 'Send visitors to us'}
+        </span>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
+        <div className="sm:w-20">
+          <span className="text-xs text-muted-foreground">Type</span>
+          <div className="mt-1 flex h-[34px] items-center">
+            <Badge variant="outline" className="font-mono text-[11px]">
               {record.kind}
             </Badge>
-            <CopyField value={record.name} />
           </div>
-          <div className="pl-1">
-            <CopyField value={record.value} />
-          </div>
-          {record.note && <p className="text-xs text-muted-foreground pt-0.5">{record.note}</p>}
         </div>
-      ))}
+
+        <CopyValue
+          label="Host"
+          hint={isRoot ? 'the domain root' : `= ${record.name}`}
+          value={record.host}
+          emphasis
+        />
+      </div>
+
+      <div className="mt-3">
+        <CopyValue label={record.kind === 'TXT' ? 'Value' : 'Points to'} value={record.value} />
+      </div>
+
+      {record.note && <p className="mt-2.5 text-xs leading-relaxed text-muted-foreground">{record.note}</p>}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// DomainRow
+// Steps
 // ---------------------------------------------------------------------------
 
-function DomainRow({
+function Steps({ current }: { current: number }): React.ReactElement {
+  return (
+    <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+      {STEPS.map((step, i) => {
+        const done = i < current;
+        const active = i === current;
+        return (
+          <li key={step} className="flex items-center gap-2">
+            <span
+              className={cn(
+                'flex items-center gap-1.5',
+                done && 'text-emerald-600 dark:text-emerald-400',
+                active && 'font-medium text-foreground',
+                !done && !active && 'text-muted-foreground/60',
+              )}
+            >
+              {done ? (
+                <Check className="h-3.5 w-3.5" />
+              ) : (
+                <span
+                  className={cn(
+                    'flex h-3.5 w-3.5 items-center justify-center rounded-full border text-[9px]',
+                    active ? 'border-foreground' : 'border-muted-foreground/40',
+                  )}
+                >
+                  {i + 1}
+                </span>
+              )}
+              {step}
+            </span>
+            {i < STEPS.length - 1 && <span className="text-muted-foreground/30">›</span>}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// DomainCard
+// ---------------------------------------------------------------------------
+
+function DomainCard({
   domain,
   projectId,
   onChanged,
@@ -160,13 +296,21 @@ function DomainRow({
 }): React.ReactElement {
   const [busy, setBusy] = useState<'verify' | 'primary' | 'delete' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Only a manual collapse is state; the default follows the live status rather
-  // than freezing whatever it was at mount.
-  const [collapsedByUser, setCollapsedByUser] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [showRecords, setShowRecords] = useState(false);
 
-  const meta = STATUS_META[domain.status];
   const isLive = domain.status === 'ACTIVE';
-  const showRecords = !isLive && !collapsedByUser;
+  const settling = IN_FLIGHT.includes(domain.status);
+  const now = useClock(settling);
+  const copy = statusCopy(domain);
+  const step = stepOf(domain.status);
+  const checked = timeAgo(domain.lastCheckedAt, now);
+
+  // Records stay open through the whole setup, because that is the work. Once
+  // the domain is live they are just clutter, so they collapse away.
+  const recordsOpen = isLive ? showRecords : !showRecords;
+
+  const base = `/api/projects/${projectId}/domains/${domain.id}`;
 
   const call = async (
     action: 'verify' | 'primary' | 'delete',
@@ -178,72 +322,142 @@ function DomainRow({
       const res = await request();
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        setError(data?.error?.message ?? 'Something went wrong');
+        setError(data?.error?.message ?? 'That did not work. Try again in a moment.');
       } else {
+        setConfirmingDelete(false);
         onChanged();
       }
     } catch {
-      setError('Something went wrong');
+      setError('Could not reach DropDeploy. Check your connection and try again.');
     } finally {
       setBusy(null);
     }
   };
 
-  const base = `/api/projects/${projectId}/domains/${domain.id}`;
-
   return (
-    <div className="rounded-lg border p-4 space-y-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
-            {isLive ? (
-              <a
-                href={`https://${domain.hostname}`}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="text-sm font-mono font-medium hover:underline truncate"
-              >
-                {domain.hostname}
+    <div className="rounded-lg border">
+      {/* Identity + status */}
+      <div className="space-y-3 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="truncate font-mono text-sm font-medium">{domain.hostname}</span>
+              {domain.isPrimary && (
+                <Badge variant="outline" className="shrink-0 gap-1 text-[10px]">
+                  <Star className="h-2.5 w-2.5" />
+                  Primary
+                </Badge>
+              )}
+            </div>
+            <div className={cn('flex items-center gap-1.5 text-xs font-medium', TONE_CLASS[copy.tone])}>
+              {copy.tone === 'progress' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {copy.tone === 'good' && <Check className="h-3.5 w-3.5" />}
+              {copy.tone === 'bad' && <AlertTriangle className="h-3.5 w-3.5" />}
+              {copy.label}
+            </div>
+          </div>
+
+          {isLive && (
+            <Button variant="outline" size="sm" className="shrink-0 gap-1.5" asChild>
+              <a href={`https://${domain.hostname}`} target="_blank" rel="noreferrer noopener">
+                Visit
+                <ArrowUpRight className="h-3.5 w-3.5" />
               </a>
-            ) : (
-              <code className="text-sm font-mono font-medium truncate">{domain.hostname}</code>
-            )}
-            {domain.isPrimary && (
-              <Badge variant="outline" className="shrink-0 text-[10px] gap-1">
-                <Star className="h-2.5 w-2.5" />
-                Primary
-              </Badge>
-            )}
-          </div>
-          <div className={cn('flex items-center gap-1.5 text-xs', meta.className)}>
-            {meta.icon}
-            <span className="font-medium">{meta.label}</span>
-          </div>
+            </Button>
+          )}
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            title="Re-check DNS now"
-            disabled={busy !== null}
-            onClick={() => call('verify', () => fetch(`${base}/verify`, { method: 'POST' }))}
-          >
-            {busy === 'verify' ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
-            )}
+        {!isLive && <Steps current={step} />}
+
+        {/* The service's message names the exact record that is missing, so it
+            wins over the generic status copy whenever it is present. */}
+        <p className="text-xs leading-relaxed text-muted-foreground">{domain.lastError ?? copy.detail}</p>
+
+        {/* The certificate step is the one place the system cannot finish on its
+            own — it waits for a real HTTPS request. Say so, and give them the
+            button that produces one. */}
+        {domain.status === 'PROVISIONING' && (
+          <Button size="sm" className="gap-1.5" asChild>
+            <a href={`https://${domain.hostname}`} target="_blank" rel="noreferrer noopener">
+              Open {domain.hostname} to finish
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </a>
           </Button>
+        )}
+
+        {error && <p className="text-xs text-destructive">{error}</p>}
+      </div>
+
+      {/* Records */}
+      {(recordsOpen || !isLive) && (
+        <div className="border-t bg-muted/20 p-4">
+          {!isLive && (
+            <div className="mb-3 flex items-start gap-2">
+              <HelpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Add these at whoever manages <span className="font-medium">{domain.dnsRecords[0]?.zone}</span> —
+                your registrar or DNS provider. Most ask for <span className="font-medium">Host</span> without the
+                domain on the end, which is what we show below.
+              </p>
+            </div>
+          )}
+
+          {recordsOpen && (
+            <div className="space-y-2.5">
+              {domain.dnsRecords.map((record, i) => (
+                <RecordCard key={`${record.kind}-${record.name}`} record={record} index={i} />
+              ))}
+            </div>
+          )}
+
+          {isLive && (
+            <button
+              type="button"
+              onClick={() => setShowRecords((open) => !open)}
+              className="text-xs font-medium text-muted-foreground hover:text-foreground"
+            >
+              {showRecords ? 'Hide DNS records' : 'Show DNS records'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5">
+        <span className="text-[11px] text-muted-foreground">
+          {settling
+            ? checked
+              ? `Checked ${checked} · we keep checking automatically`
+              : 'Checking automatically'
+            : checked
+              ? `Checked ${checked}`
+              : ''}
+        </span>
+
+        <div className="flex items-center gap-1">
+          {!isLive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 text-xs"
+              disabled={busy !== null}
+              onClick={() => call('verify', () => fetch(`${base}/verify`, { method: 'POST' }))}
+            >
+              {busy === 'verify' ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3" />
+              )}
+              Check now
+            </Button>
+          )}
 
           {isLive && !domain.isPrimary && (
             <Button
               variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              title="Make this the primary domain"
+              size="sm"
+              className="h-7 gap-1.5 text-xs"
               disabled={busy !== null}
               onClick={() =>
                 call('primary', () =>
@@ -255,49 +469,46 @@ function DomainRow({
                 )
               }
             >
-              {busy === 'primary' ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Star className="h-3.5 w-3.5" />
-              )}
+              {busy === 'primary' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Star className="h-3 w-3" />}
+              Make primary
             </Button>
           )}
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-destructive hover:text-destructive"
-            title="Remove domain"
-            disabled={busy !== null}
-            onClick={() => call('delete', () => fetch(base, { method: 'DELETE' }))}
-          >
-            {busy === 'delete' ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="h-3.5 w-3.5" />
-            )}
-          </Button>
+          {confirmingDelete ? (
+            <span className="flex items-center gap-1">
+              <span className="text-[11px] text-muted-foreground">Remove it?</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-destructive hover:text-destructive"
+                disabled={busy !== null}
+                onClick={() => call('delete', () => fetch(base, { method: 'DELETE' }))}
+              >
+                {busy === 'delete' ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Yes, remove'}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setConfirmingDelete(false)}
+              >
+                Keep
+              </Button>
+            </span>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 text-xs text-destructive hover:text-destructive"
+              disabled={busy !== null}
+              onClick={() => setConfirmingDelete(true)}
+            >
+              <Trash2 className="h-3 w-3" />
+              Remove
+            </Button>
+          )}
         </div>
       </div>
-
-      {/* The service's message is the actionable one — it names the exact record
-          that is missing or wrong. Fall back to the generic status hint. */}
-      <p className="text-xs text-muted-foreground">{domain.lastError ?? meta.hint}</p>
-
-      {error && <p className="text-xs text-destructive">{error}</p>}
-
-      {!isLive && (
-        <>
-          <button
-            type="button"
-            onClick={() => setCollapsedByUser((collapsed) => !collapsed)}
-            className="text-xs font-medium text-muted-foreground hover:text-foreground"
-          >
-            {showRecords ? 'Hide DNS records' : 'Show DNS records'}
-          </button>
-          {showRecords && <DnsRecordTable records={domain.dnsRecords} />}
-        </>
-      )}
     </div>
   );
 }
@@ -308,9 +519,11 @@ function DomainRow({
 
 function AddDomainForm({
   projectId,
+  hasDomains,
   onCreated,
 }: {
   projectId: string;
+  hasDomains: boolean;
   onCreated: () => void;
 }): React.ReactElement {
   const [open, setOpen] = useState(false);
@@ -332,14 +545,14 @@ function AddDomainForm({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        setError(data?.error?.message ?? 'Failed to add domain');
+        setError(data?.error?.message ?? 'That domain could not be added.');
       } else {
         setHostname('');
         setOpen(false);
         onCreated();
       }
     } catch {
-      setError('Something went wrong');
+      setError('Could not reach DropDeploy. Check your connection and try again.');
     } finally {
       setSaving(false);
     }
@@ -347,75 +560,73 @@ function AddDomainForm({
 
   if (!open) {
     return (
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="gap-1.5">
+      <Button
+        variant={hasDomains ? 'outline' : 'default'}
+        size="sm"
+        onClick={() => setOpen(true)}
+        className="gap-1.5"
+      >
         <Plus className="h-3.5 w-3.5" />
-        Add domain
+        Add a domain
       </Button>
     );
   }
 
   return (
-    <Card>
-      <CardContent className="pt-4">
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="domain-hostname" className="text-xs">
-              Domain
-            </Label>
-            <Input
-              id="domain-hostname"
-              value={hostname}
-              onChange={(e) => setHostname(e.target.value)}
-              placeholder="myapp.com"
-              className="font-mono text-sm h-8"
-              autoFocus
-              required
-            />
-            <p className="text-xs text-muted-foreground">
-              A domain you already own. We&apos;ll show you the DNS records to add next.
-            </p>
-          </div>
+    <div className="rounded-lg border p-4">
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="domain-hostname" className="text-xs">
+            Your domain
+          </Label>
+          <Input
+            id="domain-hostname"
+            value={hostname}
+            onChange={(e) => setHostname(e.target.value)}
+            placeholder="app.yourdomain.com"
+            className="h-9 font-mono text-sm"
+            autoFocus
+            required
+          />
+          <p className="text-xs text-muted-foreground">
+            A domain you already own. Next we&apos;ll show you the two records to add at your DNS provider.
+          </p>
+        </div>
 
-          {error && <p className="text-xs text-destructive">{error}</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
 
-          <div className="flex items-center gap-2">
-            <Button type="submit" size="sm" disabled={saving || !hostname.trim()}>
-              {saving ? (
-                <>
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  Adding…
-                </>
-              ) : (
-                <>
-                  <Check className="mr-1.5 h-3.5 w-3.5" />
-                  Add
-                </>
-              )}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setOpen(false);
-                setHostname('');
-                setError(null);
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+        <div className="flex items-center gap-2">
+          <Button type="submit" size="sm" disabled={saving || !hostname.trim()}>
+            {saving ? (
+              <>
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                Adding…
+              </>
+            ) : (
+              'Continue'
+            )}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setOpen(false);
+              setHostname('');
+              setError(null);
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// DomainsPanel (exported)
+// DomainsPanel
 // ---------------------------------------------------------------------------
-
-const POLL_INTERVAL_MS = 15_000;
 
 export function DomainsPanel({ projectId }: { projectId: string }): React.ReactElement {
   const [domains, setDomains] = useState<DomainView[]>([]);
@@ -431,13 +642,13 @@ export function DomainsPanel({ projectId }: { projectId: string }): React.ReactE
         if (data?.success && data.data) {
           setDomains(data.data);
         } else {
-          setError(data?.error?.message ?? 'Failed to load domains');
+          setError(data?.error?.message ?? 'Could not load your domains.');
         }
       } catch (err) {
         // An abort is this component unmounting or re-fetching, not a failure —
         // reporting it would flash an error on the way out.
         if ((err as Error)?.name === 'AbortError') return;
-        setError('Failed to load domains');
+        setError('Could not load your domains.');
       } finally {
         if (!signal?.aborted) setLoading(false);
       }
@@ -451,23 +662,16 @@ export function DomainsPanel({ projectId }: { projectId: string }): React.ReactE
     return () => controller.abort();
   }, [fetchDomains]);
 
-  // Derived during render, not stored: this is what keeps the effect below off
-  // the `domains` array, whose identity changes on every poll.
+  // Derived during render, which is what keeps the effect below off the
+  // `domains` array, whose identity changes on every poll.
   const isSettling = domains.some((domain) => IN_FLIGHT.includes(domain.status));
 
-  // Poll only while something is still settling. A DNS change can land minutes
-  // after the user leaves this tab open, and the background worker is what
-  // actually advances the state — this just picks the change up without a
-  // manual refresh. Once every domain is terminal the interval is torn down and
-  // not recreated.
   useEffect(() => {
     if (!isSettling) return;
-
     const controller = new AbortController();
-    const intervalId = setInterval(() => void fetchDomains(controller.signal), POLL_INTERVAL_MS);
-
+    const id = setInterval(() => void fetchDomains(controller.signal), POLL_INTERVAL_MS);
     return () => {
-      clearInterval(intervalId);
+      clearInterval(id);
       controller.abort();
     };
   }, [isSettling, fetchDomains]);
@@ -477,8 +681,8 @@ export function DomainsPanel({ projectId }: { projectId: string }): React.ReactE
       <CardHeader>
         <CardTitle className="text-base">Custom domains</CardTitle>
         <CardDescription>
-          Serve this project from a domain you own. Add the DNS records we show you; the
-          HTTPS certificate is issued and renewed automatically once ownership is confirmed.
+          Serve this project from a domain you own instead of its DropDeploy address. You add two DNS
+          records; we handle the HTTPS certificate and keep it renewed.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -487,31 +691,45 @@ export function DomainsPanel({ projectId }: { projectId: string }): React.ReactE
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : error ? (
-          <p className="text-sm text-destructive py-4">{error}</p>
+          <div className="space-y-2 py-4">
+            <p className="text-sm text-destructive">{error}</p>
+            <Button variant="outline" size="sm" onClick={() => void fetchDomains()}>
+              Try again
+            </Button>
+          </div>
         ) : domains.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
-            <Globe className="h-8 w-8 text-muted-foreground/40 mb-2" />
-            <p className="text-sm text-muted-foreground">No custom domains yet</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              This project is reachable at its DropDeploy subdomain.
+            <Globe className="mb-2 h-8 w-8 text-muted-foreground/40" />
+            <p className="text-sm font-medium">No custom domain yet</p>
+            <p className="mt-1 max-w-sm text-xs leading-relaxed text-muted-foreground">
+              Right now this project is reachable at its DropDeploy address. Add a domain you own and
+              we&apos;ll walk you through the DNS.
             </p>
+            <div className="mt-4">
+              <AddDomainForm projectId={projectId} hasDomains={false} onCreated={() => void fetchDomains()} />
+            </div>
           </div>
         ) : (
-          <div className="space-y-2">
-            {domains.map((domain) => (
-              <DomainRow
-                key={domain.id}
-                domain={domain}
+          <>
+            <div className="space-y-3">
+              {domains.map((domain) => (
+                <DomainCard
+                  key={domain.id}
+                  domain={domain}
+                  projectId={projectId}
+                  onChanged={() => void fetchDomains()}
+                />
+              ))}
+            </div>
+            <div className="pt-1">
+              <AddDomainForm
                 projectId={projectId}
-                onChanged={() => void fetchDomains()}
+                hasDomains
+                onCreated={() => void fetchDomains()}
               />
-            ))}
-          </div>
+            </div>
+          </>
         )}
-
-        <div className="pt-2">
-          <AddDomainForm projectId={projectId} onCreated={() => void fetchDomains()} />
-        </div>
       </CardContent>
     </Card>
   );

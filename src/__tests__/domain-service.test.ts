@@ -482,3 +482,67 @@ describe('DNS instructions', () => {
     expect(view.isApex).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Registrar "Host" field
+// ---------------------------------------------------------------------------
+
+describe('registrar host field', () => {
+  /**
+   * Registrars ask for the record name relative to the zone and append the zone
+   * themselves. Handing a user the fully qualified name is how a setup silently
+   * becomes `_dropdeploy-verify.todo.example.com.example.com` — the single most
+   * common way custom domains fail. These lock the relative form down.
+   */
+  async function recordsFor(hostname: string) {
+    const h = harness({ domains: [makeDomain({ hostname })] });
+    const [view] = await h.service.list(PROJECT_ID, OWNER_ID);
+    return view.dnsRecords;
+  }
+
+  it('strips the zone from a sub-domain', async () => {
+    const [txt, cname] = await recordsFor('todo.example.com');
+    expect(txt.host).toBe('_dropdeploy-verify.todo');
+    expect(txt.name).toBe('_dropdeploy-verify.todo.example.com');
+    expect(txt.zone).toBe('example.com');
+    expect(cname.host).toBe('todo');
+  });
+
+  it('uses @ for the zone root', async () => {
+    const [txt, a] = await recordsFor('example.com');
+    expect(a.kind).toBe('A');
+    expect(a.host).toBe('@');
+    expect(txt.host).toBe('_dropdeploy-verify');
+  });
+
+  it('keeps a multi-label sub-domain intact below the zone', async () => {
+    const [, cname] = await recordsFor('staging.app.example.com');
+    expect(cname.host).toBe('staging.app');
+    expect(cname.zone).toBe('example.com');
+  });
+
+  it('gets the zone right for a two-label public suffix', async () => {
+    // The trap: naive "last two labels" would call the zone `co.uk` and hand
+    // the user a host of `shop.example`, which is wrong at every registrar.
+    const [, cname] = await recordsFor('shop.example.co.uk');
+    expect(cname.zone).toBe('example.co.uk');
+    expect(cname.host).toBe('shop');
+  });
+
+  it('carries the zone on every record so the UI can name it', async () => {
+    const records = await recordsFor('todo.example.com');
+    expect(records).toHaveLength(2);
+    expect(records.every((r) => r.zone === 'example.com')).toBe(true);
+  });
+
+  it('reconstructs the fully qualified name from host + zone', async () => {
+    // The two forms must never disagree — the UI shows one and falls back to
+    // the other for providers that want it fully qualified.
+    for (const hostname of ['todo.example.com', 'example.com', 'a.b.example.co.uk']) {
+      for (const record of await recordsFor(hostname)) {
+        const rebuilt = record.host === '@' ? record.zone : `${record.host}.${record.zone}`;
+        expect(rebuilt).toBe(record.name);
+      }
+    }
+  });
+});
