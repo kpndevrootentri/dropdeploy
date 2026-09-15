@@ -13,6 +13,19 @@ import { NotFoundError, ValidationError, ConflictError } from '@/lib/errors';
 
 const SALT_ROUNDS = 10;
 
+/** One row of the admin user table. Deliberately excludes `passwordHash`. */
+export interface AdminUserRow {
+  id: string;
+  email: string;
+  role: UserRole;
+  projectQuota: number;
+  domainQuota: number;
+  mustResetPassword: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  _count: { projects: number; customDomains: number };
+}
+
 export class AdminService {
   constructor(
     private readonly userRepo: IUserRepository,
@@ -20,15 +33,49 @@ export class AdminService {
     private readonly docker: DockerService,
   ) {}
 
-  async listAllUsers(): Promise<(User & { _count: { projects: number } })[]> {
-    const users = await this.userRepo.findAll();
-    // Attach project counts via a separate query approach using prisma directly
-    // We use the repo's findAll and augment with project count
+  /**
+   * Users for the admin table, with both quotas and both usage counts.
+   *
+   * NOTE the explicit `select`. This list is serialised straight to the admin
+   * page, and a bare `findMany` returns every scalar column — including
+   * `passwordHash`. Shipping every user's bcrypt hash to a browser is
+   * Security Assessment finding #23; the select is what prevents it, so do not
+   * replace it with `include` for convenience.
+   *
+   * Custom domains hang off Project, not User, so Prisma's `_count` cannot
+   * reach them in one query. At this scale a second query and a tally is
+   * cheaper and clearer than the join gymnastics that would avoid it.
+   */
+  async listAllUsers(): Promise<AdminUserRow[]> {
     const { prisma } = await import('@/lib/prisma');
-    return prisma.user.findMany({
-      orderBy: { createdAt: 'asc' },
-      include: { _count: { select: { projects: true } } },
-    }) as Promise<(User & { _count: { projects: number } })[]>;
+
+    const [users, domains] = await Promise.all([
+      prisma.user.findMany({
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          projectQuota: true,
+          domainQuota: true,
+          mustResetPassword: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: { select: { projects: true } },
+        },
+      }),
+      prisma.customDomain.findMany({ select: { project: { select: { userId: true } } } }),
+    ]);
+
+    const domainsPerUser = new Map<string, number>();
+    for (const { project } of domains) {
+      domainsPerUser.set(project.userId, (domainsPerUser.get(project.userId) ?? 0) + 1);
+    }
+
+    return users.map((user) => ({
+      ...user,
+      _count: { projects: user._count.projects, customDomains: domainsPerUser.get(user.id) ?? 0 },
+    }));
   }
 
   async changeUserRole(userId: string, role: UserRole, actorId: string): Promise<User> {

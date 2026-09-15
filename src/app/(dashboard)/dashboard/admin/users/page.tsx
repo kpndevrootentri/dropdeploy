@@ -18,8 +18,9 @@ interface AdminUser {
   email: string;
   role: string;
   projectQuota: number;
+  domainQuota: number;
   createdAt: string;
-  _count: { projects: number };
+  _count: { projects: number; customDomains: number };
 }
 
 export default function AdminUsersPage(): React.ReactElement {
@@ -49,6 +50,7 @@ export default function AdminUsersPage(): React.ReactElement {
   const [quotaOpen, setQuotaOpen] = useState(false);
   const [quotaTarget, setQuotaTarget] = useState<AdminUser | null>(null);
   const [quotaValue, setQuotaValue] = useState('');
+  const [domainQuotaValue, setDomainQuotaValue] = useState('');
   const [quotaError, setQuotaError] = useState<string | null>(null);
   const [quotaSaving, setQuotaSaving] = useState(false);
 
@@ -147,6 +149,7 @@ export default function AdminUsersPage(): React.ReactElement {
   const openQuotaModal = (user: AdminUser): void => {
     setQuotaTarget(user);
     setQuotaValue(String(user.projectQuota));
+    setDomainQuotaValue(String(user.domainQuota));
     setQuotaError(null);
     setQuotaOpen(true);
   };
@@ -155,8 +158,13 @@ export default function AdminUsersPage(): React.ReactElement {
     e.preventDefault();
     if (!quotaTarget) return;
     const parsed = parseInt(quotaValue, 10);
+    const parsedDomains = parseInt(domainQuotaValue, 10);
     if (isNaN(parsed) || parsed < 0) {
-      setQuotaError('Quota must be a non-negative integer');
+      setQuotaError('Max projects must be a whole number, 0 or more');
+      return;
+    }
+    if (isNaN(parsedDomains) || parsedDomains < 0) {
+      setQuotaError('Max custom domains must be a whole number, 0 or more');
       return;
     }
     setQuotaError(null);
@@ -165,7 +173,7 @@ export default function AdminUsersPage(): React.ReactElement {
       const res = await fetch(`/api/admin/users/${quotaTarget.id}/quota`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectQuota: parsed }),
+        body: JSON.stringify({ projectQuota: parsed, domainQuota: parsedDomains }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -221,7 +229,8 @@ export default function AdminUsersPage(): React.ReactElement {
               <tr className="border-b text-left text-muted-foreground">
                 <th className="pb-2 pr-4">Email</th>
                 <th className="pb-2 pr-4">Role</th>
-                <th className="pb-2 pr-4">Projects / Quota</th>
+                <th className="pb-2 pr-4">Projects</th>
+                <th className="pb-2 pr-4">Domains</th>
                 <th className="pb-2 pr-4">Created</th>
                 <th className="pb-2">Actions</th>
               </tr>
@@ -247,6 +256,11 @@ export default function AdminUsersPage(): React.ReactElement {
                     <td className="py-3 pr-4">
                       <span className={`tabular-nums ${(u._count?.projects ?? 0) >= u.projectQuota ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''}`}>
                         {u._count?.projects ?? 0} / {u.projectQuota}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className={`tabular-nums ${(u._count?.customDomains ?? 0) >= u.domainQuota ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''}`}>
+                        {u._count?.customDomains ?? 0} / {u.domainQuota}
                       </span>
                     </td>
                     <td className="py-3 pr-4 text-muted-foreground">
@@ -285,7 +299,7 @@ export default function AdminUsersPage(): React.ReactElement {
 
                         {/* Set Quota */}
                         <button
-                          title="Set Quota — Change how many projects this user can create"
+                          title="Set quotas — how many projects and custom domains this user can have"
                           disabled={!!isActing}
                           onClick={() => openQuotaModal(u)}
                           className="inline-flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-md border border-transparent text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
@@ -313,7 +327,7 @@ export default function AdminUsersPage(): React.ReactElement {
               })}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="py-8 text-center text-muted-foreground">
                     No users found.
                   </td>
                 </tr>
@@ -382,11 +396,11 @@ export default function AdminUsersPage(): React.ReactElement {
       <Dialog open={quotaOpen} onOpenChange={setQuotaOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Set Project Quota</DialogTitle>
+            <DialogTitle>Set quotas</DialogTitle>
           </DialogHeader>
           <div className="px-1 py-2 space-y-5">
             <p className="text-sm text-muted-foreground border-b border-border pb-4">
-              Updating quota for{' '}
+              Updating quotas for{' '}
               <span className="font-semibold text-foreground">{quotaTarget?.email}</span>
             </p>
             <form id="quota-form" onSubmit={handleUpdateQuota} className="space-y-4">
@@ -404,6 +418,25 @@ export default function AdminUsersPage(): React.ReactElement {
                 />
                 <p className="text-xs text-muted-foreground">
                   Default is 5. Set to 0 to block project creation.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="domain-quota-value">Max custom domains</Label>
+                <Input
+                  id="domain-quota-value"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={domainQuotaValue}
+                  onChange={(e) => setDomainQuotaValue(e.target.value)}
+                  required
+                  placeholder="2"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Counts across all of this user&apos;s projects. Serving a site at both
+                  <code className="mx-1 font-mono">example.com</code> and
+                  <code className="mx-1 font-mono">www.example.com</code> uses two, so 1 blocks the
+                  commonest setup. Set to 0 to disable custom domains for this user.
                 </p>
               </div>
               {quotaError && (
