@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { safeRedirectPath } from '@/lib/safe-redirect';
 import { Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 function LoginForm(): React.ReactElement {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const from = searchParams.get('from') ?? '/dashboard';
+  const from = safeRedirectPath(searchParams.get('from'));
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

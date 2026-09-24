@@ -9,7 +9,7 @@ import { deploymentService } from '@/services/deployment';
 import { removeProjectResources } from '@/services/project/project-cleanup';
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/errors';
 
-const SALT_ROUNDS = 10;
+import { SALT_ROUNDS } from '@/services/auth/auth.service';
 
 /** One row of the admin user table. Deliberately excludes `passwordHash`. */
 export interface AdminUserRow {

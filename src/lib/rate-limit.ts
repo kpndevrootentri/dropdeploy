@@ -188,3 +188,15 @@ export function checkAnalyticsEventRateLimit(ip: string): NextResponse | null {
     max: ANALYTICS_EVENT_MAX,
   });
 }
+
+const ACCESS_GRANT_WINDOW_MS = 60_000; // 1 minute
+const ACCESS_GRANT_MAX = 20; // 20 grants per minute per user
+
+/**
+ * Rate limit private-URL access grants — 20/min/user. Granting by email says
+ * whether that address has an account, so this also caps how fast a signed-in
+ * user can probe the user list.
+ */
+export function checkAccessGrantRateLimit(userId: string): NextResponse | null {
+  return checkRateLimit(`access-grant:${userId}`, { windowMs: ACCESS_GRANT_WINDOW_MS, max: ACCESS_GRANT_MAX });
+}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/get-session';
 import { projectAccessService } from '@/services/project-access';
 import { grantAccessSchema } from '@/validators/project-access.validator';
+import { checkAccessGrantRateLimit } from '@/lib/rate-limit';
 import { handleApiError } from '@/lib/api-error';
 import { ValidationError } from '@/lib/errors';
 
@@ -27,6 +28,8 @@ export async function GET(req: NextRequest, { params }: RouteCtx): Promise<NextR
 export async function POST(req: NextRequest, { params }: RouteCtx): Promise<NextResponse<unknown>> {
   try {
     const session = await getSession(req);
+    const limited = checkAccessGrantRateLimit(session.userId);
+    if (limited) return limited;
     const { id } = await params;
 
     const body = await req.json();

@@ -6,7 +6,8 @@ import { getConfig } from '@/lib/config';
 import type { RegisterDto, LoginDto } from '@/validators/auth.validator';
 import type { User } from '@prisma/client';
 
-const SALT_ROUNDS = 10;
+/** bcrypt cost for new hashes. Existing cost-10 hashes still verify and upgrade on the next password change. */
+export const SALT_ROUNDS = 12;
 
 export interface AuthTokens {
   accessToken: string;

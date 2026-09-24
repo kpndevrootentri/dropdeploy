@@ -16,7 +16,7 @@ const resetPasswordSchema = z.object({
 
 export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
   try {
-    const session = await getSession(req);
+    const session = await getSession(req, { allowPendingPasswordReset: true });
     const limited = checkPasswordChangeRateLimit(session.userId);
     if (limited) return limited;
     const body = await req.json();
