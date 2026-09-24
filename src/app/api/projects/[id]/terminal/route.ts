@@ -6,6 +6,9 @@ import { handleApiError } from '@/lib/api-error';
 import { dockerTerminalService } from '@/services/docker/docker-terminal.service';
 import { ValidationError, AppError } from '@/lib/errors';
 import { checkTerminalRateLimit } from '@/lib/rate-limit';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('terminal');
 
 const terminalCommandSchema = z.object({
     command: z.string().min(1, 'Command is required').max(1000, 'Command too long'),
@@ -49,14 +52,18 @@ export async function POST(
 
         return NextResponse.json({ success: true, data: result });
     } catch (error) {
-        // Surface command-validation / container errors with a friendly message
+        // User-facing terminal errors are TerminalErrors (an AppError) and pass
+        // through with their message; anything else — Docker API failures,
+        // socket errors — is logged and answered generically, so internal
+        // detail never reaches the browser.
         if (error instanceof Error && !(error instanceof AppError)) {
+            log.error('Terminal command failed', { error: error.message });
             return NextResponse.json(
                 {
                     success: false,
-                    error: { code: 'TERMINAL_ERROR', message: error.message },
+                    error: { code: 'TERMINAL_ERROR', message: 'The command could not be run. Try again, or redeploy the project.' },
                 },
-                { status: 400 },
+                { status: 500 },
             );
         }
         return handleApiError(error);
