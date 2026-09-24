@@ -193,6 +193,11 @@ model Deployment {
   buildLog      String?          @map("build_log") @db.Text
   commitHash    String?          @map("commit_hash")
   servingMethod ServingMethod    @default(CONTAINER) @map("serving_method")
+  /// Image this deployment ran (`dropdeploy/<slug>:d-<id>`), kept for rollback.
+  /// Null once pruned, or for uploads, which have no image.
+  imageTag      String?          @map("image_tag")
+  /// Set when this deployment re-ran an earlier deployment's image.
+  rollbackOfId  String?          @map("rollback_of_id")
   startedAt     DateTime?        @map("started_at")
   completedAt   DateTime?        @map("completed_at")
 

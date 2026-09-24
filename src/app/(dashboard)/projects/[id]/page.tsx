@@ -67,6 +67,9 @@ interface Deployment {
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string;
+  /** Set while the deployment's image is kept, i.e. it can be rolled back to. */
+  imageTag: string | null;
+  rollbackOfId: string | null;
 }
 
 interface ProjectDetail {
@@ -395,6 +398,8 @@ function DeploymentRow({
   const isFailed = deployment.status === 'FAILED';
   const canCancel = deployment.status === 'QUEUED';
   const canRedeploy = deployment.status === 'DEPLOYED' || deployment.status === 'CANCELLED';
+  const isLive = deployment.status === 'DEPLOYED' && deployment.subdomain !== null;
+  const canRollback = deployment.status === 'DEPLOYED' && !isLive && !!deployment.imageTag;
 
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
@@ -402,6 +407,8 @@ function DeploymentRow({
   const [redeployError, setRedeployError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [rollingBack, setRollingBack] = useState(false);
+  const [rollbackError, setRollbackError] = useState<string | null>(null);
 
   const buildDuration =
     isFinished && deployment.startedAt && deployment.completedAt
@@ -450,6 +457,27 @@ function DeploymentRow({
     }
   };
 
+  const handleRollback = async (): Promise<void> => {
+    setRollbackError(null);
+    setRollingBack(true);
+    try {
+      const res = await fetch(
+        `/api/projects/${projectId}/deployments/${deployment.id}/rollback`,
+        { method: 'POST' }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setRollbackError(data?.error?.message ?? 'Rollback failed');
+      } else {
+        onRetried();
+      }
+    } catch {
+      setRollbackError('Something went wrong');
+    } finally {
+      setRollingBack(false);
+    }
+  };
+
   const handleRedeploy = async (): Promise<void> => {
     setRedeployError(null);
     setRedeploying(true);
@@ -482,6 +510,14 @@ function DeploymentRow({
               {deployment.id.slice(0, 8)}
             </span>
             <StatusBadge status={deployment.status} />
+            {isLive && (
+              <span className="text-[10px] font-medium uppercase tracking-wide text-green-600">Live</span>
+            )}
+            {deployment.rollbackOfId && (
+              <span className="text-xs text-muted-foreground" title={`Re-ran deployment ${deployment.rollbackOfId}`}>
+                &middot; rollback of {deployment.rollbackOfId.slice(0, 8)}
+              </span>
+            )}
           </div>
           <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
             <p className="text-xs text-muted-foreground">
@@ -520,6 +556,9 @@ function DeploymentRow({
           {redeployError && (
             <p className="text-xs text-destructive mt-1">{redeployError}</p>
           )}
+          {rollbackError && (
+            <p className="text-xs text-destructive mt-1">{rollbackError}</p>
+          )}
         </div>
         {canCancel && (
           <Button
@@ -548,6 +587,24 @@ function DeploymentRow({
               <Loader2 className="h-3 w-3 animate-spin" />
             ) : (
               'Retry'
+            )}
+          </Button>
+        )}
+        {canRollback && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 h-7 px-2 text-xs"
+            onClick={() => { void handleRollback(); }}
+            disabled={rollingBack || isDeployInProgress}
+            title={isDeployInProgress
+              ? 'A deployment is already in progress'
+              : 'Run this deployment again (same build, current environment variables)'}
+          >
+            {rollingBack ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              'Roll back'
             )}
           </Button>
         )}

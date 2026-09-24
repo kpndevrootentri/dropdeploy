@@ -4,6 +4,7 @@
 
 import Docker from 'dockerode';
 import * as fs from 'fs';
+import * as http from 'http';
 import * as net from 'net';
 import * as path from 'path';
 import * as tarStream from 'tar-stream';
@@ -39,6 +40,34 @@ const CONTAINER_RESOURCES: Record<string, { memory: number; cpuShares: number }>
  * reach another's port directly — around the proxy's private-URL gate.
  */
 export const TENANT_NETWORK = 'dropdeploy-tenants';
+
+/** The project's live container. */
+export const liveContainerName = (slug: string): string => `dropdeploy-${slug}`;
+
+/** A deployment's container while it starts up next to the live one. */
+export const candidateContainerName = (slug: string, deploymentId: string): string =>
+  `dropdeploy-${slug}-next-${deploymentId.slice(-8).toLowerCase()}`;
+
+/**
+ * Whether the app on 127.0.0.1:port answers HTTP — any status counts, a 500
+ * included: the app is up and handling requests. A bare TCP connect is not
+ * enough, because Docker's port proxy accepts connections on the host port
+ * before the app inside is listening, then drops them.
+ */
+function answersHttp(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.request(
+      { host: '127.0.0.1', port, path: '/', method: 'GET', timeout: 2000 },
+      (res) => {
+        res.resume();
+        resolve(true);
+      },
+    );
+    req.once('timeout', () => req.destroy());
+    req.once('error', () => resolve(false));
+    req.end();
+  });
+}
 
 /** Where each project's persistent volume is mounted inside its container. */
 const DATA_MOUNT = '/data';
@@ -180,16 +209,23 @@ export class DockerService {
   }
 
   /**
-   * Creates and starts a container from the image; returns the host port.
-   * Static projects expose 80, Node/Next expose 3000.
+   * Creates and starts a container from the image under `containerName`;
+   * returns the host port. Static projects expose 80, Node/Next expose 3000.
+   *
+   * Only a stale container of the *same* name is replaced. The project's live
+   * container keeps running: a redeploy starts its successor under a
+   * candidate name alongside it (see candidateContainerName), waits for it to
+   * be ready, switches traffic, and only then retires the old one.
    */
-  async runContainer(
-    imageName: string,
-    projectType: string,
-    containerName?: string,
-    envVars: Record<string, string> = {},
-    excludePorts: number[] = [],
-  ): Promise<number> {
+  async startContainer(opts: {
+    imageName: string;
+    projectType: string;
+    slug: string;
+    containerName: string;
+    envVars?: Record<string, string>;
+    excludePorts?: number[];
+  }): Promise<number> {
+    const { imageName, projectType, slug, containerName, envVars = {}, excludePorts = [] } = opts;
     try {
       await this.docker.getImage(imageName).inspect();
     } catch {
@@ -198,23 +234,11 @@ export class DockerService {
       );
     }
 
-    // Stop and remove existing container with the same name (redeploy scenario)
-    if (containerName) {
-      try {
-        const existing = this.docker.getContainer(containerName);
-        const info = await existing.inspect();
-        if (info.State.Running) {
-          await existing.stop();
-        }
-        await existing.remove();
-      } catch {
-        // Container doesn't exist — that's fine
-      }
-    }
+    // A leftover under this exact name (e.g. a candidate from a crashed
+    // deploy) is replaced. Never the live container, which has another name.
+    await this.stopAndRemoveContainer(containerName);
 
     await this.ensureTenantNetwork();
-    // Project containers are named dropdeploy-<slug>; the slug names the volume.
-    const slug = containerName?.startsWith('dropdeploy-') ? containerName.slice('dropdeploy-'.length) : undefined;
 
     const containerPort = CONTAINER_PORTS[projectType as DockerfileProjectType] ?? 3000;
 
@@ -248,7 +272,7 @@ export class DockerService {
           },
           NetworkMode: TENANT_NETWORK,
           // Survives redeploys; everything else in the container is replaced.
-          Mounts: slug ? [{ Type: 'volume', Source: dataVolumeName(slug), Target: DATA_MOUNT }] : undefined,
+          Mounts: [{ Type: 'volume', Source: dataVolumeName(slug), Target: DATA_MOUNT }],
           Memory: resources.memory,
           MemorySwap: resources.memory,
           CpuShares: resources.cpuShares,
@@ -279,6 +303,69 @@ export class DockerService {
       }
     }
     throw new Error('Failed to start container after 3 port allocation attempts');
+  }
+
+  /**
+   * Waits until the app answers HTTP on its host port, or fails fast if the
+   * container exits. On failure the
+   * error carries the container's last log lines so the deploy log shows why.
+   */
+  async waitUntilReady(containerName: string, hostPort: number, timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    const container = this.docker.getContainer(containerName);
+    while (Date.now() < deadline) {
+      const info = await container.inspect();
+      // With restart-unless-stopped a crashing app looks "running" between
+      // restarts; any restart during startup means it crashed.
+      if (!info.State.Running || info.State.Restarting || info.RestartCount > 0) {
+        throw new Error(
+          `The app exited during startup (exit code ${info.State.ExitCode}).\n${await this.tailLogs(containerName)}`,
+        );
+      }
+      if (await answersHttp(hostPort)) return;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    throw new Error(
+      `The app did not start listening within ${Math.round(timeoutMs / 1000)}s.\n${await this.tailLogs(containerName)}`,
+    );
+  }
+
+  /**
+   * Retires the project's previous live container and gives the candidate the
+   * canonical name. Call after traffic has been switched to the candidate.
+   * The old container gets a short grace period for requests already in
+   * flight, then a normal `docker stop` (SIGTERM, then SIGKILL after 10s).
+   */
+  async promoteContainer(slug: string, candidateName: string, graceMs = 5_000): Promise<void> {
+    const liveName = liveContainerName(slug);
+    const old = this.docker.getContainer(liveName);
+    const exists = await old.inspect().then(() => true, () => false);
+    if (exists) {
+      await new Promise((r) => setTimeout(r, graceMs));
+      await this.stopAndRemoveContainer(liveName);
+    }
+    await this.docker.getContainer(candidateName).rename({ name: liveName });
+  }
+
+  /** Last lines of a container's output, for failure messages. */
+  private async tailLogs(containerName: string, lines = 30): Promise<string> {
+    try {
+      const buf = await this.docker.getContainer(containerName).logs({ stdout: true, stderr: true, tail: lines });
+      // Strip Docker's 8-byte multiplexing headers.
+      return (buf as unknown as Buffer).toString('utf8').replace(/[\x00-\x08]/g, '').trim() || '(no output)';
+    } catch {
+      return '(logs unavailable)';
+    }
+  }
+
+  /**
+   * Tags a built image for a specific deployment so it can be re-run later
+   * (rollback) after `:latest` has moved on. Returns the tag.
+   */
+  async tagForDeployment(imageName: string, slug: string, deploymentId: string): Promise<string> {
+    const tag = `d-${deploymentId}`;
+    await this.docker.getImage(imageName).tag({ repo: `dropdeploy/${slug}`, tag });
+    return `dropdeploy/${slug}:${tag}`;
   }
 
   /** Creates {@link TENANT_NETWORK} on first use. */
