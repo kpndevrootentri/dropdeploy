@@ -114,11 +114,16 @@ sudo apt install -y redis-server
 # Bind to localhost only (security)
 sudo sed -i 's/^bind .*/bind 127.0.0.1/' /etc/redis/redis.conf
 
+# Require a password, and put the same value in .env as REDIS_PASSWORD
+REDIS_PASSWORD=$(openssl rand -hex 32)
+echo "requirepass $REDIS_PASSWORD" | sudo tee -a /etc/redis/redis.conf >/dev/null
+echo "REDIS_PASSWORD=$REDIS_PASSWORD"   # copy into .env
+
 # Enable and start
 sudo systemctl enable --now redis-server
 
 # Verify
-redis-cli ping   # PONG
+redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping   # PONG
 ```
 
 ---
