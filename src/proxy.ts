@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import * as jose from 'jose';
 import { randomUUID } from 'crypto';
 import { getTokenFromCookie } from '@/lib/auth-cookie';
-import { normalizeHostKey } from '@/lib/host-key';
+import { isPlatformHost, matchTenantSubdomain } from '@/lib/platform-host';
 import { isRoutableStatus } from '@/lib/domain-status';
 
 const DASHBOARD_PREFIX = '/dashboard';
@@ -21,52 +21,6 @@ const RESET_PASSWORD_PATH = '/reset-password';
  */
 function envFlag(value: string | undefined): boolean {
   return value !== undefined && ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
-}
-
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * True for hostnames that belong to the platform itself rather than to a
- * tenant. These must always fall through to the dashboard/auth guard and must
- * never be looked up as custom domains.
- *
- * IP literals count as platform hosts: local development and LAN testing reach
- * the app by raw IP (see `src/lib/local-ip.ts`), and health checks often do
- * too. Treating them as unknown tenant hosts would 404 all of that.
- *
- * `PLATFORM_EXTRA_HOSTS` is the escape hatch for every other named host an
- * operator points at this app — a monitoring alias, a staging CNAME, an
- * internal health check that connects by name. Without it, turning the feature
- * on would 404 them all.
- */
-function isPlatformHost(hostname: string, baseDomain: string): boolean {
-  const host = normalizeHostKey(hostname);
-  if (!host) return true;
-  if (host === 'localhost' || host.endsWith('.localhost')) return true;
-  // IPv4 literal, or an IPv6 literal in brackets.
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith('[')) return true;
-  if (baseDomain && (host === baseDomain || host.endsWith(`.${baseDomain}`))) return true;
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL;
-  if (appUrl) {
-    try {
-      if (host === new URL(appUrl).hostname.toLowerCase()) return true;
-    } catch {
-      // Malformed APP_URL — nothing to compare against.
-    }
-  }
-
-  const extra = process.env.PLATFORM_EXTRA_HOSTS;
-  if (extra) {
-    for (const entry of extra.split(',')) {
-      const allowed = normalizeHostKey(entry.trim());
-      if (allowed && (host === allowed || host.endsWith(`.${allowed}`))) return true;
-    }
-  }
-
-  return false;
 }
 
 /** Rewrites the current request into the in-app proxy route for `slug`. */
@@ -106,14 +60,11 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const baseDomain = process.env.BASE_DOMAIN ?? '';
 
   // Match {slug}.{BASE_DOMAIN} (with optional :port for local dev)
-  const subdomainPattern = new RegExp(
-    `^([a-z0-9][a-z0-9-]*)\\.${escapeRegex(baseDomain)}(?::\\d+)?$`
-  );
-  const match = hostname.match(subdomainPattern);
+  const subdomainSlug = matchTenantSubdomain(hostname, baseDomain);
 
-  if (match) {
+  if (subdomainSlug) {
     // Rewrite to internal proxy route while preserving query string
-    return rewriteToProxy(request, match[1]);
+    return rewriteToProxy(request, subdomainSlug);
   }
 
   const { pathname } = request.nextUrl;

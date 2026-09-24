@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as nodePath from 'path';
 import { AUTH_COOKIE_NAME } from '@/lib/auth-cookie';
 import { getConfig } from '@/lib/config';
+import { mayServeTenant } from '@/lib/platform-host';
 import { projectAccessService } from '@/services/project-access';
 
 export const dynamic = 'force-dynamic';
@@ -307,6 +308,15 @@ async function handler(
 ): Promise<NextResponse> {
   const { slug, path = [] } = await params;
 
+  // Tenant content must never be served on a platform origin — on the
+  // dashboard host it would run with the viewer's dashboard session. Checked
+  // here, where the content is served, so no path that skips or out-parses
+  // the rewrite in src/proxy.ts can reach it.
+  const { BASE_DOMAIN, NODE_ENV } = getConfig();
+  if (!mayServeTenant(request.headers.get('host') ?? '', slug, BASE_DOMAIN, NODE_ENV === 'production')) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
   // Resolve active deployment port from DB, including project privacy flag
   const deployment = await prisma.deployment.findFirst({
     where: { subdomain: slug, status: 'DEPLOYED' },
@@ -366,7 +376,7 @@ async function handler(
   const targetPath = path.length > 0 ? `/${path.join('/')}` : '/';
 
   if (deployment.servingMethod === 'STATIC_FILES') {
-    const { STATIC_SERVE_DIR, NODE_ENV, NEXT_PUBLIC_APP_URL } = getConfig();
+    const { STATIC_SERVE_DIR, NEXT_PUBLIC_APP_URL } = getConfig();
     const serveDir = nodePath.join(STATIC_SERVE_DIR, slug);
     // Path rewriting is only needed in localhost dev where the site is served under
     // /api/proxy/{slug}/. In production the site owns its own subdomain so absolute
