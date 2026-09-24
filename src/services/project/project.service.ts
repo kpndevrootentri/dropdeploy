@@ -1,9 +1,7 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import { projectRepository, type IProjectRepository } from '@/repositories/project.repository';
 import { userRepository, type IUserRepository } from '@/repositories/user.repository';
 import { dockerService, type DockerService } from '@/services/docker';
-import { getConfig } from '@/lib/config';
+import { removeProjectResources } from './project-cleanup';
 import { NotFoundError, QuotaExceededError } from '@/lib/errors';
 import type { CreateProjectDto, UpdateProjectDto } from '@/types/project.types';
 import type { Project } from '@prisma/client';
@@ -81,9 +79,7 @@ export class ProjectService {
 
   async delete(id: string, userId: string): Promise<void> {
     const project = await this.getById(id, userId);
-    await this.docker.stopAndRemoveContainer(`dropdeploy-${project.slug}`);
-    const { STATIC_SERVE_DIR } = getConfig();
-    await fs.promises.rm(path.join(STATIC_SERVE_DIR, project.slug), { recursive: true, force: true }).catch(() => {});
+    await removeProjectResources(project.slug, this.docker);
     await this.projectRepo.delete(id);
   }
 }

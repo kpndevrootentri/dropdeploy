@@ -86,7 +86,7 @@ export class DockerService {
     const dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs));
     await writeRepoFile(dockerfilePath, dockerfile);
 
-    // Write .dockerignore to prevent .env files from leaking into image
+    // Write .dockerignore to keep .env files and .git out of the image
     await this.writeDockerignore(contextPath);
 
     // Patch Next.js config to skip lint/type errors during build;
@@ -249,17 +249,20 @@ export class DockerService {
   }
 
   /**
-   * Appends .env* exclusions to .dockerignore to prevent secret leakage.
+   * Appends the platform's exclusions to .dockerignore:
+   *  - `.env*`, so secret files never reach an image layer;
+   *  - `.git`, so a repo's history (and anything ever committed to it) is not
+   *    copied into the image — for static sites that would mean serving it.
+   *
+   * Always appended, never skipped when already present: later lines win in
+   * .dockerignore, so a repo line such as `!.env*` must not come after ours.
+   * The clone is reset and cleaned before every build, so this cannot pile up.
    */
   private async writeDockerignore(contextPath: string): Promise<void> {
     const ignorePath = path.join(contextPath, '.dockerignore');
-    const envIgnore = '\n# Prevent .env secret leakage\n.env*\n';
+    const platformRules = '\n# DropDeploy: keep secrets and git history out of the image\n.env*\n.git\n';
     const existing = await readRepoFile(ignorePath);
-    if (existing === null) {
-      await writeRepoFile(ignorePath, envIgnore.trim() + '\n');
-    } else if (!existing.includes('.env*')) {
-      await writeRepoFile(ignorePath, existing + envIgnore);
-    }
+    await writeRepoFile(ignorePath, existing === null ? platformRules.trimStart() : existing + platformRules);
   }
 
   /**

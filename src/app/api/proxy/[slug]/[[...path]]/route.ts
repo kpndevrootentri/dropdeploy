@@ -55,7 +55,21 @@ function rewriteHtmlPaths(html: string, slug: string): string {
   );
 }
 
+/**
+ * True for paths through a dot-file or dot-directory (`/.git/config`,
+ * `/.env`, `/.npmrc`), which a static site must never serve even if they were
+ * uploaded. `/.well-known/` is the one standard exception.
+ */
+function isHiddenPath(requestPath: string): boolean {
+  return requestPath
+    .split('/')
+    .some((segment) => segment.startsWith('.') && segment !== '.well-known');
+}
+
 async function serveStaticFile(serveDir: string, requestPath: string, slug?: string): Promise<NextResponse | null> {
+  if (isHiddenPath(requestPath)) {
+    return new NextResponse('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+  }
   const sanitized = requestPath.replace(/^\/+/, '').replace(/\.\.\//g, '');
   const candidates = sanitized
     ? [nodePath.join(serveDir, sanitized), nodePath.join(serveDir, sanitized, 'index.html')]

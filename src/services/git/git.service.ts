@@ -46,10 +46,25 @@ export class GitService implements IGitService {
     await fs.promises.mkdir(getConfig().PROJECTS_DIR, { recursive: true });
 
     const gitDir = path.join(workDir, '.git');
-    const exists = await fs.promises
+    let exists = await fs.promises
       .stat(gitDir)
       .then(() => true)
       .catch(() => false);
+
+    // Only reuse a clone of *this* repository. A clone left under the slug by a
+    // deleted project (or by a project whose repo URL changed) holds someone
+    // else's history, which a fetch+reset would keep in .git. Re-clone instead.
+    if (exists) {
+      const origin = await simpleGit(workDir)
+        .remote(['get-url', 'origin'])
+        .then((url) => (url ?? '').trim())
+        .catch(() => '');
+      if (origin !== cleanUrl) {
+        log.info('Existing clone has a different origin, re-cloning', { slug: projectSlug });
+        await fs.promises.rm(workDir, { recursive: true, force: true });
+        exists = false;
+      }
+    }
 
     if (exists) {
       // Repo already cloned – update remote URL (may need new token) then fetch+reset
@@ -67,14 +82,17 @@ export class GitService implements IGitService {
         .stat(path.join(gitDir, 'shallow'))
         .then(() => true)
         .catch(() => false);
-      if (isShallow) {
-        await git.fetch(['origin', '--unshallow', '--prune']);
-      } else {
-        await git.fetch(['origin', '--prune']);
+      try {
+        if (isShallow) {
+          await git.fetch(['origin', '--unshallow', '--prune']);
+        } else {
+          await git.fetch(['origin', '--prune']);
+        }
+      } finally {
+        // Scrub token from remote URL immediately after fetch — also when it
+        // fails, or the token would stay in .git/config on disk.
+        await git.remote(['set-url', 'origin', cleanUrl]);
       }
-
-      // Scrub token from remote URL immediately after fetch
-      await git.remote(['set-url', 'origin', cleanUrl]);
 
       try {
         await git.checkout(branch);
@@ -82,6 +100,8 @@ export class GitService implements IGitService {
         await git.checkoutBranch(branch, `origin/${branch}`);
       }
       await git.reset(['--hard', `origin/${branch}`]);
+      // Drop untracked and ignored files too, so the build sees exactly the commit.
+      await git.clean('fdx', ['-f']);
 
       const commitHash = await git.revparse(['HEAD']);
       return { workDir, commitHash: commitHash.trim() };
