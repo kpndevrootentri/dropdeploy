@@ -2,6 +2,7 @@ import type { CustomDomain, DomainStatus } from '@prisma/client';
 import { DomainService, VERIFY_LABEL, VERIFY_PREFIX, UNVERIFIED_CLAIM_TTL_MS } from '@/services/domain/domain.service';
 import type { IDomainRepository, DomainRoute } from '@/repositories/domain.repository';
 import type { IDnsResolver } from '@/lib/dns-resolver';
+import { probeEdgeTls } from '@/lib/edge-tls';
 import {
   NotFoundError,
   ConflictError,
@@ -12,6 +13,8 @@ import {
 
 // The resolver's cache invalidation reaches for Redis and Prisma; nothing in
 // these tests depends on it, so stub the whole module out.
+jest.mock('@/lib/edge-tls', () => ({ probeEdgeTls: jest.fn() }));
+
 jest.mock('@/lib/domain-resolver', () => ({
   invalidateHost: jest.fn().mockResolvedValue(undefined),
   promoteHostToActive: jest.fn().mockResolvedValue(undefined),
@@ -525,51 +528,37 @@ describe('DNS instructions', () => {
 // ---------------------------------------------------------------------------
 
 describe('triggerIssuance', () => {
-  const realFetch = global.fetch;
-  afterEach(() => {
-    global.fetch = realFetch;
-  });
+  const probe = probeEdgeTls as jest.MockedFunction<typeof probeEdgeTls>;
+  afterEach(() => probe.mockReset());
 
-  it('makes a HEAD request to the host over HTTPS', async () => {
-    // The scheme is the whole point: only a TLS handshake causes the edge to
-    // order a certificate. An http:// request would just be redirected.
-    const fetchMock = jest.fn().mockResolvedValue({ status: 200 });
-    global.fetch = fetchMock as unknown as typeof fetch;
-
+  it('handshakes with the edge, sending the hostname only as SNI', async () => {
+    // Never a request to wherever the hostname resolves: its DNS is user-
+    // controlled and could point at internal addresses.
+    probe.mockResolvedValue(undefined);
     await expect(harness().service.triggerIssuance('myapp.com')).resolves.toBe(true);
-
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('https://myapp.com/');
-    expect(init.method).toBe('HEAD');
+    const [hostname, edge] = probe.mock.calls[0];
+    expect(hostname).toBe('myapp.com');
+    expect(edge).toBe('127.0.0.1:443');
   });
 
-  it('counts any HTTP response as success, including an error status', async () => {
-    // A 502 from the tenant's own app still means the handshake completed,
-    // which is the only thing this is testing.
-    global.fetch = jest.fn().mockResolvedValue({ status: 502 }) as unknown as typeof fetch;
-    await expect(harness().service.triggerIssuance('myapp.com')).resolves.toBe(true);
+  it('uses the configured edge address', async () => {
+    probe.mockResolvedValue(undefined);
+    await harness({ config: { EDGE_TLS_ADDRESS: '10.0.0.5:8443' } as never }).service.triggerIssuance('myapp.com');
+    expect(probe.mock.calls[0][1]).toBe('10.0.0.5:8443');
   });
 
-  it('reports failure when the connection throws, without propagating', async () => {
+  it('reports failure when the handshake fails, without propagating', async () => {
     // A failed trigger must never abort the sweep for the other domains.
-    global.fetch = jest.fn().mockRejectedValue(new Error('ETIMEDOUT')) as unknown as typeof fetch;
+    probe.mockRejectedValue(new Error('ETIMEDOUT'));
     await expect(harness().service.triggerIssuance('myapp.com')).resolves.toBe(false);
-  });
-
-  it('does not follow redirects', async () => {
-    const fetchMock = jest.fn().mockResolvedValue({ status: 301 });
-    global.fetch = fetchMock as unknown as typeof fetch;
-    await harness().service.triggerIssuance('myapp.com');
-    expect(fetchMock.mock.calls[0][1].redirect).toBe('manual');
   });
 
   it('bounds how long it will hang', async () => {
     // The ACME order happens inside the handshake, so this connection hangs
     // legitimately — but it must not hang forever and wedge the sweep.
-    const fetchMock = jest.fn().mockResolvedValue({ status: 200 });
-    global.fetch = fetchMock as unknown as typeof fetch;
+    probe.mockResolvedValue(undefined);
     await harness().service.triggerIssuance('myapp.com');
-    expect(fetchMock.mock.calls[0][1].signal).toBeDefined();
+    expect(probe.mock.calls[0][2]).toBeGreaterThan(0);
   });
 });
 

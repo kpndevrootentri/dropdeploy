@@ -69,6 +69,9 @@ const envSchema = z.object({
   TLS_CHECK_ENABLED: envBool(false),
   // A-record target shown to users for apex domains.
   PLATFORM_INGRESS_IP: z.string().optional(),
+  // Where the worker reaches the TLS edge to trigger certificate issuance.
+  // Caddy runs with host networking, so loopback.
+  EDGE_TLS_ADDRESS: z.string().default('127.0.0.1:443'),
   // CNAME target shown to users for sub-domains, e.g. "ingress.en3.wtf".
   CUSTOM_DOMAIN_CNAME_TARGET: z.string().optional(),
   // Shared secret the edge sends to /api/internal/tls-check. When set, the

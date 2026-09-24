@@ -2,6 +2,7 @@ import { randomBytes } from 'crypto';
 import type { CustomDomain, DomainStatus } from '@prisma/client';
 import { domainRepository, type IDomainRepository } from '@/repositories/domain.repository';
 import { ISSUABLE_STATUSES, isRoutableStatus } from '@/lib/domain-status';
+import { probeEdgeTls } from '@/lib/edge-tls';
 import { projectRepository, type IProjectRepository } from '@/repositories/project.repository';
 import { userRepository, type IUserRepository } from '@/repositories/user.repository';
 import { auditLogRepository, type IAuditLogRepository } from '@/repositories/audit-log.repository';
@@ -271,7 +272,7 @@ export class DomainService implements IDomainService {
   }
 
   /**
-   * Makes one HTTPS request to the hostname so the edge orders its certificate.
+   * Makes one TLS handshake with our edge for the hostname so it orders the certificate.
    *
    * On-demand TLS issues a certificate during the handshake for a host it does
    * not already have one for. That makes `PROVISIONING` a state the platform
@@ -280,21 +281,18 @@ export class DomainService implements IDomainService {
    * domain sat there until a human opened it — three for three in testing, one
    * of them for 34 minutes.
    *
-   * So the platform connects to itself. The response is irrelevant; a 404 or a
-   * 502 from the tenant's app still means the handshake completed, which is the
-   * only thing being tested here. Only a thrown error — DNS, TCP, or a failed
-   * handshake — counts as failure.
+   * So the platform connects to itself — to the edge's own address, with the
+   * hostname as SNI, never to wherever the hostname's DNS points (see
+   * probeEdgeTls). A completed handshake with a valid certificate is the only
+   * thing tested; no HTTP request is sent.
    *
    * Safe to call for any verified host: it reaches the same ask endpoint as a
    * stranger would, and is refused on exactly the same terms.
    */
   async triggerIssuance(hostname: string): Promise<boolean> {
     try {
-      await fetch(`https://${hostname}/`, {
-        method: 'HEAD',
-        redirect: 'manual',
-        signal: AbortSignal.timeout(ISSUANCE_TIMEOUT_MS),
-      });
+      const edge = this.cfg().EDGE_TLS_ADDRESS ?? '127.0.0.1:443';
+      await probeEdgeTls(hostname, edge, ISSUANCE_TIMEOUT_MS);
       return true;
     } catch (err) {
       log.warn('Certificate trigger failed', {
