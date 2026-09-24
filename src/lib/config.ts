@@ -20,9 +20,11 @@ const envSchema = z.object({
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z.string().transform(Number).default('6379'),
   REDIS_PASSWORD: z.string().optional(),
-  // 32+ characters: HS256 tokens signed with a short secret can be brute-forced
-  // offline from any single token, which would let anyone mint an admin session.
-  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters').optional(),
+  // HS256 tokens signed with a short secret can be brute-forced offline from
+  // any single token, which would let anyone mint an admin session. 24 is a
+  // floor against the obviously weak ("secret", "changeme"); generate a real
+  // one with `openssl rand -hex 32` (64 characters).
+  JWT_SECRET: z.string().min(24, 'JWT_SECRET must be at least 24 characters (use: openssl rand -hex 32)').optional(),
   JWT_EXPIRES_IN: z.string().default('7d'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
