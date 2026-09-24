@@ -101,7 +101,7 @@ EOF
 
 Test the connection:
 ```bash
-psql postgresql://dropdeploy:kpndevroot@localhost:5432/dropdeploy -c "\l"
+psql postgresql://dropdeploy:your_strong_password_here@localhost:5432/dropdeploy -c "\l"
 ```
 
 ---
