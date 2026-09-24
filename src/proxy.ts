@@ -4,6 +4,7 @@ import * as jose from 'jose';
 import { randomUUID } from 'crypto';
 import { getTokenFromCookie } from '@/lib/auth-cookie';
 import { isPlatformHost, matchTenantSubdomain } from '@/lib/platform-host';
+import { isForeignOriginMutation } from '@/lib/csrf';
 import { isRoutableStatus } from '@/lib/domain-status';
 
 const DASHBOARD_PREFIX = '/dashboard';
@@ -152,6 +153,20 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 
   // For API routes: inject request ID and pass through (no auth redirect needed here)
   if (pathname.startsWith('/api/')) {
+    if (
+      isForeignOriginMutation(
+        request.method,
+        hostname,
+        request.headers.get('origin'),
+        request.headers.get('sec-fetch-site'),
+      )
+    ) {
+      return NextResponse.json(
+        { success: false, error: { code: 'FORBIDDEN', message: 'Cross-origin request refused' } },
+        { status: 403 },
+      );
+    }
+
     const requestId = request.headers.get('x-request-id') ?? randomUUID();
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set('x-request-id', requestId);

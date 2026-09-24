@@ -79,6 +79,23 @@ export class AuthService {
   }
 
   /**
+   * Changes a signed-in user's password. Unlike {@link resetPassword} this
+   * requires the current one, so a session alone — which a forged cross-site
+   * request carries — is not enough to take over the account.
+   */
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<AuthTokens> {
+    const user = await this.userRepo.findById(userId);
+    if (!user) {
+      throw new UnauthorizedError('User not found');
+    }
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) {
+      throw new ValidationError('Current password is incorrect');
+    }
+    return this.resetPassword(userId, newPassword);
+  }
+
+  /**
    * Verifies JWT and returns payload. Throws UnauthorizedError if invalid.
    */
   async verifyToken(token: string): Promise<JwtPayload> {

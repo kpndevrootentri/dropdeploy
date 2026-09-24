@@ -55,7 +55,7 @@ export default function SettingsPage(): React.ReactElement {
       const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newPassword }),
+        body: JSON.stringify({ currentPassword, newPassword }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -130,6 +130,17 @@ export default function SettingsPage(): React.ReactElement {
                 Password changed successfully.
               </div>
             )}
+            <div className="space-y-1.5">
+              <Label htmlFor="current-password" className="text-xs text-muted-foreground">Current Password</Label>
+              <Input
+                id="current-password"
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="new-password" className="text-xs text-muted-foreground">New Password</Label>
               <Input
