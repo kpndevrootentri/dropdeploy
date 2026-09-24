@@ -4,7 +4,7 @@ import { deploymentRepository, type IDeploymentRepository } from '@/repositories
 import { projectRepository, type IProjectRepository } from '@/repositories/project.repository';
 import { deploymentQueueAdapter, type IDeploymentQueue } from '@/lib/queue';
 import { dockerService, type DockerService } from '@/services/docker';
-import { gitService, type IGitService } from '@/services/git';
+import { gitService, type IGitService, type GitCredentials } from '@/services/git';
 import { envVarService, type EnvironmentVariableService } from '@/services/env-var';
 import { gitProviderService } from '@/services/git-provider';
 import { getRedisConnection } from '@/lib/redis';
@@ -298,16 +298,16 @@ export class DeploymentService {
       addMarker('Cloning...');
       const cleanUrl = project.githubUrl!;
       const token = await gitProviderService.getTokenForDeployment(project.userId, project.source);
-      const authUrl = token ? buildAuthUrl(cleanUrl, project.source, token) : cleanUrl;
+      const credentials = token ? gitCredentialsFor(cleanUrl, project.source, token) : undefined;
 
       let workDir: string;
       let commitHash: string;
       try {
         ({ workDir, commitHash } = await this.git.ensureRepo(
-          authUrl,
           cleanUrl,
           project.slug,
           project.branch,
+          credentials,
           signal,
         ));
       } catch (err) {
@@ -486,23 +486,17 @@ export class DeploymentService {
 }
 
 /**
- * Builds an authenticated HTTPS clone URL by embedding the token.
- * GitHub: https://x-access-token:<token>@github.com/owner/repo.git
- * GitLab: https://oauth2:<token>@gitlab.com/owner/repo.git
- * The token is NEVER stored — only used in-memory during clone/pull.
+ * HTTPS credentials for the provider's token: GitHub expects the user
+ * `x-access-token`, GitLab `oauth2`. The token is NEVER stored — git receives
+ * it as a request header for this one clone/fetch (see GitService).
  *
- * Re-validates the URL against the host allowlist before injecting the token
- * (defense in depth): even if a malformed URL reached the DB, we never embed a
- * credential into a non-allowlisted host or a dangerous git transport.
+ * Re-validates the URL against the host allowlist first (defense in depth):
+ * even if a malformed URL reached the DB, a credential is never offered to a
+ * non-allowlisted host or a dangerous git transport.
  */
-function buildAuthUrl(repoUrl: string, source: string, token: string): string {
-  const { url } = parseSafeRepoUrl(repoUrl);
-  if (!url.pathname.endsWith('.git')) {
-    url.pathname = `${url.pathname.replace(/\/+$/, '')}.git`;
-  }
-  url.username = source === 'GITHUB' ? 'x-access-token' : 'oauth2';
-  url.password = token;
-  return url.toString();
+function gitCredentialsFor(repoUrl: string, source: string, token: string): GitCredentials {
+  parseSafeRepoUrl(repoUrl);
+  return { username: source === 'GITHUB' ? 'x-access-token' : 'oauth2', token };
 }
 
 export const deploymentService = new DeploymentService(
