@@ -421,7 +421,10 @@ module.exports = {
     {
       name: 'dropdeploy-app',
       script: 'node_modules/.bin/next',
-      args: 'start',
+      // Loopback only: the edge proxies to 127.0.0.1:3000. On *:3000 the app
+      // is reachable from tenant containers at the Docker gateway IP, which
+      // skips the edge's /api/internal block.
+      args: 'start -H 127.0.0.1',
       cwd: '/home/ubuntu/dropdeploy',
       instances: 1,
       exec_mode: 'fork',

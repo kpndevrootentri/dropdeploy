@@ -33,6 +33,13 @@ const CONTAINER_RESOURCES: Record<string, { memory: number; cpuShares: number }>
   SVELTE: { memory: 128 * 1024 * 1024, cpuShares: 256 },
 };
 
+/**
+ * Network every tenant container joins instead of Docker's default bridge.
+ * Inter-container traffic is disabled on it, so one tenant's container cannot
+ * reach another's port directly — around the proxy's private-URL gate.
+ */
+export const TENANT_NETWORK = 'dropdeploy-tenants';
+
 export interface DockerServiceConfig {
   socketPath?: string;
   memoryLimitBytes?: number;
@@ -187,6 +194,8 @@ export class DockerService {
       }
     }
 
+    await this.ensureTenantNetwork();
+
     const containerPort = CONTAINER_PORTS[projectType as DockerfileProjectType] ?? 3000;
 
     // Convert env vars to Docker format: ["KEY=value", ...]
@@ -210,9 +219,14 @@ export class DockerService {
         Env: envArray.length > 0 ? envArray : undefined,
         ExposedPorts: { [`${containerPort}/tcp`]: {} },
         HostConfig: {
+          // Loopback only. The in-app proxy reaches containers on 127.0.0.1,
+          // and it is the only thing that should: a port published on every
+          // interface is reachable from the internet (Docker's iptables rules
+          // bypass ufw), skipping the private-URL gate entirely.
           PortBindings: {
-            [`${containerPort}/tcp`]: [{ HostPort: String(hostPort) }],
+            [`${containerPort}/tcp`]: [{ HostIp: '127.0.0.1', HostPort: String(hostPort) }],
           },
+          NetworkMode: TENANT_NETWORK,
           Memory: resources.memory,
           CpuShares: resources.cpuShares,
           RestartPolicy: { Name: 'on-failure', MaximumRetryCount: 3 },
@@ -229,6 +243,26 @@ export class DockerService {
       }
     }
     throw new Error('Failed to start container after 3 port allocation attempts');
+  }
+
+  /** Creates {@link TENANT_NETWORK} on first use. */
+  private async ensureTenantNetwork(): Promise<void> {
+    try {
+      await this.docker.getNetwork(TENANT_NETWORK).inspect();
+      return;
+    } catch {
+      // Not created yet.
+    }
+    try {
+      await this.docker.createNetwork({
+        Name: TENANT_NETWORK,
+        Driver: 'bridge',
+        Options: { 'com.docker.network.bridge.enable_icc': 'false' },
+      });
+    } catch (err) {
+      // Another worker created it between our inspect and create.
+      if (!String(err).includes('already exists')) throw err;
+    }
   }
 
   /**
