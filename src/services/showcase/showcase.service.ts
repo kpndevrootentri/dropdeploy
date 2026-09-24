@@ -13,6 +13,30 @@ import type { ProjectShowcase } from '@prisma/client';
 export const SHOWCASE_TAGS = ['api', 'dashboard', 'bot', 'data', 'utility', 'web', 'ml', 'cli', 'other'] as const;
 export type ShowcaseTag = (typeof SHOWCASE_TAGS)[number];
 
+const MAX_LINK_LENGTH = 2048;
+
+/**
+ * Showcase links are rendered as `href`s on the public explore pages, so only
+ * ordinary web (and, for contact, mail) links are accepted. React blocks
+ * `javascript:` at render time; this also keeps out `data:`, `file:`, custom
+ * app schemes and unbounded strings.
+ */
+function assertPublicLink(value: string | null | undefined, label: string, protocols: string[]): void {
+  if (!value) return;
+  if (value.length > MAX_LINK_LENGTH) {
+    throw new ValidationError(`${label} must be ${MAX_LINK_LENGTH} characters or less`);
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ValidationError(`${label} must be a full URL, e.g. https://example.com`);
+  }
+  if (!protocols.includes(url.protocol)) {
+    throw new ValidationError(`${label} must start with ${protocols.map((p) => p.replace(':', '')).join(' or ')}`);
+  }
+}
+
 export class ShowcaseService {
   constructor(
     private readonly showcaseRepo: IShowcaseRepository,
@@ -45,6 +69,9 @@ export class ShowcaseService {
     if (invalidTags.length > 0) {
       throw new ValidationError(`Invalid tags: ${invalidTags.join(', ')}`);
     }
+    assertPublicLink(data.liveUrl, 'Live URL', ['http:', 'https:']);
+    assertPublicLink(data.repoUrl, 'Repository URL', ['http:', 'https:']);
+    assertPublicLink(data.contactUrl, 'Contact URL', ['http:', 'https:', 'mailto:']);
 
     return this.showcaseRepo.upsert(projectId, data);
   }
