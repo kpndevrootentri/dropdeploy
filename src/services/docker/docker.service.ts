@@ -40,6 +40,9 @@ const CONTAINER_RESOURCES: Record<string, { memory: number; cpuShares: number }>
  */
 export const TENANT_NETWORK = 'dropdeploy-tenants';
 
+/** Image label naming the project an image was built for. */
+const SLUG_LABEL = 'dropdeploy.slug';
+
 export interface DockerServiceConfig {
   socketPath?: string;
   memoryLimitBytes?: number;
@@ -110,6 +113,9 @@ export class DockerService {
       { context: contextPath, src: ['.'] },
       {
         t: imageName,
+        // Lets removeSupersededImages find this project's images once a
+        // rebuild has moved the tag off them.
+        labels: { [SLUG_LABEL]: project.slug },
         ...(Object.keys(buildArgs).length > 0 ? { buildargs: buildArgs } : {}),
         // Bound each RUN step. memswap equal to memory means no swap on top.
         memory: buildMemory,
@@ -455,6 +461,30 @@ export class DockerService {
       });
     } finally {
       await container.remove().catch(() => {});
+    }
+  }
+
+  /**
+   * Removes a project's superseded images — the ones a rebuild left untagged
+   * when `dropdeploy/<slug>:latest` moved to the new build. Each redeploy
+   * otherwise leaves a full image behind until the disk fills.
+   *
+   * Non-forced: an image a container still runs is kept.
+   */
+  async removeSupersededImages(slug: string): Promise<void> {
+    let images: Docker.ImageInfo[];
+    try {
+      images = await this.docker.listImages({
+        filters: { label: [`${SLUG_LABEL}=${slug}`], dangling: ['true'] },
+      });
+    } catch (err) {
+      log.warn('Failed to list superseded images', { slug, error: String(err) });
+      return;
+    }
+    for (const image of images) {
+      await this.docker.getImage(image.Id).remove().catch((err: unknown) => {
+        log.warn('Failed to remove superseded image', { slug, imageId: image.Id, error: String(err) });
+      });
     }
   }
 

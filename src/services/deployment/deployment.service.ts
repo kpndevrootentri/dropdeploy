@@ -427,6 +427,9 @@ export class DeploymentService {
           deploymentId,
         );
         await this.deploymentRepo.clearPortForOtherDeployments(project.id, deploymentId);
+        // The previous build's image lost its tag to this one and its
+        // container is gone; nothing else will ever remove it.
+        await this.docker.removeSupersededImages(project.slug);
 
         await this.deploymentRepo.update(deploymentId, {
           status: 'DEPLOYED',

@@ -20,6 +20,6 @@ export async function removeProjectResources(slug: string, docker: DockerService
   await Promise.all([
     rmDir(STATIC_SERVE_DIR),
     rmDir(PROJECTS_DIR),
-    docker.removeImage(`dropdeploy/${slug}:latest`),
+    docker.removeImage(`dropdeploy/${slug}:latest`).then(() => docker.removeSupersededImages(slug)),
   ]);
 }
