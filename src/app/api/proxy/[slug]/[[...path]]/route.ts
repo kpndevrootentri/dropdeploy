@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import * as fs from 'fs';
 import * as nodePath from 'path';
+import { serveStaticFile } from '@/lib/static-serve';
 import { getTokenFromCookie, isAuthSetCookie, withoutAuthCookie } from '@/lib/auth-cookie';
 import { getConfig } from '@/lib/config';
 import { mayServeTenant } from '@/lib/platform-host';
@@ -9,110 +9,6 @@ import { projectAccessService } from '@/services/project-access';
 import { authService } from '@/services/auth';
 
 export const dynamic = 'force-dynamic';
-
-function getMimeType(filePath: string): string {
-  const ext = nodePath.extname(filePath).toLowerCase();
-  const map: Record<string, string> = {
-    '.html': 'text/html; charset=utf-8',
-    '.css':  'text/css; charset=utf-8',
-    '.js':   'application/javascript; charset=utf-8',
-    '.mjs':  'application/javascript; charset=utf-8',
-    '.json': 'application/json; charset=utf-8',
-    '.svg':  'image/svg+xml',
-    '.png':  'image/png',
-    '.jpg':  'image/jpeg', '.jpeg': 'image/jpeg',
-    '.gif':  'image/gif',  '.webp': 'image/webp',
-    '.ico':  'image/x-icon',
-    '.woff': 'font/woff',  '.woff2': 'font/woff2',
-    '.ttf':  'font/ttf',
-    '.map':  'application/json',
-    '.webmanifest': 'application/manifest+json',
-  };
-  return map[ext] ?? 'application/octet-stream';
-}
-
-/**
- * Rewrites absolute-path asset references in HTML so they resolve through the
- * in-app proxy instead of hitting the Next.js root.
- *
- * Vite and other bundlers emit paths like src="/assets/index.js" which are
- * correct when the site owns the root, but break when served under a sub-path
- * such as /api/proxy/{slug}/. This rewrites those paths at serve time so the
- * browser fetches /api/proxy/{slug}/assets/index.js.
- *
- * A <base> tag is also injected so that dynamic imports and runtime-constructed
- * relative URLs resolve against the proxy base.
- */
-function rewriteHtmlPaths(html: string, slug: string): string {
-  const prefix = `/api/proxy/${slug}`;
-  const withBase = html.replace(/(<head\b[^>]*>)/i, `$1\n  <base href="${prefix}/">`);
-  return withBase.replace(
-    /(src|href|action)="(\/[^"]*?)"/g,
-    (match, attr: string, path: string) => {
-      if (path.startsWith('//') || path.startsWith('/api/proxy/')) return match;
-      return `${attr}="${prefix}${path}"`;
-    }
-  );
-}
-
-/**
- * True for paths through a dot-file or dot-directory (`/.git/config`,
- * `/.env`, `/.npmrc`), which a static site must never serve even if they were
- * uploaded. `/.well-known/` is the one standard exception.
- */
-function isHiddenPath(requestPath: string): boolean {
-  return requestPath
-    .split('/')
-    .some((segment) => segment.startsWith('.') && segment !== '.well-known');
-}
-
-async function serveStaticFile(serveDir: string, requestPath: string, slug?: string): Promise<NextResponse | null> {
-  if (isHiddenPath(requestPath)) {
-    return new NextResponse('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
-  }
-  const sanitized = requestPath.replace(/^\/+/, '').replace(/\.\.\//g, '');
-  const candidates = sanitized
-    ? [nodePath.join(serveDir, sanitized), nodePath.join(serveDir, sanitized, 'index.html')]
-    : [nodePath.join(serveDir, 'index.html')];
-
-  const resolvedBase = nodePath.resolve(serveDir);
-
-  for (const candidate of candidates) {
-    // Reject any path that escapes the serve directory (guards against encoded traversal)
-    if (!nodePath.resolve(candidate).startsWith(resolvedBase + nodePath.sep) &&
-        nodePath.resolve(candidate) !== resolvedBase) continue;
-    try {
-      const stat = await fs.promises.stat(candidate);
-      if (!stat.isFile()) continue;
-      const content = await fs.promises.readFile(candidate);
-      const mime = getMimeType(candidate);
-      const isHashed = candidate.includes('/assets/') || candidate.includes('/_next/static/');
-      const cacheControl = isHashed
-        ? 'public, max-age=31536000, immutable'
-        : mime.startsWith('text/html') ? 'no-cache' : 'public, max-age=3600';
-
-      if (slug && mime.startsWith('text/html')) {
-        const rewritten = rewriteHtmlPaths(content.toString('utf-8'), slug);
-        return new NextResponse(rewritten, { headers: { 'Content-Type': mime, 'Cache-Control': cacheControl } });
-      }
-
-      return new NextResponse(content, {
-        headers: { 'Content-Type': mime, 'Cache-Control': cacheControl },
-      });
-    } catch { /* try next */ }
-  }
-
-  // SPA fallback: any unknown path → index.html (with path rewriting)
-  try {
-    const content = await fs.promises.readFile(nodePath.join(serveDir, 'index.html'));
-    const html = slug
-      ? rewriteHtmlPaths(content.toString('utf-8'), slug)
-      : content.toString('utf-8');
-    return new NextResponse(html, {
-      headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' },
-    });
-  } catch { return null; }
-}
 
 function detectDevice(ua: string): 'mobile' | 'desktop' | 'bot' | 'unknown' {
   if (!ua) return 'unknown';
@@ -389,7 +285,10 @@ async function handler(
     // /api/proxy/{slug}/. In production the site owns its own subdomain so absolute
     // paths (/_next/static/...) resolve correctly without any rewriting.
     const isLocalDev = NODE_ENV !== 'production' && !!NEXT_PUBLIC_APP_URL?.includes('localhost');
-    const response = await serveStaticFile(serveDir, targetPath, isLocalDev ? slug : undefined);
+    const response = await serveStaticFile(serveDir, targetPath, {
+      slug: isLocalDev ? slug : undefined,
+      ifNoneMatch: request.headers.get('if-none-match'),
+    });
     if (!response) {
       return NextResponse.json(
         { error: 'Static files not found. Try redeploying.' },
