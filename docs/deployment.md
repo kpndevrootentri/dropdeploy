@@ -494,6 +494,21 @@ pm2 status
 pm2 logs --lines 50
 ```
 
+### Run the web app without Docker access
+
+`dropdeploy-app` parses every request from the internet and proxies every tenant site. Running as the deploy user — a member of the `docker` group — any remote-code bug in it is root on the host. It doesn't need the socket: every Docker operation it makes (terminal, container info/stop/restart, project cleanup) is executed by the worker over the `docker-ops` queue (`src/lib/docker-ops.ts`), and the worker accepts those only for `dropdeploy-*` containers.
+
+Move the web app to its own user, outside the `docker` group, under systemd:
+
+```bash
+sudo apt install -y acl
+sudo scripts/split-web-user.sh install
+```
+
+The script creates `dropdeploy-web`, gives it read-only access to the checkout (so it can never change code the worker runs), read/write on `static-sites/` and `.next/cache`, installs `dropdeploy-web.service` with the Docker socket made inaccessible, removes `dropdeploy-app` from PM2, and verifies all of it. The worker and domain worker stay in PM2.
+
+Rollback: `sudo systemctl disable --now dropdeploy-web`, then `pm2 start ecosystem.config.js --only dropdeploy-app && pm2 save`.
+
 ---
 
 ## Step 13b — Supported Project Types
@@ -604,8 +619,9 @@ npm run db:push
 # Rebuild
 npm run build
 
-# Restart processes (zero-downtime reload for app)
-pm2 reload dropdeploy-app
+# Restart processes. After the web/worker split (see Step 13) the web app
+# is a systemd service; `after-build` re-grants .next/cache and restarts it.
+sudo scripts/split-web-user.sh after-build   # before the split: pm2 reload dropdeploy-app
 pm2 restart dropdeploy-worker
 pm2 restart dropdeploy-domains
 
