@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 
 interface RateLimitEntry {
   count: number;
@@ -113,5 +113,59 @@ export function checkTlsAskRateLimit(hostname: string): NextResponse | null {
   return checkRateLimit(`tls-ask:${hostname.toLowerCase()}`, {
     windowMs: TLS_ASK_WINDOW_MS,
     max: TLS_ASK_MAX,
+  });
+}
+
+/**
+ * The client IP, as set by the TLS edge.
+ *
+ * `X-Real-IP` is written by Caddy (and nginx) from the connection's own peer
+ * address, overwriting anything the client sent, whereas the first
+ * `X-Forwarded-For` entry is whatever the client chose to put there. The app
+ * listens on loopback only, so the edge is the only way in and the header
+ * cannot be forged by connecting to the app directly.
+ */
+export function getClientIp(req: NextRequest): string {
+  return req.headers.get('x-real-ip')?.trim() || 'unknown';
+}
+
+const LOGIN_IP_WINDOW_MS = 60_000; // 1 minute
+const LOGIN_IP_MAX = 20; // 20 attempts per minute per IP
+
+const LOGIN_ACCOUNT_WINDOW_MS = 15 * 60_000; // 15 minutes
+const LOGIN_ACCOUNT_MAX = 20; // 20 attempts per 15 minutes per account
+
+const REGISTER_WINDOW_MS = 60 * 60_000; // 1 hour
+const REGISTER_MAX = 5; // 5 sign-ups per hour per IP
+
+const PASSWORD_CHANGE_WINDOW_MS = 15 * 60_000; // 15 minutes
+const PASSWORD_CHANGE_MAX = 10; // 10 attempts per 15 minutes per user
+
+/**
+ * Rate limit password sign-in (browser login and CLI token) — per IP, to slow
+ * credential stuffing, and per account, to slow guessing one password from
+ * many IPs. The per-account cap is deliberately loose: every attempt counts,
+ * so a tight one would let anyone lock a user out by failing on purpose.
+ */
+export function checkLoginRateLimit(ip: string, email: string): NextResponse | null {
+  return (
+    checkRateLimit(`login-ip:${ip}`, { windowMs: LOGIN_IP_WINDOW_MS, max: LOGIN_IP_MAX }) ??
+    checkRateLimit(`login-account:${email.trim().toLowerCase()}`, {
+      windowMs: LOGIN_ACCOUNT_WINDOW_MS,
+      max: LOGIN_ACCOUNT_MAX,
+    })
+  );
+}
+
+/** Rate limit account registration — 5 per hour per IP. */
+export function checkRegisterRateLimit(ip: string): NextResponse | null {
+  return checkRateLimit(`register:${ip}`, { windowMs: REGISTER_WINDOW_MS, max: REGISTER_MAX });
+}
+
+/** Rate limit password changes, which verify the current password — 10 per 15 min per user. */
+export function checkPasswordChangeRateLimit(userId: string): NextResponse | null {
+  return checkRateLimit(`password-change:${userId}`, {
+    windowMs: PASSWORD_CHANGE_WINDOW_MS,
+    max: PASSWORD_CHANGE_MAX,
   });
 }

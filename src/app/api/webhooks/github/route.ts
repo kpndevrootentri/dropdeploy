@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { webhookService } from '@/services/webhook';
 import { deploymentService } from '@/services/deployment';
 import { auditLogRepository } from '@/repositories/audit-log.repository';
-import { checkWebhookRateLimit } from '@/lib/rate-limit';
+import { checkWebhookRateLimit, getClientIp } from '@/lib/rate-limit';
 import { verifySignature, parsePushRef, parsePushRepoFullName } from '@/lib/github-webhook';
 import { createLogger } from '@/lib/logger';
 
@@ -18,8 +18,7 @@ const log = createLogger('webhook-github');
  */
 export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
   // Rate-limit by source IP to blunt abuse of the public endpoint.
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
-  const limited = checkWebhookRateLimit(ip);
+  const limited = checkWebhookRateLimit(getClientIp(req));
   if (limited) return limited;
 
   // Only handle push events; ack everything else so GitHub doesn't retry.

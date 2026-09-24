@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getSession } from '@/lib/get-session';
 import { authService } from '@/services/auth';
 import { handleApiError } from '@/lib/api-error';
+import { checkPasswordChangeRateLimit } from '@/lib/rate-limit';
 import { setAuthCookie, parseExpiresInToSeconds } from '@/lib/auth-cookie';
 import { getConfig } from '@/lib/config';
 
@@ -16,6 +17,8 @@ const resetPasswordSchema = z.object({
 export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
   try {
     const session = await getSession(req);
+    const limited = checkPasswordChangeRateLimit(session.userId);
+    if (limited) return limited;
     const body = await req.json();
     const { currentPassword, newPassword } = resetPasswordSchema.parse(body);
     const tokens = session.mustResetPassword
