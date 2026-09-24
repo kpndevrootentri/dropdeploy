@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getSession } from '@/lib/get-session';
 import { projectService } from '@/services/project';
 import { handleApiError } from '@/lib/api-error';
-import { dockerTerminalService } from '@/services/docker/docker-terminal.service';
+import { dockerOps, containerNameFor } from '@/lib/docker-ops';
 import { ValidationError, AppError } from '@/lib/errors';
 import { checkTerminalRateLimit } from '@/lib/rate-limit';
 import { createLogger } from '@/lib/logger';
@@ -42,13 +42,10 @@ export async function POST(
             throw new AppError('NOT_DEPLOYED', 'Project is not currently deployed', 400);
         }
 
-        const containerName = `dropdeploy-${(project as { slug: string }).slug}`;
-        const command = parsed.data.command;
+        const containerName = containerNameFor((project as { slug: string }).slug);
 
-        // Route slash commands vs regular commands
-        const result = command.startsWith('/')
-            ? await dockerTerminalService.executeSlashCommand(containerName, command)
-            : await dockerTerminalService.executeCommand(containerName, command);
+        // Runs in the worker, which holds the Docker socket; this process doesn't.
+        const result = await dockerOps.terminal(containerName, parsed.data.command);
 
         return NextResponse.json({ success: true, data: result });
     } catch (error) {

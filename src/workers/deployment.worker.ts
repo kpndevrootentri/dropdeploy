@@ -11,6 +11,8 @@ import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
 import { deploymentService } from '@/services/deployment';
 import type { DeploymentJob } from '@/types/deployment.types';
+import { DOCKER_OPS_QUEUE, type DockerOpRequest, type DockerOpResult } from '@/lib/docker-ops';
+import { processDockerOp } from './docker-ops.processor';
 
 const log = createLogger('worker');
 
@@ -89,6 +91,18 @@ async function main(): Promise<void> {
     }
   );
 
+  // Docker operations requested by the web app, which has no socket access of
+  // its own (see src/lib/docker-ops.ts). Separate from the build queue so a
+  // terminal command never waits behind a 15-minute build.
+  const dockerOpsWorker = new Worker<DockerOpRequest, DockerOpResult>(
+    DOCKER_OPS_QUEUE,
+    processDockerOp,
+    { connection: getRedisConnection(), concurrency: 10 },
+  );
+  dockerOpsWorker.on('failed', (job, err) => {
+    log.warn('Docker operation job failed', { op: job?.data?.op, error: err?.message });
+  });
+
   worker.on('completed', (job) => {
     log.info('Job completed', { jobId: job.id, projectId: job.data.projectId });
     void deploymentService.enqueueNextForProject(job.data.projectId).catch((err) =>
@@ -111,7 +125,7 @@ async function main(): Promise<void> {
     log.info('Shutting down...');
     clearInterval(heartbeatTimer);
     await redis.del(HEARTBEAT_KEY).catch(() => {});
-    await worker.close();
+    await Promise.all([worker.close(), dockerOpsWorker.close()]);
     process.exit(0);
   };
 

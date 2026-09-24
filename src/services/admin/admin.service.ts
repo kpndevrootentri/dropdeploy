@@ -4,9 +4,8 @@ import type { IUserRepository } from '@/repositories/user.repository';
 import { userRepository } from '@/repositories/user.repository';
 import type { IProjectRepository } from '@/repositories/project.repository';
 import { projectRepository } from '@/repositories/project.repository';
-import { dockerService, type DockerService } from '@/services/docker';
+import { dockerOps, containerNameFor, type IDockerOps, type ContainerInfo } from '@/lib/docker-ops';
 import { deploymentService } from '@/services/deployment';
-import { removeProjectResources } from '@/services/project/project-cleanup';
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/errors';
 
 import { SALT_ROUNDS } from '@/services/auth/auth.service';
@@ -42,7 +41,7 @@ export class AdminService {
   constructor(
     private readonly userRepo: IUserRepository,
     private readonly projectRepo: IProjectRepository,
-    private readonly docker: DockerService,
+    private readonly docker: IDockerOps,
   ) {}
 
   /**
@@ -146,26 +145,26 @@ export class AdminService {
   async deleteProject(projectId: string): Promise<void> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
-    await removeProjectResources(project.slug, this.docker);
+    await this.docker.removeProjectResources(project.slug);
     await this.projectRepo.delete(projectId);
   }
 
-  async getProjectContainerInfo(projectId: string): Promise<ReturnType<DockerService['getContainerInfo']>> {
+  async getProjectContainerInfo(projectId: string): Promise<ContainerInfo | null> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
-    return this.docker.getContainerInfo(`dropdeploy-${project.slug}`);
+    return this.docker.containerInfo(containerNameFor(project.slug));
   }
 
   async stopContainer(projectId: string): Promise<void> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
-    await this.docker.stopContainer(`dropdeploy-${project.slug}`);
+    await this.docker.stopContainer(containerNameFor(project.slug));
   }
 
   async restartContainer(projectId: string): Promise<void> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
-    await this.docker.restartContainer(`dropdeploy-${project.slug}`);
+    await this.docker.restartContainer(containerNameFor(project.slug));
   }
 
   async updateUserQuota(userId: string, quota: number): Promise<PublicUser> {
@@ -201,4 +200,4 @@ export class AdminService {
   }
 }
 
-export const adminService = new AdminService(userRepository, projectRepository, dockerService);
+export const adminService = new AdminService(userRepository, projectRepository, dockerOps);
