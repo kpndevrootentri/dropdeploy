@@ -52,6 +52,11 @@ const envSchema = z.object({
   GITLAB_CLIENT_SECRET: z.string().optional(),
   APP_URL: z.string().url().optional(),
 
+  // Self-service sign-up. Off by default: accounts are created by admins, and
+  // emails are never verified, so with this on anyone can register
+  // `x@<your-domain>` and pass every project's email-domain access grant.
+  ALLOW_PUBLIC_REGISTRATION: envBool(false),
+
   // ── Custom domains ───────────────────────────────────────────────────────
   // Master switch for the whole feature. When false the API rejects domain
   // mutations, the proxy never attempts host resolution, and the Caddy "ask"
