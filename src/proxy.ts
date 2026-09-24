@@ -32,10 +32,24 @@ function rewriteToProxy(request: NextRequest, slug: string): NextResponse {
   return NextResponse.rewrite(url);
 }
 
+/**
+ * Headers for everything the platform itself serves (never tenant sites,
+ * which are rewritten before this point and set their own).
+ *
+ * The dashboard must not be framable: a page on any other site could
+ * otherwise overlay it invisibly and steer a signed-in user's clicks onto
+ * "Delete project", the terminal, or an admin action.
+ */
+function withPlatformHeaders(response: NextResponse): NextResponse {
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('Content-Security-Policy', "frame-ancestors 'none'");
+  return response;
+}
+
 function withRequestId(req: NextRequest, response: NextResponse): NextResponse {
   const requestId = req.headers.get('x-request-id') ?? randomUUID();
   response.headers.set('x-request-id', requestId);
-  return response;
+  return withPlatformHeaders(response);
 }
 
 /**
@@ -172,7 +186,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     requestHeaders.set('x-request-id', requestId);
     const response = NextResponse.next({ request: { headers: requestHeaders } });
     response.headers.set('x-request-id', requestId);
-    return response;
+    return withPlatformHeaders(response);
   }
 
   const token = getTokenFromCookie(request);
