@@ -346,12 +346,14 @@ export class DeploymentService {
 
       await this.deploymentRepo.update(deploymentId, { buildStep: 'SCANNING' });
       addMarker('Scanning packages...');
-      const { BLOCKED_PACKAGES } = getConfig();
-      const { blocked } = await scanPackages(workDir, BLOCKED_PACKAGES);
+      const { BLOCKED_PACKAGES, ALLOWED_PACKAGES } = getConfig();
+      const { blocked } = await scanPackages(workDir, BLOCKED_PACKAGES, ALLOWED_PACKAGES);
       if (blocked.length > 0) {
         onLog(`✗ Blocked package(s) detected: ${blocked.join(', ')}\n`);
         onLog(`  Deployment rejected. Remove the offending package(s) and redeploy.\n`);
         throw new Error(`Blocked package(s) detected: ${blocked.join(', ')}`);
+        onLog(`  Packages are matched by name. If this is a legitimate package (some are listed\n`);
+        onLog(`  because an old version was compromised), ask a platform admin to allow it.\n`);
       }
       onLog(`✓ Package scan passed.\n`);
 

@@ -170,7 +170,11 @@ function extractPyprojectPackages(content: string): string[] {
  * list has never seen. Build isolation (resource limits, no metadata-service
  * access, unprivileged containers) is what contains a malicious install.
  */
-export async function scanPackages(workDir: string, extraBlocklist = ''): Promise<PackageScanResult> {
+export async function scanPackages(
+  workDir: string,
+  extraBlocklist = '',
+  allowlist = '',
+): Promise<PackageScanResult> {
   log.debug('Scanning packages', { workDir })
   // Merge built-in list with operator additions — normalize all entries
   const blocklistSet = new Set(
@@ -178,6 +182,10 @@ export async function scanPackages(workDir: string, extraBlocklist = ''): Promis
   );
   for (const pkg of parseBlocklist(extraBlocklist)) {
     blocklistSet.add(pkg);
+  }
+  // The operator's allowlist wins over both lists.
+  for (const pkg of parseBlocklist(allowlist)) {
+    blocklistSet.delete(pkg);
   }
   const blocked = new Set<string>();
 
