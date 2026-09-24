@@ -539,6 +539,20 @@ sudo ufw status
 # 3000 (Next.js), 5432 (Postgres), 6379 (Redis) should be blocked
 ```
 
+ufw does **not** filter traffic from containers — Docker installs its own iptables rules ahead of it. Two things close that gap:
+
+- Tenant containers publish their ports on `127.0.0.1` only, and the app binds to `127.0.0.1:3000` (`next start -H 127.0.0.1`, see Step 13), so neither is reachable from outside the host.
+- Containers must not reach the cloud metadata service, which hands out the instance role's AWS credentials. Block it with:
+
+```bash
+sudo scripts/harden-host.sh   # DOCKER-USER drop rule for 169.254.169.254, persisted via systemd
+
+# Verify: must time out
+docker run --rm curlimages/curl -m 3 http://169.254.169.254/
+```
+
+Then require IMDSv2 with a hop limit of 1 (the script prints the `aws ec2 modify-instance-metadata-options` command).
+
 ---
 
 ## Step 15 — Verify the Deployment
