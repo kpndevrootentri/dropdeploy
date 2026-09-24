@@ -1,5 +1,11 @@
 /**
  * Dockerfile templates per project type (PRD §5.4).
+ *
+ * Every runtime stage that can runs as an unprivileged user, so a compromised
+ * app is not root inside its container — one kernel bug away from the host.
+ * The nginx images are the exception: their master process needs root to bind
+ * port 80 and then drops its workers to the `nginx` user by itself.
+ * DockerService additionally drops all but a handful of capabilities.
  */
 
 export const DOCKERFILE_TEMPLATES = {
@@ -13,9 +19,11 @@ CMD ["nginx", "-g", "daemon off;"]
   NODEJS: `
 FROM node:22-alpine
 WORKDIR /app
-COPY package*.json ./
+RUN chown node:node /app
+USER node
+COPY --chown=node:node package*.json ./
 RUN npm install --omit=dev
-COPY . .
+COPY --chown=node:node . .
 EXPOSE 3000
 CMD ["npm", "start"]
 `.trim(),
@@ -39,10 +47,12 @@ RUN mkdir -p /app/public
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/public ./public
+RUN chown node:node /app
+USER node
+COPY --from=builder --chown=node:node /app/.next ./.next
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/package.json ./package.json
+COPY --from=builder --chown=node:node /app/public ./public
 EXPOSE 3000
 CMD ["npm", "start"]
 `.trim(),
@@ -71,9 +81,11 @@ CMD ["nginx", "-g", "daemon off;"]
   DJANGO: `
 FROM python:3.13-slim
 WORKDIR /app
+RUN useradd --system --uid 10001 --home-dir /app app && chown app /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
+COPY --chown=app . .
+USER app
 EXPOSE 8000
 CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
 `.trim(),
@@ -96,9 +108,11 @@ CMD ["nginx", "-g", "daemon off;"]
   FASTAPI: `
 FROM python:3.13-slim
 WORKDIR /app
+RUN useradd --system --uid 10001 --home-dir /app app && chown app /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
+COPY --chown=app . .
+USER app
 EXPOSE 8000
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 `.trim(),
@@ -106,9 +120,11 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
   FLASK: `
 FROM python:3.13-slim
 WORKDIR /app
+RUN useradd --system --uid 10001 --home-dir /app app && chown app /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
-COPY . .
+COPY --chown=app . .
+USER app
 EXPOSE 5000
 CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5000", "--workers", "2"]
 `.trim(),
@@ -152,9 +168,10 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/server .
 
 FROM alpine:latest
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates && adduser -D -u 10001 app
 WORKDIR /app
 COPY --from=builder /app/server ./server
+USER app
 EXPOSE 8080
 CMD ["./server"]
 `.trim(),
@@ -168,9 +185,11 @@ RUN cargo build --release && \\
     cp "$binary" /usr/local/bin/app
 
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/* \\
+    && useradd --system --uid 10001 app
 WORKDIR /app
 COPY --from=builder /usr/local/bin/app ./app
+USER app
 EXPOSE 8080
 CMD ["./app"]
 `.trim(),
@@ -184,8 +203,10 @@ COPY src ./src
 RUN mvn package -DskipTests -q
 
 FROM eclipse-temurin:21-jre-alpine
+RUN adduser -D -u 10001 app
 WORKDIR /app
 COPY --from=builder /app/target/*.jar app.jar
+USER app
 EXPOSE 8080
 CMD ["java", "-jar", "app.jar"]
 `.trim(),

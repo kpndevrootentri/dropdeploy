@@ -243,6 +243,12 @@ export class DockerService {
           // A fork bomb otherwise exhausts the host's PID table.
           PidsLimit: 512,
           SecurityOpt: ['no-new-privileges'],
+          // Only what nginx's root master needs (bind :80, drop to its worker
+          // user, own its temp dirs). Everything else — raw sockets (ARP/ICMP
+          // spoofing on the bridge), mknod, chroot, setfcap, kill — is gone.
+          // Non-root apps get none of these at all.
+          CapDrop: ['ALL'],
+          CapAdd: ['CHOWN', 'SETUID', 'SETGID', 'NET_BIND_SERVICE', 'DAC_OVERRIDE'],
           // json-file logs are otherwise unbounded and fill the host disk.
           LogConfig: { Type: 'json-file', Config: { 'max-size': '10m', 'max-file': '3' } },
           RestartPolicy: { Name: 'on-failure', MaximumRetryCount: 3 },
