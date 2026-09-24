@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
-import { cookies } from 'next/headers';
-import { getTokenFromCookie, AUTH_COOKIE_NAME } from '@/lib/auth-cookie';
+import { headers } from 'next/headers';
+import { getTokenFromCookie, getTokenFromCookieHeader } from '@/lib/auth-cookie';
 import { authService } from '@/services/auth';
 import { UnauthorizedError } from '@/lib/errors';
 
@@ -37,8 +37,7 @@ export async function getSession(req: NextRequest): Promise<Session> {
  */
 export async function getSessionFromCookies(): Promise<Session | null> {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
+    const token = getTokenFromCookieHeader((await headers()).get('cookie'));
     if (!token) return null;
     const payload = await authService.verifyToken(token);
     return {

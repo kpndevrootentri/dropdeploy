@@ -19,10 +19,43 @@ function getCookieDomain(): string | undefined {
 }
 
 /**
- * Reads the JWT from the auth cookie.
+ * Reads the JWT from a raw `Cookie` header.
+ *
+ * The cookie is scoped to the parent domain, so any tenant page on a sibling
+ * subdomain can plant its own `auth-token` there with `document.cookie` — say,
+ * one holding the attacker's session, on a narrower path so the browser sends
+ * it first. The victim would then act inside the attacker's account (and, for
+ * instance, connect their GitHub to it). A browser sends every matching cookie,
+ * so a planted one shows up as a second `auth-token`. When there is more than
+ * one we cannot tell which is genuine, so we trust neither: the user is signed
+ * out rather than signed in as someone else.
+ */
+export function getTokenFromCookieHeader(cookieHeader: string | null): string | undefined {
+  if (!cookieHeader) return undefined;
+  const values = cookieHeader
+    .split(';')
+    .map((pair) => pair.trim())
+    .filter((pair) => pair.slice(0, pair.indexOf('=')).trim() === AUTH_COOKIE_NAME)
+    .map((pair) => pair.slice(pair.indexOf('=') + 1).trim());
+  return values.length === 1 && values[0] ? values[0] : undefined;
+}
+
+/**
+ * Reads the JWT from the auth cookie. See {@link getTokenFromCookieHeader}.
  */
 export function getTokenFromCookie(request: NextRequest): string | undefined {
-  return request.cookies.get(AUTH_COOKIE_NAME)?.value;
+  return getTokenFromCookieHeader(request.headers.get('cookie'));
+}
+
+/**
+ * True when a `Set-Cookie` header from a tenant app would set the platform's
+ * auth cookie. The in-app proxy drops these: a tenant must never be able to
+ * sign a visitor into a different account.
+ */
+export function isAuthSetCookie(setCookie: string): boolean {
+  const pair = setCookie.split(';', 1)[0];
+  const eq = pair.indexOf('=');
+  return (eq === -1 ? pair : pair.slice(0, eq)).trim() === AUTH_COOKIE_NAME;
 }
 
 /**

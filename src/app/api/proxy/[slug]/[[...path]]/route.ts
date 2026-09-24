@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import * as jose from 'jose';
 import * as fs from 'fs';
 import * as nodePath from 'path';
-import { AUTH_COOKIE_NAME } from '@/lib/auth-cookie';
+import { getTokenFromCookie, isAuthSetCookie } from '@/lib/auth-cookie';
 import { getConfig } from '@/lib/config';
 import { mayServeTenant } from '@/lib/platform-host';
 import { projectAccessService } from '@/services/project-access';
@@ -340,7 +340,7 @@ async function handler(
   // user or allowed email domain), and platform admins (CONTRIBUTOR). A logged-in
   // user who is none of these is denied — being authenticated is not enough.
   if (deployment.project.isPrivate) {
-    const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+    const token = getTokenFromCookie(request);
     let authorized = false;
 
     if (token) {
@@ -446,9 +446,15 @@ async function handler(
   const responseHeaders = new Headers();
   for (const [key, value] of upstream.headers.entries()) {
     const k = key.toLowerCase();
-    if (!HOP_BY_HOP.has(k) && !STRIP_RESPONSE.has(k)) {
+    if (!HOP_BY_HOP.has(k) && !STRIP_RESPONSE.has(k) && k !== 'set-cookie') {
       responseHeaders.set(key, value);
     }
+  }
+  // Set-Cookie is the one header that may legitimately repeat, so it is
+  // appended one by one — `set` above would keep only the last. The platform's
+  // own auth cookie is dropped: see isAuthSetCookie.
+  for (const cookie of upstream.headers.getSetCookie()) {
+    if (!isAuthSetCookie(cookie)) responseHeaders.append('set-cookie', cookie);
   }
 
   // Record hit async — skip internal Next.js asset paths
