@@ -24,6 +24,20 @@ export interface AdminUserRow {
   _count: { projects: number; customDomains: number };
 }
 
+/** A user as the admin API returns it: never the password hash or token version. */
+export type PublicUser = Omit<User, 'passwordHash' | 'tokenVersion'>;
+
+/**
+ * Strips credentials from a user row before it leaves the service. Every
+ * admin method that returns a user goes through this — Prisma's default is to
+ * return every scalar, `passwordHash` included.
+ */
+function toPublicUser(user: User): PublicUser {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { passwordHash, tokenVersion, ...rest } = user;
+  return rest;
+}
+
 export class AdminService {
   constructor(
     private readonly userRepo: IUserRepository,
@@ -76,7 +90,7 @@ export class AdminService {
     }));
   }
 
-  async changeUserRole(userId: string, role: UserRole, actorId: string): Promise<User> {
+  async changeUserRole(userId: string, role: UserRole, actorId: string): Promise<PublicUser> {
     const user = await this.userRepo.findById(userId);
     if (!user) throw new NotFoundError('User');
 
@@ -89,7 +103,7 @@ export class AdminService {
       }
     }
 
-    return this.userRepo.updateRole(userId, role);
+    return toPublicUser(await this.userRepo.updateRole(userId, role));
   }
 
   async deleteUser(userId: string, actorId: string): Promise<void> {
@@ -110,11 +124,11 @@ export class AdminService {
     await this.userRepo.delete(userId);
   }
 
-  async createUser(email: string, password: string): Promise<User> {
+  async createUser(email: string, password: string): Promise<PublicUser> {
     const existing = await this.userRepo.findByEmail(email);
     if (existing) throw new ConflictError('Email already registered');
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-    return this.userRepo.create({ email, passwordHash, role: 'USER', mustResetPassword: true });
+    return toPublicUser(await this.userRepo.create({ email, passwordHash, role: 'USER', mustResetPassword: true }));
   }
 
   async listAllProjects(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date }[] })[]> {
@@ -154,19 +168,19 @@ export class AdminService {
     await this.docker.restartContainer(`dropdeploy-${project.slug}`);
   }
 
-  async updateUserQuota(userId: string, quota: number): Promise<User> {
+  async updateUserQuota(userId: string, quota: number): Promise<PublicUser> {
     if (quota < 0) throw new ValidationError('Quota must be a non-negative integer');
     const user = await this.userRepo.findById(userId);
     if (!user) throw new NotFoundError('User');
-    return this.userRepo.updateQuota(userId, quota);
+    return toPublicUser(await this.userRepo.updateQuota(userId, quota));
   }
 
   /** Custom-domain allowance. Zero means the user cannot add any. */
-  async updateUserDomainQuota(userId: string, quota: number): Promise<User> {
+  async updateUserDomainQuota(userId: string, quota: number): Promise<PublicUser> {
     if (quota < 0) throw new ValidationError('Quota must be a non-negative integer');
     const user = await this.userRepo.findById(userId);
     if (!user) throw new NotFoundError('User');
-    return this.userRepo.updateDomainQuota(userId, quota);
+    return toPublicUser(await this.userRepo.updateDomainQuota(userId, quota));
   }
 
   async resetUserPassword(userId: string, newPassword: string): Promise<void> {
