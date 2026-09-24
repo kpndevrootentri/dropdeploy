@@ -1,7 +1,7 @@
 import { randomBytes } from 'crypto';
 import type { CustomDomain, DomainStatus } from '@prisma/client';
 import { domainRepository, type IDomainRepository } from '@/repositories/domain.repository';
-import { ISSUABLE_STATUSES } from '@/lib/domain-status';
+import { ISSUABLE_STATUSES, isRoutableStatus } from '@/lib/domain-status';
 import { projectRepository, type IProjectRepository } from '@/repositories/project.repository';
 import { userRepository, type IUserRepository } from '@/repositories/user.repository';
 import { auditLogRepository, type IAuditLogRepository } from '@/repositories/audit-log.repository';
@@ -48,6 +48,19 @@ const MAX_CONSECUTIVE_FAILURES = 5;
  * form that may not wrap.
  */
 const VERIFICATION_TOKEN_BYTES = 24;
+
+/**
+ * How long a claim that has never been verified holds its hostname against
+ * other projects.
+ *
+ * Claiming reserves a hostname before any DNS proof — that is what gives the
+ * owner a TXT token to publish. Without a limit, anyone could add
+ * `shop.victim.com` to their own project and the real owner would be told
+ * "already claimed" forever. After this window an unproven claim yields to
+ * the next project that asks; the newcomer still has to prove DNS control
+ * before anything is served, so yielding can never hand over a live domain.
+ */
+export const UNVERIFIED_CLAIM_TTL_MS = 72 * 60 * 60 * 1000;
 
 /**
  * How long to wait on the request that triggers certificate issuance.
@@ -138,7 +151,13 @@ export class DomainService implements IDomainService {
 
     // A pre-check gives a clear message; the unique index below is what
     // actually prevents two projects racing for the same hostname.
-    const existing = await this.domainRepo.findByHostname(hostname);
+    let existing = await this.domainRepo.findByHostname(hostname);
+    if (existing && existing.projectId !== projectId && this.isAbandonedClaim(existing)) {
+      await this.domainRepo.delete(existing.id);
+      await this.audit('domain.claim-expired', hostname, ownerId, existing.projectId);
+      log.info('Released an expired unverified claim', { hostname, from: existing.projectId, to: projectId });
+      existing = null;
+    }
     if (existing) {
       throw new ConflictError(
         existing.projectId === projectId
@@ -598,6 +617,15 @@ export class DomainService implements IDomainService {
   private async invalidateProject(projectId: string, ...extra: string[]): Promise<void> {
     const domains = await this.domainRepo.listByProject(projectId);
     await invalidateHost(...domains.map((d) => d.hostname), ...extra);
+  }
+
+  /** Never verified, not routable, and older than {@link UNVERIFIED_CLAIM_TTL_MS}. */
+  private isAbandonedClaim(domain: CustomDomain): boolean {
+    return (
+      domain.verifiedAt === null &&
+      !isRoutableStatus(domain.status) &&
+      Date.now() - domain.createdAt.getTime() > UNVERIFIED_CLAIM_TTL_MS
+    );
   }
 
   private async audit(action: string, targetKey: string, userId: string, projectId: string): Promise<void> {
