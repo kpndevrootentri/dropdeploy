@@ -87,6 +87,7 @@ export class DockerService {
     buildArgs: Record<string, string> = {},
     secretValues: string[] = [],
     onLog?: (line: string) => void,
+    signal?: AbortSignal,
   ): Promise<string> {
     const imageName = `dropdeploy/${project.slug}:latest`;
     const dockerfilePath = path.join(contextPath, 'Dockerfile');
@@ -103,11 +104,20 @@ export class DockerService {
     }
 
     log.info('Building image', { imageName });
+    const { BUILD_MEMORY_MB, BUILD_CPUS } = getConfig();
+    const buildMemory = BUILD_MEMORY_MB * 1024 * 1024;
     const stream = await this.docker.buildImage(
       { context: contextPath, src: ['.'] },
       {
         t: imageName,
         ...(Object.keys(buildArgs).length > 0 ? { buildargs: buildArgs } : {}),
+        // Bound each RUN step. memswap equal to memory means no swap on top.
+        memory: buildMemory,
+        memswap: buildMemory,
+        cpuperiod: 100_000,
+        cpuquota: Math.round(BUILD_CPUS * 100_000),
+        // Aborting closes the connection, which makes the daemon cancel the build.
+        abortSignal: signal,
       } as Record<string, unknown>,
     );
 
@@ -228,7 +238,13 @@ export class DockerService {
           },
           NetworkMode: TENANT_NETWORK,
           Memory: resources.memory,
+          MemorySwap: resources.memory,
           CpuShares: resources.cpuShares,
+          // A fork bomb otherwise exhausts the host's PID table.
+          PidsLimit: 512,
+          SecurityOpt: ['no-new-privileges'],
+          // json-file logs are otherwise unbounded and fill the host disk.
+          LogConfig: { Type: 'json-file', Config: { 'max-size': '10m', 'max-file': '3' } },
           RestartPolicy: { Name: 'on-failure', MaximumRetryCount: 3 },
         },
       });

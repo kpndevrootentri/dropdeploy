@@ -24,16 +24,20 @@ async function processJob(job: Job<DeploymentJob>): Promise<void> {
   const timeoutMs = getConfig().BULLMQ_JOB_TIMEOUT_MS;
   log.info('Processing deployment', { deploymentId, projectId, timeoutMs });
 
+  // Rejecting alone would free the worker slot while the clone or Docker build
+  // kept running in the background; aborting actually stops them.
+  const controller = new AbortController();
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutHandle = setTimeout(() => {
+      controller.abort();
       reject(new Error(`Job timed out after ${timeoutMs}ms`));
     }, timeoutMs);
   });
 
   try {
     const result = await Promise.race([
-      deploymentService.buildAndDeploy(deploymentId),
+      deploymentService.buildAndDeploy(deploymentId, controller.signal),
       timeoutPromise,
     ]);
     if (result) {

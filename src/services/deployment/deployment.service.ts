@@ -243,7 +243,7 @@ export class DeploymentService {
    * Called by worker. Uses clone-once strategy: first deploy clones, subsequent deploys pull latest.
    * Returns a summary of the completed deployment for the worker to log.
    */
-  async buildAndDeploy(deploymentId: string): Promise<{
+  async buildAndDeploy(deploymentId: string, signal?: AbortSignal): Promise<{
     slug: string;
     servingMethod: 'STATIC_FILES' | 'CONTAINER';
     containerPort: number | null;
@@ -308,6 +308,7 @@ export class DeploymentService {
           cleanUrl,
           project.slug,
           project.branch,
+          signal,
         ));
       } catch (err) {
         const msg = String(err);
@@ -369,7 +370,7 @@ export class DeploymentService {
       await this.deploymentRepo.update(deploymentId, { buildStep: 'BUILDING_IMAGE' });
       addMarker('Building image...');
       const secretValues = Object.values(runtimeEnv);
-      const imageName = await this.docker.buildImage(project, workDir, buildArgs, secretValues, onLog);
+      const imageName = await this.docker.buildImage(project, workDir, buildArgs, secretValues, onLog, signal);
 
       // Clean up build artifacts from work directory
       await this.cleanBuildArtifacts(workDir);

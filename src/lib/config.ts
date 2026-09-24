@@ -32,6 +32,12 @@ const envSchema = z.object({
   DOCKER_DATA_DIR: z.string().default(path.join(defaultBaseDir, 'docker')),
   BULLMQ_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(5),
   BULLMQ_JOB_TIMEOUT_MS: z.coerce.number().int().min(60_000).default(15 * 60 * 1000),
+  // Per-build limits. Builds run arbitrary install/build scripts, and up to
+  // BULLMQ_CONCURRENCY of them at once, on the host that also runs Postgres
+  // and the proxy for every site — unbounded, one build can OOM them all.
+  // Next.js builds are capped at a 2 GB heap, so leave headroom above that.
+  BUILD_MEMORY_MB: z.coerce.number().int().min(512).default(3072),
+  BUILD_CPUS: z.coerce.number().min(0.5).default(2),
   CONTRIBUTOR_EMAIL: z.string().email().optional(),
   CONTRIBUTOR_PASSWORD: z.string().min(8).optional(),
   // Comma-separated list of blocked package names (npm, pip, etc.)

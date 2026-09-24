@@ -28,7 +28,13 @@ export interface IGitService {
    * - cleanUrl: stored as remote origin after clone to scrub the token from .git/config
    * Returns the work directory path and the HEAD commit SHA.
    */
-  ensureRepo(authUrl: string, cleanUrl: string, projectSlug: string, branch: string): Promise<RepoResult>;
+  ensureRepo(
+    authUrl: string,
+    cleanUrl: string,
+    projectSlug: string,
+    branch: string,
+    signal?: AbortSignal,
+  ): Promise<RepoResult>;
 }
 
 export class GitService implements IGitService {
@@ -41,8 +47,19 @@ export class GitService implements IGitService {
     cleanUrl: string,
     projectSlug: string,
     branch: string,
+    signal?: AbortSignal,
   ): Promise<RepoResult> {
     const workDir = this.getWorkDir(projectSlug);
+
+    // Network operations are shallow (the build needs only the tip, and .git
+    // never reaches the image), skip LFS payloads and submodules, never prompt,
+    // and stop when the deployment job is aborted on timeout.
+    const netGit = (baseDir?: string) =>
+      simpleGit({ baseDir, abort: signal }).env({
+        ...process.env,
+        GIT_LFS_SKIP_SMUDGE: '1',
+        GIT_TERMINAL_PROMPT: '0',
+      });
     await fs.promises.mkdir(getConfig().PROJECTS_DIR, { recursive: true });
 
     const gitDir = path.join(workDir, '.git');
@@ -69,7 +86,7 @@ export class GitService implements IGitService {
     if (exists) {
       // Repo already cloned – update remote URL (may need new token) then fetch+reset
       log.info('Pulling latest', { slug: projectSlug, branch });
-      const git = simpleGit(workDir);
+      const git = netGit(workDir);
 
       // Update remote to use authUrl for this fetch (token may have rotated)
       await git.remote(['set-url', 'origin', authUrl]);
@@ -78,16 +95,8 @@ export class GitService implements IGitService {
         'config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*',
       ]);
 
-      const isShallow = await fs.promises
-        .stat(path.join(gitDir, 'shallow'))
-        .then(() => true)
-        .catch(() => false);
       try {
-        if (isShallow) {
-          await git.fetch(['origin', '--unshallow', '--prune']);
-        } else {
-          await git.fetch(['origin', '--prune']);
-        }
+        await git.fetch(['--depth', '1', '--prune', '--no-recurse-submodules', 'origin', branch]);
       } finally {
         // Scrub token from remote URL immediately after fetch — also when it
         // fails, or the token would stay in .git/config on disk.
@@ -106,10 +115,11 @@ export class GitService implements IGitService {
       const commitHash = await git.revparse(['HEAD']);
       return { workDir, commitHash: commitHash.trim() };
     } else {
-      // First deploy – full clone
+      // First deploy – shallow clone of the one branch
       log.info('Cloning repo', { cleanUrl, branch, workDir });
-      const git = simpleGit();
-      await git.clone(authUrl, workDir, ['-b', branch]);
+      await netGit().clone(authUrl, workDir, [
+        '-b', branch, '--depth', '1', '--single-branch', '--no-recurse-submodules',
+      ]);
 
       // Immediately scrub token from .git/config remote origin
       await simpleGit(workDir).remote(['set-url', 'origin', cleanUrl]);
