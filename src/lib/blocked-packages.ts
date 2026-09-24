@@ -199,3 +199,15 @@ export const BUILT_IN_BLOCKED_PACKAGES: ReadonlySet<string> = new Set([
   ...PIP_TORRENT_ABUSE,
   ...PIP_STEALERS,
 ]);
+
+/**
+ * Legitimate packages listed above because specific *versions* were
+ * compromised (and later unpublished by npm) — every other version is fine,
+ * and several are everyday transitive dependencies (`eslint` depends on
+ * `eslint-scope`, a great many tools on `rc`). Matching them by name against a
+ * lockfile would block ordinary apps, so the lockfile scan skips these;
+ * `flatmap-stream` and `getcookies` stay, being malicious in every version.
+ */
+export const VERSION_SPECIFIC_COMPROMISES: ReadonlySet<string> = new Set(
+  NPM_COMPROMISED.filter((name) => name !== 'flatmap-stream' && name !== 'getcookies'),
+);
