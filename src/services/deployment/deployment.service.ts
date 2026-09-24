@@ -5,6 +5,7 @@ import { projectRepository, type IProjectRepository } from '@/repositories/proje
 import { deploymentQueueAdapter, type IDeploymentQueue } from '@/lib/queue';
 import { dockerService, type DockerService } from '@/services/docker';
 import { gitService, type IGitService, type GitCredentials } from '@/services/git';
+import { isPublicBuildEnv } from '@/services/docker/dockerfile.templates';
 import { envVarService, type EnvironmentVariableService } from '@/services/env-var';
 import { gitProviderService } from '@/services/git-provider';
 import { getRedisConnection } from '@/lib/redis';
@@ -351,18 +352,19 @@ export class DeploymentService {
       if (blocked.length > 0) {
         onLog(`✗ Blocked package(s) detected: ${blocked.join(', ')}\n`);
         onLog(`  Deployment rejected. Remove the offending package(s) and redeploy.\n`);
-        throw new Error(`Blocked package(s) detected: ${blocked.join(', ')}`);
         onLog(`  Packages are matched by name. If this is a legitimate package (some are listed\n`);
         onLog(`  because an old version was compromised), ask a platform admin to allow it.\n`);
+        throw new Error(`Blocked package(s) detected: ${blocked.join(', ')}`);
       }
       onLog(`✓ Package scan passed.\n`);
 
-      // Resolve env vars: split into build args (NEXT_PUBLIC_*) and runtime env
+      // Resolve env vars: split into build args (the framework's public,
+      // client-inlined prefixes — NEXT_PUBLIC_, VITE_, …) and runtime env
       const allEnvVars = await this.envVar.resolveForDeployment(project.id);
       const buildArgs: Record<string, string> = {};
       const runtimeEnv: Record<string, string> = {};
       for (const [key, value] of Object.entries(allEnvVars)) {
-        if (key.startsWith('NEXT_PUBLIC_') && project.type === 'NEXTJS') {
+        if (isPublicBuildEnv(project.type, key)) {
           buildArgs[key] = value;
         } else {
           runtimeEnv[key] = value;

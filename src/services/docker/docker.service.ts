@@ -10,7 +10,7 @@ import * as tarStream from 'tar-stream';
 import type { Project } from '@prisma/client';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
-import { DOCKERFILE_TEMPLATES, CONTAINER_PORTS, type DockerfileProjectType, injectNextPublicBuildArgs } from './dockerfile.templates';
+import { DOCKERFILE_TEMPLATES, CONTAINER_PORTS, type DockerfileProjectType, injectBuildArgs } from './dockerfile.templates';
 import { patchNextConfig } from './nextjs-config-patcher';
 import { readRepoFile, writeRepoFile } from '@/lib/repo-fs';
 
@@ -39,6 +39,12 @@ const CONTAINER_RESOURCES: Record<string, { memory: number; cpuShares: number }>
  * reach another's port directly — around the proxy's private-URL gate.
  */
 export const TENANT_NETWORK = 'dropdeploy-tenants';
+
+/** Where each project's persistent volume is mounted inside its container. */
+const DATA_MOUNT = '/data';
+
+/** The persistent data volume of a project. */
+export const dataVolumeName = (slug: string): string => `dropdeploy-data-${slug}`;
 
 /** Image label naming the project an image was built for. */
 const SLUG_LABEL = 'dropdeploy.slug';
@@ -72,11 +78,7 @@ export class DockerService {
     if (project.type === 'NEXTJS' && project.useStaticHosting) {
       key = 'NEXTJS_STATIC';
     }
-    let template = DOCKERFILE_TEMPLATES[key];
-    if (key === 'NEXTJS' || key === 'NEXTJS_STATIC') {
-      template = injectNextPublicBuildArgs(template, buildArgKeys);
-    }
-    return template;
+    return injectBuildArgs(DOCKERFILE_TEMPLATES[key], buildArgKeys);
   }
 
   /**
@@ -211,11 +213,13 @@ export class DockerService {
     }
 
     await this.ensureTenantNetwork();
+    // Project containers are named dropdeploy-<slug>; the slug names the volume.
+    const slug = containerName?.startsWith('dropdeploy-') ? containerName.slice('dropdeploy-'.length) : undefined;
 
     const containerPort = CONTAINER_PORTS[projectType as DockerfileProjectType] ?? 3000;
 
     // Convert env vars to Docker format: ["KEY=value", ...]
-    const envArray = Object.entries(envVars).map(
+    const envArray = Object.entries({ ...envVars, DROPDEPLOY_DATA_DIR: DATA_MOUNT }).map(
       ([key, value]) => `${key}=${value}`,
     );
 
@@ -243,6 +247,8 @@ export class DockerService {
             [`${containerPort}/tcp`]: [{ HostIp: '127.0.0.1', HostPort: String(hostPort) }],
           },
           NetworkMode: TENANT_NETWORK,
+          // Survives redeploys; everything else in the container is replaced.
+          Mounts: slug ? [{ Type: 'volume', Source: dataVolumeName(slug), Target: DATA_MOUNT }] : undefined,
           Memory: resources.memory,
           MemorySwap: resources.memory,
           CpuShares: resources.cpuShares,
@@ -257,7 +263,9 @@ export class DockerService {
           CapAdd: ['CHOWN', 'SETUID', 'SETGID', 'NET_BIND_SERVICE', 'DAC_OVERRIDE'],
           // json-file logs are otherwise unbounded and fill the host disk.
           LogConfig: { Type: 'json-file', Config: { 'max-size': '10m', 'max-file': '3' } },
-          RestartPolicy: { Name: 'on-failure', MaximumRetryCount: 3 },
+          // Come back after crashes (Docker backs off between attempts) and
+          // after host reboots; a container an admin stopped stays stopped.
+          RestartPolicy: { Name: 'unless-stopped' },
         },
       });
 
@@ -486,6 +494,16 @@ export class DockerService {
         log.warn('Failed to remove superseded image', { slug, imageId: image.Id, error: String(err) });
       });
     }
+  }
+
+  /** Deletes a project's persistent data volume. Call only after its container is gone. */
+  async removeDataVolume(slug: string): Promise<void> {
+    await this.docker.getVolume(dataVolumeName(slug)).remove().catch((err: unknown) => {
+      const msg = String(err);
+      if (!msg.includes('404') && !msg.includes('no such volume')) {
+        log.warn('Failed to remove data volume', { slug, error: msg });
+      }
+    });
   }
 
   /**

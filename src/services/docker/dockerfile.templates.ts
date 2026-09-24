@@ -8,6 +8,32 @@
  * DockerService additionally drops all but a handful of capabilities.
  */
 
+/**
+ * Copies the manifest and whichever lockfile the repo has, then installs with
+ * the package manager that lockfile belongs to. pnpm and yarn run through
+ * corepack (bundled with Node 22) without `corepack enable`, which needs root.
+ * `npm ci` gives reproducible installs; it falls back to `npm install` so a
+ * repo whose lockfile is out of date still deploys, as it always has.
+ */
+const nodeInstall = (owner?: string): string => {
+  const chown = owner ? `--chown=${owner} ` : '';
+  return [
+    'ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0',
+    `COPY ${chown}package.json package-lock.json* yarn.lock* pnpm-lock.yaml* ./`,
+    'RUN if [ -f pnpm-lock.yaml ]; then corepack pnpm install --frozen-lockfile; \\',
+    '    elif [ -f yarn.lock ]; then corepack yarn install --frozen-lockfile; \\',
+    '    else (npm ci || npm install); fi',
+  ].join('\n');
+};
+
+/**
+ * Directory for files an app must keep across redeploys. A per-project Docker
+ * volume is mounted here (see DockerService.runContainer) and its path is
+ * given to the app as DROPDEPLOY_DATA_DIR. Created in the image, owned by the
+ * runtime user, so the volume starts out writable by the unprivileged app.
+ */
+const dataDir = (owner: string): string => `RUN mkdir -p /data && chown ${owner} /data`;
+
 export const DOCKERFILE_TEMPLATES = {
   STATIC: `
 FROM nginx:alpine
@@ -19,11 +45,12 @@ CMD ["nginx", "-g", "daemon off;"]
   NODEJS: `
 FROM node:22-alpine
 WORKDIR /app
+${dataDir('node:node')}
 RUN chown node:node /app
 USER node
-COPY --chown=node:node package*.json ./
-RUN npm install --omit=dev
+${nodeInstall('node:node')}
 COPY --chown=node:node . .
+RUN npm run build --if-present
 EXPOSE 3000
 CMD ["npm", "start"]
 `.trim(),
@@ -31,15 +58,14 @@ CMD ["npm", "start"]
   NEXTJS: `
 FROM node:22-alpine AS builder
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
+${nodeInstall()}
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 # Cap V8 heap so the build fails loudly instead of being OOM-killed by the host
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
-{{NEXT_PUBLIC_BUILD_ARGS}}
+{{BUILD_ARGS}}
 RUN if [ -f prisma/schema.prisma ]; then npx prisma generate; fi
 RUN npm run build
 RUN mkdir -p /app/public
@@ -47,6 +73,7 @@ RUN mkdir -p /app/public
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+${dataDir('node:node')}
 RUN chown node:node /app
 USER node
 COPY --from=builder --chown=node:node /app/.next ./.next
@@ -60,15 +87,14 @@ CMD ["npm", "start"]
   NEXTJS_STATIC: `
 FROM node:22-alpine AS builder
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
+${nodeInstall()}
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 # Cap V8 heap so the build fails loudly instead of being OOM-killed by the host
 ENV NODE_OPTIONS="--max-old-space-size=2048"
 ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder"
 
-{{NEXT_PUBLIC_BUILD_ARGS}}
+{{BUILD_ARGS}}
 RUN if [ -f prisma/schema.prisma ]; then npx prisma generate; fi
 RUN npm run build
 
@@ -82,6 +108,7 @@ CMD ["nginx", "-g", "daemon off;"]
 FROM python:3.13-slim
 WORKDIR /app
 RUN useradd --system --uid 10001 --home-dir /app app && chown app /app
+${dataDir('app')}
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY --chown=app . .
@@ -93,9 +120,9 @@ CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
   REACT: `
 FROM node:22-alpine AS builder
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
+${nodeInstall()}
 COPY . .
+{{BUILD_ARGS}}
 RUN npm run build -- --base=/
 
 FROM nginx:alpine AS runner
@@ -109,6 +136,7 @@ CMD ["nginx", "-g", "daemon off;"]
 FROM python:3.13-slim
 WORKDIR /app
 RUN useradd --system --uid 10001 --home-dir /app app && chown app /app
+${dataDir('app')}
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY --chown=app . .
@@ -121,6 +149,7 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 FROM python:3.13-slim
 WORKDIR /app
 RUN useradd --system --uid 10001 --home-dir /app app && chown app /app
+${dataDir('app')}
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
 COPY --chown=app . .
@@ -132,9 +161,9 @@ CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5000", "--workers", "2"]
   VUE: `
 FROM node:22-alpine AS builder
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
+${nodeInstall()}
 COPY . .
+{{BUILD_ARGS}}
 RUN npm run build -- --base=/
 
 FROM nginx:alpine AS runner
@@ -147,9 +176,9 @@ CMD ["nginx", "-g", "daemon off;"]
   SVELTE: `
 FROM node:22-alpine AS builder
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
+${nodeInstall()}
 COPY . .
+{{BUILD_ARGS}}
 RUN npm run build -- --base=/
 
 FROM nginx:alpine AS runner
@@ -169,6 +198,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /app/server .
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates && adduser -D -u 10001 app
+${dataDir('app')}
 WORKDIR /app
 COPY --from=builder /app/server ./server
 USER app
@@ -187,6 +217,7 @@ RUN cargo build --release && \\
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/* \\
     && useradd --system --uid 10001 app
+${dataDir('app')}
 WORKDIR /app
 COPY --from=builder /usr/local/bin/app ./app
 USER app
@@ -204,6 +235,7 @@ RUN mvn package -DskipTests -q
 
 FROM eclipse-temurin:21-jre-alpine
 RUN adduser -D -u 10001 app
+${dataDir('app')}
 WORKDIR /app
 COPY --from=builder /app/target/*.jar app.jar
 USER app
@@ -235,20 +267,36 @@ export const CONTAINER_PORTS: Record<DockerfileProjectType, number> = {
 };
 
 /**
- * Generates ARG + ENV lines for NEXT_PUBLIC_* variables so they're
- * available at Next.js build time. These are public by definition
- * (bundled into client JS), so embedding them in the image is safe.
+ * Env var prefixes each framework inlines into the client bundle at build
+ * time. Variables with these prefixes are passed to the image build as build
+ * args; everything else stays runtime-only. They are public by definition —
+ * shipped to every visitor's browser — so baking them into the image is safe,
+ * and they are never treated as secrets.
  */
-export function injectNextPublicBuildArgs(
-  template: string,
-  buildArgKeys: string[],
-): string {
-  const nextPublicKeys = buildArgKeys.filter((k) => k.startsWith('NEXT_PUBLIC_'));
-  if (nextPublicKeys.length === 0) {
-    return template.replace('{{NEXT_PUBLIC_BUILD_ARGS}}\n', '');
+export const PUBLIC_BUILD_ENV_PREFIXES: Partial<Record<string, readonly string[]>> = {
+  NEXTJS: ['NEXT_PUBLIC_'],
+  REACT: ['VITE_', 'REACT_APP_'],
+  VUE: ['VITE_', 'VUE_APP_'],
+  SVELTE: ['VITE_', 'PUBLIC_'],
+};
+
+/** Whether `key` is a build-time public variable for this project type. */
+export function isPublicBuildEnv(projectType: string, key: string): boolean {
+  return (PUBLIC_BUILD_ENV_PREFIXES[projectType] ?? []).some((prefix) => key.startsWith(prefix));
+}
+
+/**
+ * Replaces the {{BUILD_ARGS}} placeholder with ARG + ENV lines for the given
+ * keys, so the build step sees them as environment variables. Keys are
+ * validated env-var names (see env-var.validator), so they cannot break out
+ * of the Dockerfile line.
+ */
+export function injectBuildArgs(template: string, buildArgKeys: string[]): string {
+  if (buildArgKeys.length === 0) {
+    return template.replace('{{BUILD_ARGS}}\n', '');
   }
-  const lines = nextPublicKeys
+  const lines = buildArgKeys
     .map((key) => `ARG ${key}\nENV ${key}=$${key}`)
     .join('\n');
-  return template.replace('{{NEXT_PUBLIC_BUILD_ARGS}}', lines);
+  return template.replace('{{BUILD_ARGS}}', lines);
 }
