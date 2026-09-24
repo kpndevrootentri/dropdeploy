@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import * as fs from 'fs';
 import * as nodePath from 'path';
-import { getTokenFromCookie, isAuthSetCookie } from '@/lib/auth-cookie';
+import { getTokenFromCookie, isAuthSetCookie, withoutAuthCookie } from '@/lib/auth-cookie';
 import { getConfig } from '@/lib/config';
 import { mayServeTenant } from '@/lib/platform-host';
 import { projectAccessService } from '@/services/project-access';
@@ -415,8 +415,10 @@ async function handler(
 
   const targetUrl = `http://127.0.0.1:${deployment.containerPort}${targetPath}${request.nextUrl.search}`;
 
-  // Build forwarded headers — strip hop-by-hop, host, accept-encoding, and
-  // cookie (prevents leaking the auth-token to the deployed container).
+  // Build forwarded headers — strip hop-by-hop, host and accept-encoding.
+  // Cookies are forwarded so apps can keep their own sessions, minus the
+  // platform's auth-token: that is the visitor's DropDeploy session and must
+  // never reach tenant code.
   const forwardHeaders = new Headers();
   for (const [key, value] of request.headers.entries()) {
     const k = key.toLowerCase();
@@ -424,6 +426,8 @@ async function handler(
       forwardHeaders.set(key, value);
     }
   }
+  const appCookies = withoutAuthCookie(request.headers.get('cookie'));
+  if (appCookies) forwardHeaders.set('cookie', appCookies);
   forwardHeaders.set('x-forwarded-host', request.headers.get('host') ?? '');
   forwardHeaders.set('x-forwarded-proto', request.nextUrl.protocol.replace(':', ''));
 
