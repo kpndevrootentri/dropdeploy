@@ -22,13 +22,7 @@ export async function getSession(req: NextRequest): Promise<Session> {
   if (!token) {
     throw new UnauthorizedError('Not authenticated');
   }
-  const payload = await authService.verifyToken(token);
-  return {
-    userId: payload.sub,
-    email: payload.email,
-    role: payload.role ?? 'USER',
-    mustResetPassword: payload.mustResetPassword ?? false,
-  };
+  return authService.verifySession(token);
 }
 
 /**
@@ -39,13 +33,7 @@ export async function getSessionFromCookies(): Promise<Session | null> {
   try {
     const token = getTokenFromCookieHeader((await headers()).get('cookie'));
     if (!token) return null;
-    const payload = await authService.verifyToken(token);
-    return {
-      userId: payload.sub,
-      email: payload.email,
-      role: payload.role ?? 'USER',
-      mustResetPassword: payload.mustResetPassword ?? false,
-    };
+    return await authService.verifySession(token);
   } catch {
     return null;
   }

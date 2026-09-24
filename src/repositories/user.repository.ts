@@ -10,7 +10,7 @@ export interface IUserRepository {
   updateQuota(id: string, quota: number): Promise<User>;
   /** Custom domains the user may claim across all their projects. */
   updateDomainQuota(id: string, quota: number): Promise<User>;
-  setPassword(id: string, passwordHash: string): Promise<User>;
+  setPassword(id: string, passwordHash: string, mustResetPassword?: boolean): Promise<User>;
   delete(id: string): Promise<void>;
 }
 
@@ -38,8 +38,9 @@ export class UserRepository implements IUserRepository {
     });
   }
 
+  /** Also revokes the user's sessions, so a demotion takes effect at once. */
   async updateRole(id: string, role: UserRole): Promise<User> {
-    return prisma.user.update({ where: { id }, data: { role } });
+    return prisma.user.update({ where: { id }, data: { role, tokenVersion: { increment: 1 } } });
   }
 
   async updateQuota(id: string, quota: number): Promise<User> {
@@ -50,10 +51,14 @@ export class UserRepository implements IUserRepository {
     return prisma.user.update({ where: { id }, data: { domainQuota: quota } });
   }
 
-  async setPassword(id: string, passwordHash: string): Promise<User> {
+  /**
+   * Also revokes every outstanding session and CLI token — a stolen token must
+   * not outlive the password change meant to lock its thief out.
+   */
+  async setPassword(id: string, passwordHash: string, mustResetPassword = false): Promise<User> {
     return prisma.user.update({
       where: { id },
-      data: { passwordHash, mustResetPassword: false },
+      data: { passwordHash, mustResetPassword, tokenVersion: { increment: 1 } },
     });
   }
 

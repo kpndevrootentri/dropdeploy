@@ -13,10 +13,10 @@ export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
     return NextResponse.json({ success: true, data: null }, { status: 200 });
   }
   try {
-    const payload = await authService.verifyToken(token);
+    const user = await authService.verifySession(token);
     return NextResponse.json({
       success: true,
-      data: { userId: payload.sub, email: payload.email, role: payload.role ?? 'USER' },
+      data: { userId: user.userId, email: user.email, role: user.role },
     });
   } catch (e) {
     if (e instanceof UnauthorizedError) {

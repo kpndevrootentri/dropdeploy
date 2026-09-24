@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import * as jose from 'jose';
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import { getTokenFromCookie, isAuthSetCookie } from '@/lib/auth-cookie';
 import { getConfig } from '@/lib/config';
 import { mayServeTenant } from '@/lib/platform-host';
 import { projectAccessService } from '@/services/project-access';
+import { authService } from '@/services/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -359,25 +359,15 @@ async function handler(
 
     if (token) {
       try {
-        const secret = process.env.JWT_SECRET;
-        if (secret) {
-          const { payload } = await jose.jwtVerify(
-            token,
-            new TextEncoder().encode(secret),
-            { algorithms: ['HS256'] }
-          );
-          const userId = payload.sub as string | undefined;
-          const email = payload.email as string | undefined;
-          const role = (payload.role as string | undefined) ?? 'USER';
-          if (userId && email) {
-            authorized = await projectAccessService.canView(
-              { id: deployment.project.id, userId: deployment.project.userId },
-              { userId, email, role },
-            );
-          }
-        }
+        // verifySession, not a bare JWT check: a revoked session or a removed
+        // collaborator must lose access now, not when the token expires.
+        const user = await authService.verifySession(token);
+        authorized = await projectAccessService.canView(
+          { id: deployment.project.id, userId: deployment.project.userId },
+          { userId: user.userId, email: user.email, role: user.role },
+        );
       } catch {
-        // Expired or tampered token — treat as unauthenticated
+        // Expired, tampered or revoked token — treat as unauthenticated
       }
     }
 

@@ -174,7 +174,9 @@ export class AdminService {
     if (!user) throw new NotFoundError('User');
     if (newPassword.length < 8) throw new ValidationError('Password must be at least 8 characters');
     const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-    await this.userRepo.setPassword(userId, passwordHash);
+    // The admin now knows this password, so the user must replace it on next
+    // sign-in; setPassword also signs them out everywhere.
+    await this.userRepo.setPassword(userId, passwordHash, true);
   }
 
   async forceRedeploy(projectId: string, actorId: string): Promise<void> {

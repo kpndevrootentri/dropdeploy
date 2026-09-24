@@ -21,6 +21,9 @@ model User {
   passwordHash      String   @map("password_hash")
   role              UserRole @default(USER)
   mustResetPassword Boolean  @default(false) @map("must_reset_password")
+  // Embedded in every JWT and checked on every authenticated request. Bumping
+  // it revokes all of the user's outstanding sessions and CLI tokens.
+  tokenVersion      Int      @default(0) @map("token_version")
 
   projectQuota Int @default(5) @map("project_quota")
   // Custom domains the user may claim across all their projects.
