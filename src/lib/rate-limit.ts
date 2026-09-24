@@ -177,3 +177,14 @@ const TERMINAL_MAX = 30; // 30 commands per minute per user
 export function checkTerminalRateLimit(userId: string): NextResponse | null {
   return checkRateLimit(`terminal:${userId}`, { windowMs: TERMINAL_WINDOW_MS, max: TERMINAL_MAX });
 }
+
+const ANALYTICS_EVENT_WINDOW_MS = 60_000; // 1 minute
+const ANALYTICS_EVENT_MAX = 60; // 60 events per minute per IP
+
+/** Rate limit the anonymous analytics endpoint — 60 events/min/IP. */
+export function checkAnalyticsEventRateLimit(ip: string): NextResponse | null {
+  return checkRateLimit(`analytics-event:${ip}`, {
+    windowMs: ANALYTICS_EVENT_WINDOW_MS,
+    max: ANALYTICS_EVENT_MAX,
+  });
+}

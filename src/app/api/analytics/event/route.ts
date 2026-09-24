@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
 import { getSessionFromCookies } from '@/lib/get-session';
+import { checkAnalyticsEventRateLimit, getClientIp } from '@/lib/rate-limit';
 
 const ALLOWED_EVENTS = new Set([
   'deploy_triggered',
@@ -13,20 +15,44 @@ const ALLOWED_EVENTS = new Set([
   'signup',
 ]);
 
+/** Largest request body accepted, in bytes. Events are a name and a few tags. */
+const MAX_BODY_BYTES = 2048;
+
+/**
+ * `meta` is a small flat bag of tags — at most 10 keys, short keys, and
+ * primitive values with strings capped. The endpoint takes anonymous writes,
+ * so an unbounded JSON column would let anyone fill the database.
+ */
+const metaSchema = z
+  .record(z.string().max(40), z.union([z.string().max(200), z.number(), z.boolean(), z.null()]))
+  .refine((m) => Object.keys(m).length <= 10, 'Too many meta keys')
+  .optional();
+
+const eventSchema = z.object({
+  event: z.string().refine((e) => ALLOWED_EVENTS.has(e)),
+  meta: metaSchema,
+});
+
 /**
  * POST /api/analytics/event
  * Lightweight platform-level event tracking. No PII beyond optional userId.
- * Fire-and-forget from the client — always returns 200.
+ * Fire-and-forget from the client — always returns 200 unless the input is
+ * rejected or rate-limited.
  */
 export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await req.json() as { event?: string; meta?: any };
-    const { event, meta } = body;
+  const limited = checkAnalyticsEventRateLimit(getClientIp(req));
+  if (limited) return limited;
 
-    if (!event || !ALLOWED_EVENTS.has(event)) {
+  try {
+    const raw = await req.text();
+    if (Buffer.byteLength(raw) > MAX_BODY_BYTES) {
+      return NextResponse.json({ success: false }, { status: 413 });
+    }
+    const parsed = eventSchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) {
       return NextResponse.json({ success: false }, { status: 400 });
     }
+    const { event, meta } = parsed.data;
 
     const session = await getSessionFromCookies().catch(() => null);
 
