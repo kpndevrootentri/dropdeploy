@@ -149,6 +149,9 @@ const HOP_BY_HOP = new Set([
  */
 const STRIP_RESPONSE = new Set(['content-encoding', 'content-length']);
 
+/** Longest wait for a deployed app to send response headers. */
+const UPSTREAM_HEADERS_TIMEOUT_MS = 60_000;
+
 /**
  * Returns a 3D isometric HTML denial page for private URLs.
  */
@@ -433,21 +436,37 @@ async function handler(
 
   const hasBody = !['GET', 'HEAD'].includes(request.method);
 
+  // Bound the wait for the app to *start* responding, so a hung app cannot
+  // pin proxy connections forever. Cleared once headers arrive: streamed
+  // bodies (SSE, large downloads) may legitimately run much longer. The
+  // client's own disconnect also aborts the upstream request.
+  const headersTimeout = new AbortController();
+  const timer = setTimeout(() => headersTimeout.abort(), UPSTREAM_HEADERS_TIMEOUT_MS);
+
   let upstream: Response;
   try {
     upstream = await fetch(targetUrl, {
       method: request.method,
       headers: forwardHeaders,
       body: hasBody ? request.body : undefined,
+      signal: AbortSignal.any([request.signal, headersTimeout.signal]),
       // duplex is required by Node.js fetch when body is a ReadableStream
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ...(hasBody && ({ duplex: 'half' } as any)),
     });
   } catch {
+    if (headersTimeout.signal.aborted) {
+      return NextResponse.json(
+        { error: `The deployed app did not respond within ${UPSTREAM_HEADERS_TIMEOUT_MS / 1000}s.` },
+        { status: 504 }
+      );
+    }
     return NextResponse.json(
       { error: 'Failed to reach the deployed app. It may still be starting up.' },
       { status: 502 }
     );
+  } finally {
+    clearTimeout(timer);
   }
 
   // Forward response headers, filtering hop-by-hop and decompression artifacts
