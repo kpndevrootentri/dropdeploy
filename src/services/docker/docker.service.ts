@@ -12,6 +12,7 @@ import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
 import { DOCKERFILE_TEMPLATES, CONTAINER_PORTS, type DockerfileProjectType, injectNextPublicBuildArgs } from './dockerfile.templates';
 import { patchNextConfig } from './nextjs-config-patcher';
+import { readRepoFile, writeRepoFile } from '@/lib/repo-fs';
 
 const log = createLogger('docker');
 
@@ -83,7 +84,7 @@ export class DockerService {
     const imageName = `dropdeploy/${project.slug}:latest`;
     const dockerfilePath = path.join(contextPath, 'Dockerfile');
     const dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs));
-    await fs.promises.writeFile(dockerfilePath, dockerfile, 'utf8');
+    await writeRepoFile(dockerfilePath, dockerfile);
 
     // Write .dockerignore to prevent .env files from leaking into image
     await this.writeDockerignore(contextPath);
@@ -253,13 +254,11 @@ export class DockerService {
   private async writeDockerignore(contextPath: string): Promise<void> {
     const ignorePath = path.join(contextPath, '.dockerignore');
     const envIgnore = '\n# Prevent .env secret leakage\n.env*\n';
-    try {
-      const existing = await fs.promises.readFile(ignorePath, 'utf8');
-      if (!existing.includes('.env*')) {
-        await fs.promises.writeFile(ignorePath, existing + envIgnore, 'utf8');
-      }
-    } catch {
-      await fs.promises.writeFile(ignorePath, envIgnore.trim() + '\n', 'utf8');
+    const existing = await readRepoFile(ignorePath);
+    if (existing === null) {
+      await writeRepoFile(ignorePath, envIgnore.trim() + '\n');
+    } else if (!existing.includes('.env*')) {
+      await writeRepoFile(ignorePath, existing + envIgnore);
     }
   }
 

@@ -5,8 +5,8 @@
  * For static builds: also injects output: 'export' so Next.js generates the out/ dir.
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
+import { readRepoFile, writeRepoFile } from '@/lib/repo-fs';
 
 const CONFIG_FILES = [
   'next.config.ts',
@@ -23,13 +23,8 @@ export async function patchNextConfig(
 
   for (const file of CONFIG_FILES) {
     const filePath = path.join(contextPath, file);
-    try {
-      await fs.promises.access(filePath);
-    } catch {
-      continue;
-    }
-
-    let content = await fs.promises.readFile(filePath, 'utf8');
+    let content = await readRepoFile(filePath);
+    if (content === null) continue;
     if (content.includes('dropdeploy-patch') || content.includes('ignoreDuringBuilds')) return;
 
     if (content.includes('module.exports')) {
@@ -62,13 +57,13 @@ export async function patchNextConfig(
       );
     }
 
-    await fs.promises.writeFile(filePath, content, 'utf8');
+    await writeRepoFile(filePath, content);
     return;
   }
 
   // No next.config file found — create a minimal one
   const staticExportLine = addStaticExport ? "  output: 'export',\n" : '';
-  await fs.promises.writeFile(
+  await writeRepoFile(
     path.join(contextPath, 'next.config.js'),
     '/** @type {import("next").NextConfig} */\n// dropdeploy-patch\n' +
       'module.exports = {\n' +
@@ -77,6 +72,5 @@ export async function patchNextConfig(
       '  experimental: { cpus: 1, workerThreads: false },\n' +
       staticExportLine +
       '};\n',
-    'utf8'
   );
 }
