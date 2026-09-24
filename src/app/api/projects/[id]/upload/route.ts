@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/get-session';
 import { handleApiError } from '@/lib/api-error';
+import { toPublicProject } from '@/lib/public-project';
 import { projectService } from '@/services/project';
 import { uploadDeployService } from '@/services/upload/upload.deploy.service';
 import { UPLOAD_MAX_FILE_BYTES, detectUploadFileType } from '@/lib/upload-utils';
@@ -37,7 +38,7 @@ export async function POST(
     const buffer = Buffer.from(await file.arrayBuffer());
     const { deployment, url } = await uploadDeployService.deploy(buffer, fileType, project);
 
-    return NextResponse.json({ success: true, data: { project, deployment, url } });
+    return NextResponse.json({ success: true, data: { project: toPublicProject(project), deployment, url } });
   } catch (error) {
     return handleApiError(error);
   }

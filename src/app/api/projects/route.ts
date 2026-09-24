@@ -4,6 +4,7 @@ import { projectService } from '@/services/project';
 import { userRepository } from '@/repositories/user.repository';
 import { createProjectSchema } from '@/validators/project.validator';
 import { handleApiError } from '@/lib/api-error';
+import { toPublicProject } from '@/lib/public-project';
 
 /**
  * GET /api/projects – list current user's projects plus quota info.
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
       limit: user?.projectQuota ?? 5,
       available: Math.max(0, (user?.projectQuota ?? 5) - projects.length),
     };
-    return NextResponse.json({ success: true, data: projects, quota });
+    return NextResponse.json({ success: true, data: projects.map(toPublicProject), quota });
   } catch (error) {
     return handleApiError(error);
   }
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
     const body = await req.json();
     const dto = createProjectSchema.parse(body);
     const project = await projectService.create(session.userId, dto);
-    return NextResponse.json({ success: true, data: project });
+    return NextResponse.json({ success: true, data: toPublicProject(project) });
   } catch (error) {
     return handleApiError(error);
   }

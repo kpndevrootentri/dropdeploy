@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/get-session';
 import { handleApiError } from '@/lib/api-error';
+import { toPublicProject } from '@/lib/public-project';
 import { projectService } from '@/services/project';
 import { uploadDeployService } from '@/services/upload/upload.deploy.service';
 import { uploadProjectSchema } from '@/validators/project.validator';
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
 
     try {
       const { deployment, url } = await uploadDeployService.deploy(buffer, fileType, project);
-      return NextResponse.json({ success: true, data: { project, deployment, url } });
+      return NextResponse.json({ success: true, data: { project: toPublicProject(project), deployment, url } });
     } catch (deployErr) {
       await projectService.deleteById(project.id);
       throw deployErr;

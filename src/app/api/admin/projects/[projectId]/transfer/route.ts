@@ -3,6 +3,7 @@ import { getSession } from '@/lib/get-session';
 import { requireContributor } from '@/lib/require-contributor';
 import { adminService } from '@/services/admin';
 import { handleApiError } from '@/lib/api-error';
+import { toPublicProject } from '@/lib/public-project';
 import { z } from 'zod';
 
 const transferSchema = z.object({
@@ -23,7 +24,7 @@ export async function PATCH(
     const body = await req.json();
     const { newOwnerId } = transferSchema.parse(body);
     const project = await adminService.transferOwnership(projectId, newOwnerId);
-    return NextResponse.json({ success: true, data: project });
+    return NextResponse.json({ success: true, data: toPublicProject(project) });
   } catch (error) {
     return handleApiError(error);
   }
