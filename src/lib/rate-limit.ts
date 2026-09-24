@@ -169,3 +169,11 @@ export function checkPasswordChangeRateLimit(userId: string): NextResponse | nul
     max: PASSWORD_CHANGE_MAX,
   });
 }
+
+const TERMINAL_WINDOW_MS = 60_000; // 1 minute
+const TERMINAL_MAX = 30; // 30 commands per minute per user
+
+/** Rate limit container terminal commands — 30/min/user. Each one is a docker exec. */
+export function checkTerminalRateLimit(userId: string): NextResponse | null {
+  return checkRateLimit(`terminal:${userId}`, { windowMs: TERMINAL_WINDOW_MS, max: TERMINAL_MAX });
+}

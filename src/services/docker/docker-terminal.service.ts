@@ -90,8 +90,15 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Allowed commands (safety allowlist)
+// Allowed commands
 // ---------------------------------------------------------------------------
+//
+// A convenience filter, NOT a security boundary: `node`, `python`, `awk` and
+// `find -exec` can all run arbitrary code. What bounds this terminal is the
+// container itself — the owner's own app, running as an unprivileged user
+// with capabilities dropped (see dockerfile.templates.ts, DockerService) — the
+// owner-only check on the route, the per-user rate limit, and the in-container
+// timeout below.
 
 const ALLOWED_COMMANDS = new Set([
     'ls', 'cat', 'pwd', 'echo', 'env', 'whoami',
@@ -106,6 +113,13 @@ const ALLOWED_COMMANDS = new Set([
 ]);
 
 const EXEC_TIMEOUT_MS = 30_000;
+/**
+ * Killed inside the container a little before the host gives up waiting.
+ * Closing the exec stream on the host does not stop the process — without
+ * this a `node -e 'setInterval(...)'` would run on after "timed out".
+ * `timeout` is present in every template's base image (busybox or coreutils).
+ */
+const IN_CONTAINER_TIMEOUT_S = Math.floor(EXEC_TIMEOUT_MS / 1000) - 2;
 
 function parseArgv(command: string): string[] {
     const args: string[] = [];
@@ -326,7 +340,10 @@ export class DockerTerminalService {
 
         // string[] = user command (direct exec, no shell); string = server-controlled
         // slash command that may use shell features like pipes.
-        const cmd = Array.isArray(command) ? command : ['/bin/sh', '-c', command];
+        const cmd = [
+            'timeout', '-s', 'KILL', String(IN_CONTAINER_TIMEOUT_S),
+            ...(Array.isArray(command) ? command : ['/bin/sh', '-c', command]),
+        ];
 
         const exec = await container.exec({
             Cmd: cmd,

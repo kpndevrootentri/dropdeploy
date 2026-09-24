@@ -5,6 +5,7 @@ import { projectService } from '@/services/project';
 import { handleApiError } from '@/lib/api-error';
 import { dockerTerminalService } from '@/services/docker/docker-terminal.service';
 import { ValidationError, AppError } from '@/lib/errors';
+import { checkTerminalRateLimit } from '@/lib/rate-limit';
 
 const terminalCommandSchema = z.object({
     command: z.string().min(1, 'Command is required').max(1000, 'Command too long'),
@@ -21,6 +22,8 @@ export async function POST(
 ): Promise<NextResponse<unknown>> {
     try {
         const session = await getSession(req);
+        const limited = checkTerminalRateLimit(session.userId);
+        if (limited) return limited;
         const { id: projectId } = await params;
 
         const body = await req.json();
