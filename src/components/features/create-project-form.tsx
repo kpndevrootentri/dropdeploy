@@ -377,7 +377,7 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
                 }}
                 className={cn(
                   'flex shrink-0 flex-col items-center gap-2 rounded-xl border-2 px-3.5 py-3 transition-all',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                  'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                   isSelected
                     ? 'border-primary bg-primary/10'
                     : 'border-transparent bg-muted/50 hover:border-border hover:bg-muted'
@@ -557,7 +557,7 @@ function ProviderButton({
       className={cn(
         'flex w-full items-center gap-2.5 rounded-lg border-2 border-dashed px-3 py-2.5 text-left transition-colors',
         'hover:border-primary/40 hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+        'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
       )}
     >
       {connecting ? (

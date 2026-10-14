@@ -315,7 +315,7 @@ function AddEnvVarForm({
               onChange={(e) => setEnvironment(e.target.value as EnvEnvironment)}
               className={cn(
                 'flex h-8 w-full max-w-[200px] rounded-md border border-input bg-background px-3 text-sm',
-                'ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                'ring-offset-background focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
               )}
             >
               {ENV_OPTIONS.map((opt) => (

@@ -111,7 +111,7 @@ function SlashCommandMenu({
     if (matches.length === 0) return null;
 
     return (
-        <div className="absolute bottom-full left-0 right-0 mb-1 mx-2 rounded-lg border border-zinc-600/60 bg-[#24283b] shadow-xl overflow-hidden z-50 backdrop-blur-sm">
+        <div className="absolute bottom-full left-0 right-0 mb-1 mx-2 rounded-lg border border-zinc-600/60 bg-[#24283b] shadow-xl overflow-hidden z-50 backdrop-blur-xs">
             <div className="px-3 py-1.5 border-b border-zinc-700/40">
                 <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">
                     Commands
@@ -436,7 +436,7 @@ export function ProjectTerminal({ projectId, containerName }: ProjectTerminalPro
                         autoComplete="off"
                         spellCheck={false}
                         className={cn(
-                            'flex-1 bg-transparent outline-none text-sm font-mono ml-2',
+                            'flex-1 bg-transparent outline-hidden text-sm font-mono ml-2',
                             input.startsWith('/') ? 'text-violet-400' : 'text-gray-200',
                             'placeholder:text-zinc-600 disabled:opacity-50',
                         )}

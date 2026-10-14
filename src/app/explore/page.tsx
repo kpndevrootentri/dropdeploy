@@ -39,7 +39,7 @@ export default async function ExplorePage({ searchParams }: PageProps) {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
+      <header className="border-b bg-background/80 backdrop-blur-xs sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
           <Link href="/" className="text-sm font-semibold tracking-tight">
             DropDeploy
@@ -84,7 +84,7 @@ export default async function ExplorePage({ searchParams }: PageProps) {
               name="q"
               defaultValue={q ?? ''}
               placeholder="Search tools…"
-              className="w-full rounded-md border bg-background pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="w-full rounded-md border bg-background pl-9 pr-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-ring"
             />
           </form>
 

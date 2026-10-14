@@ -15,7 +15,7 @@ function Code({ children }: { children: React.ReactNode }): React.ReactElement {
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }): React.ReactElement {
   return (
     <div className="flex gap-5">
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-sm font-bold text-blue-500">
+      <div className="shrink-0 w-8 h-8 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-sm font-bold text-blue-500">
         {n}
       </div>
       <div className="flex-1 pb-8 border-l border-dashed border-border pl-5 -ml-[21px]">
@@ -135,7 +135,7 @@ export default function GettingStartedPage(): React.ReactElement {
         </Step>
 
         <div className="flex gap-5 pb-2">
-          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center">
+          <div className="shrink-0 w-8 h-8 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center">
             <Check className="h-4 w-4 text-green-500" />
           </div>
           <div className="flex-1 pt-0.5">
