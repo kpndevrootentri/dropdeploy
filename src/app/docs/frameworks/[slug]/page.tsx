@@ -879,9 +879,45 @@ java -jar target/*.jar`,
       { title: 'Tests failing during build', fix: 'DropDeploy passes -DskipTests so tests do not run. Run tests locally before deploying.' },
     ],
   },
+  wordpress: {
+    title: 'WordPress',
+    subtitle: 'WordPress 7.1 on Apache + PHP 8.3, with a SQLite database on the project volume. No MySQL to run.',
+    port: 8080,
+    requires: [
+      { label: 'wp-content/ in the repo root', detail: 'Your themes, plugins and mu-plugins. WordPress core comes from the platform image; any core files or wp-config.php in the repo are ignored.' },
+      { label: 'Plugins and themes through git', detail: 'Installing or updating plugins from wp-admin is disabled. Commit them to wp-content/ and redeploy.' },
+      { label: 'Plugins that work with SQLite', detail: 'The database is SQLite, via the official SQLite Database Integration plugin. Most plugins work; ones that run raw MySQL-only queries may not.' },
+    ],
+    demoApp: {
+      quickstart: 'Create a repo with a wp-content/ folder, push it, and deploy. A theme is optional: WordPress ships with its default themes.',
+      files: [
+        {
+          path: 'wp-content/mu-plugins/hello.php',
+          content: `<?php
+/**
+ * Plugin Name: Hello from DropDeploy
+ */
+add_action('wp_footer', function () {
+    echo '<p style="text-align:center">Hello from DropDeploy!</p>';
+});`,
+        },
+      ],
+      note: 'New WordPress projects start private, so nobody else can reach the install wizard and claim the admin account. Open the site, finish the install, then make the project public in Settings.',
+    },
+    buildCmd: `# core from wordpress:7.1-php8.3-apache, your wp-content/ copied over it
+# uploads and the SQLite database live on the persistent /data volume
+apache2-foreground`,
+    gotchas: [
+      { title: 'The site is private after the first deploy', fix: 'That is on purpose: the first visitor to the install wizard becomes admin. Finish the install, then turn off "Private" in project Settings.' },
+      { title: 'Plugin installs fail in wp-admin', fix: 'Code changes go through git so every deploy and rollback is reproducible. Add the plugin to wp-content/plugins/ and redeploy.' },
+      { title: 'Rollback does not undo content or database changes', fix: 'Rollback swaps code only; posts, users and uploads stay as they are. After a WordPress core upgrade, rolling back to an older build is unsafe.' },
+      { title: 'Moving an existing site', fix: 'Commit a migration plugin (for example All-in-One WP Migration) to wp-content/plugins/, deploy, finish the install, then import your export.' },
+      { title: 'Uploads over 64 MB', fix: 'Uploads are capped at 64 MB per request. Larger files belong on external storage.' },
+    ],
+  },
 };
 
-const SLUG_ORDER = ['static', 'nodejs', 'nextjs', 'react', 'vue', 'svelte', 'django', 'fastapi', 'flask', 'go', 'rust', 'java'];
+const SLUG_ORDER = ['static', 'nodejs', 'nextjs', 'react', 'vue', 'svelte', 'django', 'fastapi', 'flask', 'go', 'rust', 'java', 'wordpress'];
 
 function Code({ children }: { children: React.ReactNode }): React.ReactElement {
   return <code className="rounded bg-muted px-1.5 py-0.5 text-sm font-mono">{children}</code>;

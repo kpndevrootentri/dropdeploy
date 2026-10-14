@@ -54,6 +54,14 @@ if [[ -n "$volumes" ]]; then
   mkdir -p "$dest/volumes"
   for vol in $volumes; do
     log "volume $vol"
+    # A SQLite file copied mid-write can be torn. WordPress sites get a
+    # consistent snapshot next to it first, which the tar below picks up.
+    container="dropdeploy-${vol#dropdeploy-data-}"
+    if docker exec "$container" test -f /data/database/.ht.sqlite 2>/dev/null; then
+      docker exec "$container" php -r '$p = "/data/database/snapshot.sqlite"; @unlink($p);
+        (new PDO("sqlite:/data/database/.ht.sqlite"))->exec("VACUUM INTO \"$p\"");' \
+        || log "WARNING: SQLite snapshot failed for $container; its live file is still archived"
+    fi
     docker run --rm --network none -v "$vol":/v:ro -v "$dest/volumes":/out alpine \
       tar -C /v -czf "/out/$vol.tar.gz" .
   done
@@ -75,3 +83,5 @@ log "done"
 #   tar -C "$DATA_DIR" -xzf static-sites.tar.gz
 #   docker volume create dropdeploy-data-<slug>
 #   docker run --rm -v dropdeploy-data-<slug>:/v -v "$PWD/volumes":/in alpine tar -C /v -xzf /in/dropdeploy-data-<slug>.tar.gz
+#   WordPress: restore from the consistent snapshot, not the live copy:
+#   docker run --rm -v dropdeploy-data-<slug>:/v alpine mv /v/database/snapshot.sqlite /v/database/.ht.sqlite

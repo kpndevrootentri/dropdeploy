@@ -4,7 +4,16 @@
 
 export type SourceType = 'GITHUB' | 'GITLAB' | 'UPLOAD';
 
-export type ProjectType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'GO' | 'RUST' | 'JAVA';
+export type ProjectType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'GO' | 'RUST' | 'JAVA' | 'WORDPRESS';
+
+/**
+ * A fresh WordPress site hands admin to whoever opens its install wizard
+ * first, so it starts behind the private-URL gate. The owner installs it,
+ * then makes it public.
+ */
+export function startsPrivate(type: ProjectType | undefined): boolean {
+  return type === 'WORDPRESS';
+}
 
 export interface CreateProjectDto {
   name: string;
@@ -14,6 +23,7 @@ export interface CreateProjectDto {
   type?: ProjectType;
   branch?: string;
   useStaticHosting?: boolean;
+  isPrivate?: boolean;
 }
 
 export interface UpdateProjectDto {

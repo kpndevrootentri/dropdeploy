@@ -71,6 +71,7 @@ export class ProjectRepository implements IProjectRepository {
         type: data.type ?? 'STATIC',
         branch: data.branch ?? 'main',
         useStaticHosting: data.useStaticHosting ?? false,
+        isPrivate: data.isPrivate ?? false,
       },
     });
   }

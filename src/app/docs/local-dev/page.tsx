@@ -38,6 +38,7 @@ const PORT_TABLE = [
   { framework: 'Go',                slug: 'go',      port: 8080 },
   { framework: 'Rust',              slug: 'rust',    port: 8080 },
   { framework: 'Java / Spring Boot',slug: 'java',    port: 8080 },
+  { framework: 'WordPress',         slug: 'wordpress', port: 8080 },
 ];
 
 export default function LocalDevPage(): React.ReactElement {

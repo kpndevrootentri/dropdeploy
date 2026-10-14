@@ -6,7 +6,8 @@ import { deploymentQueueAdapter, type IDeploymentQueue } from '@/lib/queue';
 import { dockerService, type DockerService } from '@/services/docker';
 import { liveContainerName, candidateContainerName } from '@/services/docker/docker.service';
 import { gitService, type IGitService, type GitCredentials } from '@/services/git';
-import { isPublicBuildEnv } from '@/services/docker/dockerfile.templates';
+import { isPublicBuildEnv, WORDPRESS_CONFIG_FILE } from '@/services/docker/dockerfile.templates';
+import { startsPrivate } from '@/types/project.types';
 import { envVarService, type EnvironmentVariableService } from '@/services/env-var';
 import { gitProviderService } from '@/services/git-provider';
 import { getRedisConnection } from '@/lib/redis';
@@ -390,7 +391,10 @@ export class DeploymentService {
           const hasDeployed = await this.deploymentRepo.hasDeployedStatus(project.id);
           if (!hasDeployed) {
             log.info('Auto-correcting project type', { from: project.type, to: detected.type, hint: detected.hint });
-            await this.projectRepo.update(project.id, { type: detected.type });
+            await this.projectRepo.update(project.id, {
+              type: detected.type,
+              ...(startsPrivate(detected.type) && { isPrivate: true }),
+            });
             addMarker(`Detected framework: ${detected.type} (${detected.hint})`);
             // Use corrected type for the remainder of this build
             (project as typeof project & { type: typeof detected.type }).type = detected.type;
@@ -579,7 +583,7 @@ export class DeploymentService {
    * after Docker build to prevent secrets lingering on disk.
    */
   private async cleanBuildArtifacts(workDir: string): Promise<void> {
-    const filesToClean = ['Dockerfile', '.dockerignore'];
+    const filesToClean = ['Dockerfile', '.dockerignore', WORDPRESS_CONFIG_FILE];
     for (const file of filesToClean) {
       try {
         await fs.promises.unlink(path.join(workDir, file));
