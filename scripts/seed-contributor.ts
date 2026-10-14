@@ -6,9 +6,13 @@
  */
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
-import dotenv from 'dotenv';
 
-dotenv.config();
+// Like dotenv: read .env if present, never overriding variables already set.
+try {
+  process.loadEnvFile();
+} catch {
+  // No .env; rely on the environment.
+}
 
 const email = process.env.CONTRIBUTOR_EMAIL;
 const password = process.env.CONTRIBUTOR_PASSWORD;
