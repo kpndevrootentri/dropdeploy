@@ -344,8 +344,8 @@ export function LandingPage() {
             >
               npm install -g dropdeploy-cli
               {installCopied
-                ? <Check className="h-3 w-3 text-green-500 flex-shrink-0" aria-hidden="true" />
-                : <Copy className="h-3 w-3 text-muted-foreground/40 group-hover:text-muted-foreground flex-shrink-0 transition-colors" aria-hidden="true" />
+                ? <Check className="h-3 w-3 text-green-500 shrink-0" aria-hidden="true" />
+                : <Copy className="h-3 w-3 text-muted-foreground/40 group-hover:text-muted-foreground shrink-0 transition-colors" aria-hidden="true" />
               }
             </button>
           </div>
@@ -369,11 +369,11 @@ export function LandingPage() {
                 {HERO_STEPS.map((step) => (
                   <div key={step.label} className="flex items-center gap-3 text-sm">
                     {step.done ? (
-                      <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" aria-hidden="true" />
+                      <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" aria-hidden="true" />
                     ) : 'active' in step && step.active ? (
-                      <Loader2 className="h-4 w-4 text-yellow-500 animate-spin flex-shrink-0" aria-hidden="true" />
+                      <Loader2 className="h-4 w-4 text-yellow-500 animate-spin shrink-0" aria-hidden="true" />
                     ) : (
-                      <div className="h-4 w-4 rounded-full border border-muted-foreground/30 flex-shrink-0" aria-hidden="true" />
+                      <div className="h-4 w-4 rounded-full border border-muted-foreground/30 shrink-0" aria-hidden="true" />
                     )}
                     <span
                       className={
@@ -391,11 +391,11 @@ export function LandingPage() {
               </div>
 
               <div className="flex items-center gap-2 rounded-md border border-dashed border-border bg-muted/30 px-3 py-2">
-                <Link2 className="h-3.5 w-3.5 text-muted-foreground/40 flex-shrink-0" aria-hidden="true" />
+                <Link2 className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" aria-hidden="true" />
                 <span className="text-xs text-muted-foreground/40 flex-1 truncate">
                   my-portfolio.domain.in
                 </span>
-                <Copy className="h-3.5 w-3.5 text-muted-foreground/30 flex-shrink-0" aria-hidden="true" />
+                <Copy className="h-3.5 w-3.5 text-muted-foreground/30 shrink-0" aria-hidden="true" />
               </div>
             </div>
           </div>
@@ -426,7 +426,7 @@ export function LandingPage() {
             ].map((item, i) => (
               <AnimatedSection key={item.title} delay={i * 80}>
                 <div className="flex gap-3 p-4 rounded-lg border border-destructive/20 bg-destructive/5">
-                  <item.icon className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" aria-hidden="true" />
+                  <item.icon className="h-4 w-4 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
                   <div>
                     <p className="text-sm font-medium mb-0.5">{item.title}</p>
                     <p className="text-xs text-muted-foreground leading-relaxed">{item.desc}</p>
@@ -455,7 +455,7 @@ export function LandingPage() {
                 {HOW_IT_WORKS.map((item, i) => (
                   <AnimatedSection key={item.step} delay={i * 100}>
                     <div className="flex gap-6">
-                      <div className="flex-shrink-0">
+                      <div className="shrink-0">
                         <div className="w-12 h-12 rounded-full bg-background border-2 border-blue-500/40 flex items-center justify-center relative z-10">
                           <item.icon className="h-5 w-5 text-blue-500" aria-hidden="true" />
                         </div>
@@ -494,7 +494,7 @@ export function LandingPage() {
                     'Your link is ready to share',
                   ].map((step) => (
                     <div key={step} className="flex items-center gap-3 text-sm">
-                      <Check className="h-4 w-4 text-green-500 flex-shrink-0" aria-hidden="true" />
+                      <Check className="h-4 w-4 text-green-500 shrink-0" aria-hidden="true" />
                       <span className="text-muted-foreground">{step}</span>
                     </div>
                   ))}
@@ -503,8 +503,8 @@ export function LandingPage() {
                   <span className="text-xs text-muted-foreground flex-1 truncate">
                     https://my-portfolio.domain.in
                   </span>
-                  <Copy className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" aria-hidden="true" />
-                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" aria-hidden="true" />
+                  <Copy className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
+                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
                 </div>
               </div>
             </AnimatedSection>
@@ -612,7 +612,7 @@ export function LandingPage() {
             {USE_CASES.map((item, i) => (
               <AnimatedSection key={item.audience} delay={i * 80}>
                 <div className="flex gap-6 p-8 rounded-2xl border border-border bg-card hover:border-blue-500/30 hover:shadow-md transition-all h-full">
-                  <div className="flex-shrink-0">
+                  <div className="shrink-0">
                     <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center">
                       <item.icon className="h-6 w-6 text-blue-500" aria-hidden="true" />
                     </div>
@@ -624,7 +624,7 @@ export function LandingPage() {
                     <ul className="space-y-2" aria-label={`Benefits for ${item.audience}`}>
                       {item.points.map((p) => (
                         <li key={p} className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Check className="h-4 w-4 text-green-500 flex-shrink-0" aria-hidden="true" />
+                          <Check className="h-4 w-4 text-green-500 shrink-0" aria-hidden="true" />
                           {p}
                         </li>
                       ))}
@@ -724,7 +724,7 @@ export function LandingPage() {
                   },
                 ].map((item) => (
                   <div key={item.title} className="flex gap-4">
-                    <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5">
                       <item.icon className="h-4 w-4 text-blue-500" aria-hidden="true" />
                     </div>
                     <div>
@@ -749,8 +749,8 @@ export function LandingPage() {
                 >
                   <span className="flex-1">npm install -g dropdeploy-cli</span>
                   {installCopied
-                    ? <Check className="h-3.5 w-3.5 text-green-500 flex-shrink-0" aria-hidden="true" />
-                    : <Copy className="h-3.5 w-3.5 text-muted-foreground/50 group-hover:text-muted-foreground flex-shrink-0 transition-colors" aria-hidden="true" />
+                    ? <Check className="h-3.5 w-3.5 text-green-500 shrink-0" aria-hidden="true" />
+                    : <Copy className="h-3.5 w-3.5 text-muted-foreground/50 group-hover:text-muted-foreground shrink-0 transition-colors" aria-hidden="true" />
                   }
                 </button>
                 <Button variant="outline" size="sm" className="shrink-0" asChild>
@@ -806,7 +806,7 @@ export function LandingPage() {
                   },
                 ].map((step) => (
                   <li key={step.n} className="flex gap-4">
-                    <div className="w-7 h-7 rounded-full bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <div className="w-7 h-7 rounded-full bg-violet-500/10 border border-violet-500/20 flex items-center justify-center shrink-0 mt-0.5">
                       <span className="text-xs font-bold text-violet-400">{step.n}</span>
                     </div>
                     <div>
@@ -840,8 +840,8 @@ export function LandingPage() {
                 >
                   <span className="flex-1 truncate">curl -o ~/.claude/commands/deploy.md …</span>
                   {claudeCmdCopied
-                    ? <Check className="h-3.5 w-3.5 text-green-500 flex-shrink-0" aria-hidden="true" />
-                    : <Copy className="h-3.5 w-3.5 text-muted-foreground/50 group-hover:text-muted-foreground flex-shrink-0 transition-colors" aria-hidden="true" />
+                    ? <Check className="h-3.5 w-3.5 text-green-500 shrink-0" aria-hidden="true" />
+                    : <Copy className="h-3.5 w-3.5 text-muted-foreground/50 group-hover:text-muted-foreground shrink-0 transition-colors" aria-hidden="true" />
                   }
                 </button>
               </div>
@@ -867,7 +867,7 @@ export function LandingPage() {
                   </div>
                   {/* Chat bubble — assistant */}
                   <div className="flex gap-2.5">
-                    <div className="w-6 h-6 rounded-full bg-violet-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <div className="w-6 h-6 rounded-full bg-violet-500/20 flex items-center justify-center shrink-0 mt-0.5">
                       <Bot className="h-3.5 w-3.5 text-violet-400" aria-hidden="true" />
                     </div>
                     <div className="rounded-2xl rounded-tl-sm bg-zinc-900 border border-zinc-800 px-4 py-3 text-xs text-zinc-300 space-y-1.5 flex-1">

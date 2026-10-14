@@ -84,7 +84,7 @@ export function ThemeSelect({ className }: { className?: string }): React.ReactE
     return (
       <select
         className={cn(
-          'h-9 w-[7rem] rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring',
+          'h-9 w-[7rem] rounded-md border border-input bg-background px-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-ring',
           className
         )}
         defaultValue="system"
@@ -102,7 +102,7 @@ export function ThemeSelect({ className }: { className?: string }): React.ReactE
       value={theme ?? 'system'}
       onChange={(e) => setTheme(e.target.value as ThemeValue)}
       className={cn(
-        'h-9 w-[7rem] rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring',
+        'h-9 w-[7rem] rounded-md border border-input bg-background px-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-ring',
         className
       )}
       aria-label="Theme"

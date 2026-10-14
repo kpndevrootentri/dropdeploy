@@ -94,7 +94,7 @@ export function DashboardNav(): React.ReactElement {
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <button className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
             <UserAvatar email={session.email} />
             <span className="hidden sm:block max-w-[160px] truncate text-sm text-muted-foreground">
               {session.email}

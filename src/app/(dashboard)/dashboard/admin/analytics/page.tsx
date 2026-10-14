@@ -56,7 +56,7 @@ function SimpleBarChart({ days, color = 'bg-blue-500' }: { days: DayCount[]; col
                 <div className="w-full bg-border rounded-sm" style={{ height: '2px' }} />
               )}
               {day.count > 0 && (
-                <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center z-10 bg-popover border rounded px-2 py-1 text-xs whitespace-nowrap shadow pointer-events-none">
+                <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center z-10 bg-popover border rounded px-2 py-1 text-xs whitespace-nowrap shadow-sm pointer-events-none">
                   <span className="font-medium">{formatShortDate(day.date)}</span>
                   <span>{day.count}</span>
                 </div>
@@ -102,7 +102,7 @@ function DeployBarChart({ days }: { days: DeployDay[] }): React.ReactElement {
                 <div className="w-full bg-border rounded-sm" style={{ height: '2px' }} />
               )}
               {day.total > 0 && (
-                <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center z-10 bg-popover border rounded px-2 py-1 text-xs whitespace-nowrap shadow pointer-events-none">
+                <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center z-10 bg-popover border rounded px-2 py-1 text-xs whitespace-nowrap shadow-sm pointer-events-none">
                   <span className="font-medium">{formatShortDate(day.date)}</span>
                   <span>{day.total} deploys</span>
                   {day.succeeded > 0 && <span className="text-green-600">{day.succeeded} ok</span>}

@@ -172,7 +172,7 @@ function CopyValue({
         title={`Copy ${label.toLowerCase()}`}
         className={cn(
           'group mt-1 flex w-full items-center gap-2 rounded-md border bg-muted/40 px-2.5 py-1.5 text-left',
-          'hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          'hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring',
           emphasis && 'border-foreground/20',
         )}
       >
