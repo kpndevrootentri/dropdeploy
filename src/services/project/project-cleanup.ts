@@ -4,8 +4,8 @@ import { getConfig } from '@/lib/config';
 import type { DockerService } from '@/services/docker';
 
 /**
- * Removes everything a project left on the host: container, image, served
- * static files and the git clone.
+ * Removes everything a project left on the host: container, images, data
+ * volume, served static files and the git clone.
  *
  * The clone matters most. Slugs are reusable, and the git service reuses any
  * clone it finds under the slug, so a project created later with the same
@@ -21,5 +21,8 @@ export async function removeProjectResources(slug: string, docker: DockerService
     rmDir(STATIC_SERVE_DIR),
     rmDir(PROJECTS_DIR),
     docker.removeImage(`dropdeploy/${slug}:latest`).then(() => docker.removeSupersededImages(slug)),
+    // The persistent /data volume goes with the project: a later project
+    // reusing this slug must not inherit the previous owner's files.
+    docker.removeDataVolume(slug),
   ]);
 }

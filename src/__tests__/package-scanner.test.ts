@@ -373,4 +373,10 @@ describe('scanPackages — npm aliases and package-lock.json', () => {
     const { blocked } = await scanPackages(dir);
     expect(blocked).toEqual(['flatmap-stream']);
   });
+
+  it('lets the operator allowlist exempt a built-in entry', async () => {
+    await writeFile(dir, 'package.json', JSON.stringify({ dependencies: { colors: '^1.4.0', faker: '^5.5.3' } }));
+    const { blocked } = await scanPackages(dir, '', 'colors');
+    expect(blocked).toEqual(['faker']);
+  });
 });

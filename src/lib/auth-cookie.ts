@@ -48,6 +48,20 @@ export function getTokenFromCookie(request: NextRequest): string | undefined {
 }
 
 /**
+ * A `Cookie` header with the platform's auth cookie removed, or null if
+ * nothing else is left. Tenant apps get their own cookies (sessions, CSRF
+ * tokens, preferences) but never the visitor's platform session.
+ */
+export function withoutAuthCookie(cookieHeader: string | null): string | null {
+  if (!cookieHeader) return null;
+  const kept = cookieHeader
+    .split(';')
+    .map((pair) => pair.trim())
+    .filter((pair) => pair && pair.slice(0, pair.indexOf('=') === -1 ? undefined : pair.indexOf('=')).trim() !== AUTH_COOKIE_NAME);
+  return kept.length > 0 ? kept.join('; ') : null;
+}
+
+/**
  * True when a `Set-Cookie` header from a tenant app would set the platform's
  * auth cookie. The in-app proxy drops these: a tenant must never be able to
  * sign a visitor into a different account.

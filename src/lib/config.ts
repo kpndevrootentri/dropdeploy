@@ -43,11 +43,18 @@ const envSchema = z.object({
   // Next.js builds are capped at a 2 GB heap, so leave headroom above that.
   BUILD_MEMORY_MB: z.coerce.number().int().min(512).default(3072),
   BUILD_CPUS: z.coerce.number().min(0.5).default(2),
+  // How long a new container gets to start listening before the deploy fails
+  // and the previous deployment stays live.
+  CONTAINER_READY_TIMEOUT_MS: z.coerce.number().int().min(5_000).default(90_000),
   CONTRIBUTOR_EMAIL: z.string().email().optional(),
   CONTRIBUTOR_PASSWORD: z.string().min(8).optional(),
   // Comma-separated list of blocked package names (npm, pip, etc.)
   // e.g. "malicious-pkg,evil-lib,badware"
   BLOCKED_PACKAGES: z.string().optional(),
+  // Comma-separated names exempted from the built-in blocklist. Several entries
+  // (colors, faker, ua-parser-js, …) are legitimate packages listed because
+  // specific versions were once compromised; allow them here when needed.
+  ALLOWED_PACKAGES: z.string().optional(),
   // Logging level: error | warn | info | http | verbose | debug | silly
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly']).default('info'),
   // OAuth — GitHub and GitLab (all optional; feature disabled when absent)

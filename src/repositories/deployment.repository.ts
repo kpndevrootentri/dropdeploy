@@ -8,8 +8,23 @@ export interface IDeploymentRepository {
   findByIdWithProject(id: string): Promise<DeploymentWithProject | null>;
   findByProjectId(projectId: string, limit?: number, skip?: number): Promise<Deployment[]>;
   countByProjectId(projectId: string): Promise<number>;
-  create(data: { projectId: string; status?: string }): Promise<Deployment>;
-  update(id: string, data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'buildLog' | 'commitHash' | 'servingMethod' | 'startedAt' | 'completedAt'>>): Promise<Deployment>;
+  create(data: { projectId: string; status?: string; rollbackOfId?: string; commitHash?: string | null }): Promise<Deployment>;
+  update(id: string, data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'buildLog' | 'commitHash' | 'servingMethod' | 'startedAt' | 'completedAt' | 'imageTag'>>): Promise<Deployment>;
+  /**
+   * Makes `deploymentId` the project's live deployment in one transaction:
+   * releases the subdomain and port held by its other deployments and marks
+   * this one DEPLOYED with the given serving details. The proxy resolves the
+   * live deployment per request, so doing this atomically means no request
+   * ever sees the project with no live deployment.
+   */
+  activate(
+    deploymentId: string,
+    projectId: string,
+    subdomain: string,
+    data: Partial<Pick<Deployment, 'containerPort' | 'servingMethod' | 'buildLog' | 'completedAt'>>,
+  ): Promise<Deployment>;
+  /** DEPLOYED deployments of a project that still hold a retained image, newest first. */
+  findWithRetainedImages(projectId: string): Promise<Deployment[]>;
   /** Clear subdomain on other deployments of this project so the given deployment can claim it (avoids unique constraint). */
   clearSubdomainForOtherDeployments(
     projectId: string,
@@ -64,12 +79,44 @@ export class DeploymentRepository implements IDeploymentRepository {
     return prisma.deployment.count({ where: { projectId } });
   }
 
-  async create(data: { projectId: string; status?: string }): Promise<Deployment> {
+  async create(data: { projectId: string; status?: string; rollbackOfId?: string; commitHash?: string | null }): Promise<Deployment> {
     return prisma.deployment.create({
       data: {
         projectId: data.projectId,
         status: (data.status as 'QUEUED') ?? 'QUEUED',
+        rollbackOfId: data.rollbackOfId,
+        commitHash: data.commitHash ?? undefined,
       },
+    });
+  }
+
+  async activate(
+    deploymentId: string,
+    projectId: string,
+    subdomain: string,
+    data: Partial<Pick<Deployment, 'containerPort' | 'servingMethod' | 'buildLog' | 'completedAt'>>,
+  ): Promise<Deployment> {
+    const [, , activated] = await prisma.$transaction([
+      prisma.deployment.updateMany({
+        where: { projectId, subdomain, id: { not: deploymentId } },
+        data: { subdomain: null },
+      }),
+      prisma.deployment.updateMany({
+        where: { projectId, id: { not: deploymentId } },
+        data: { containerPort: null },
+      }),
+      prisma.deployment.update({
+        where: { id: deploymentId },
+        data: { ...data, status: 'DEPLOYED', buildStep: null, subdomain },
+      }),
+    ]);
+    return activated;
+  }
+
+  async findWithRetainedImages(projectId: string): Promise<Deployment[]> {
+    return prisma.deployment.findMany({
+      where: { projectId, status: 'DEPLOYED', imageTag: { not: null } },
+      orderBy: { createdAt: 'desc' },
     });
   }
 

@@ -60,10 +60,10 @@ graph TD
 
 ### Deployment Rollback
 
-- [ ] Track `previousDeploymentId` on each deployment
-- [ ] Add `POST /api/projects/:id/rollback/:deploymentId` endpoint
-- [ ] Keep previous container available (tagged with version) until rollback window expires
-- [ ] Add rollback button in project detail UI
+- [x] Track `previousDeploymentId` on each deployment (as `rollbackOfId`, plus `imageTag` for the image each deployment ran)
+- [x] Add `POST /api/projects/:id/rollback/:deploymentId` endpoint (at `POST /api/projects/:id/deployments/:deploymentId/rollback`)
+- [x] Keep previous container available (tagged with version) until rollback window expires (images tagged `d-<deploymentId>`, last 3 kept)
+- [x] Add rollback button in project detail UI
 
 ## AI
 
@@ -113,7 +113,7 @@ graph TD
 
 - [ ] Connection pooling (PgBouncer or Prisma pool settings)
 - [ ] Query timeout configuration
-- [ ] Automated daily backups
+- [x] Automated daily backups (`scripts/backup.sh` + cron, see docs/deployment.md)
 
 ### Deployment History UI
 

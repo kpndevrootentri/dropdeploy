@@ -640,20 +640,17 @@ pm2 status
 0 3 * * 0 docker container prune -f >> /home/ubuntu/logs/docker-prune.log 2>&1
 ```
 
-### Database backup (run daily)
+### Backups (run nightly)
+
+`scripts/backup.sh` backs up the database, uploaded/static sites and every project's persistent `/data` volume, keeps 14 days locally, and optionally copies each run to S3 (`BACKUP_S3_URI`). Restore commands are at the bottom of the script.
 
 ```bash
-# Add to crontab
-0 2 * * * pg_dump postgresql://dropdeploy:password@localhost:5432/dropdeploy \
-  | gzip > /home/ubuntu/backups/dropdeploy-$(date +%Y%m%d).sql.gz
-
-# Keep last 30 days
-0 2 * * * find /home/ubuntu/backups -name "*.sql.gz" -mtime +30 -delete
+mkdir -p /home/ubuntu/backups /home/ubuntu/logs
+# crontab -e
+15 3 * * * /home/ubuntu/ShipEntri/scripts/backup.sh >> /home/ubuntu/logs/backup.log 2>&1
 ```
 
-```bash
-mkdir -p /home/ubuntu/backups
-```
+Env var values in the database are encrypted with `ENV_ENCRYPTION_KEY`, which the backup does not contain. Keep a copy of `.env` somewhere separate and safe; without it those values cannot be restored.
 
 ### Log rotation
 
