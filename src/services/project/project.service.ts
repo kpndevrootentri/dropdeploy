@@ -2,7 +2,7 @@ import { projectRepository, type IProjectRepository } from '@/repositories/proje
 import { userRepository, type IUserRepository } from '@/repositories/user.repository';
 import { dockerOps, type IDockerOps } from '@/lib/docker-ops';
 import { NotFoundError, QuotaExceededError } from '@/lib/errors';
-import type { CreateProjectDto, UpdateProjectDto } from '@/types/project.types';
+import { startsPrivate, type CreateProjectDto, type UpdateProjectDto } from '@/types/project.types';
 import type { Project } from '@prisma/client';
 
 export type ProjectWithDeployments = Project & {
@@ -62,12 +62,13 @@ export class ProjectService {
       );
     }
 
-    return this.projectRepo.create(userId, dto);
+    return this.projectRepo.create(userId, { ...dto, isPrivate: startsPrivate(dto.type) });
   }
 
   async update(id: string, userId: string, dto: UpdateProjectDto): Promise<Project> {
-    await this.getById(id, userId);
-    return this.projectRepo.update(id, dto);
+    const project = await this.getById(id, userId);
+    const becomesWordPress = dto.type !== undefined && dto.type !== project.type && startsPrivate(dto.type);
+    return this.projectRepo.update(id, becomesWordPress ? { ...dto, isPrivate: true } : dto);
   }
 
   /** Deletes only the DB record — no docker/static cleanup. Use for aborting a project that was

@@ -11,10 +11,10 @@ import { RepoPicker } from '@/components/features/repo-picker';
 import { cn } from '@/lib/utils';
 import { Github, Loader2, CheckCircle2, ChevronDown, AlertCircle, Plus, Wand2 } from 'lucide-react';
 
-type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'GO' | 'RUST' | 'JAVA';
+type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'GO' | 'RUST' | 'JAVA' | 'WORDPRESS';
 type SourceType = 'GITHUB' | 'GITLAB';
 
-const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'GO', 'RUST', 'JAVA'];
+const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'GO', 'RUST', 'JAVA', 'WORDPRESS'];
 const LOCKED_STATIC_TYPES = ['STATIC', 'REACT', 'VUE', 'SVELTE'] as const;
 const STATIC_CAPABLE_TYPES = [...LOCKED_STATIC_TYPES, 'NEXTJS'] as const;
 

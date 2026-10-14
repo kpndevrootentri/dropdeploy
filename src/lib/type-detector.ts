@@ -30,6 +30,9 @@ export async function detectFromFiles(workDir: string): Promise<DetectionResult>
     }
   }
 
+  // Before package.json: WordPress themes often carry one for their asset build.
+  if (await has('wp-content')) return { type: 'WORDPRESS', confidence: 'high', hint: 'wp-content/' };
+
   const pkgRaw = await read('package.json');
   if (pkgRaw) {
     try {
@@ -150,6 +153,8 @@ export async function detectFromRawUrl(
   const [
     nextConfigJs, nextConfigTs, nextConfigMjs,
     packageJson,
+    wpContentIndex,
+    wpConfig,
     goMod,
     cargoToml,
     pomXml,
@@ -162,6 +167,9 @@ export async function detectFromRawUrl(
     probe('next.config.ts'),
     probe('next.config.mjs'),
     probe('package.json'),
+    // Directories cannot be probed over raw HTTP; core ships this file in wp-content/.
+    probe('wp-content/index.php'),
+    probe('wp-config.php'),
     probe('go.mod'),
     probe('Cargo.toml'),
     probe('pom.xml'),
@@ -174,6 +182,9 @@ export async function detectFromRawUrl(
   if (nextConfigJs) return { type: 'NEXTJS', confidence: 'high', hint: 'next.config.js', hasStaticExport: isNextjsStaticExport(nextConfigJs) };
   if (nextConfigTs) return { type: 'NEXTJS', confidence: 'high', hint: 'next.config.ts', hasStaticExport: isNextjsStaticExport(nextConfigTs) };
   if (nextConfigMjs) return { type: 'NEXTJS', confidence: 'high', hint: 'next.config.mjs', hasStaticExport: isNextjsStaticExport(nextConfigMjs) };
+
+  if (wpContentIndex) return { type: 'WORDPRESS', confidence: 'high', hint: 'wp-content/' };
+  if (wpConfig) return { type: 'WORDPRESS', confidence: 'medium', hint: 'wp-config.php' };
 
   if (packageJson) {
     try {

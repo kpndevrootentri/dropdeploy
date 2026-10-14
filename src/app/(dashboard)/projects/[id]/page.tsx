@@ -89,7 +89,7 @@ interface ProjectDetail {
   deployments: Deployment[];
 }
 
-type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE';
+type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'WORDPRESS';
 type Tab = 'overview' | 'deployments' | 'analytics' | 'env' | 'domains' | 'settings' | 'advanced' | 'publish';
 
 interface TrafficData {
@@ -110,7 +110,7 @@ interface AnalyticsData {
   traffic: TrafficData | null;
 }
 
-const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE'];
+const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'WORDPRESS'];
 const POLL_INTERVAL_MS = 2500;
 const LOCKED_STATIC_TYPES = ['STATIC', 'REACT', 'VUE', 'SVELTE'] as const;
 const STATIC_ELIGIBLE_TYPES = [...LOCKED_STATIC_TYPES, 'NEXTJS'] as const;

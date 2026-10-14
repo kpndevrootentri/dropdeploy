@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { FaHtml5, FaNodeJs, FaReact, FaJava, FaRust } from 'react-icons/fa';
-import { SiNextdotjs, SiDjango, SiFastapi, SiFlask, SiVuedotjs, SiSvelte, SiGo } from 'react-icons/si';
+import { SiNextdotjs, SiDjango, SiFastapi, SiFlask, SiVuedotjs, SiSvelte, SiGo, SiWordpress } from 'react-icons/si';
 
 const BASE_DOMAIN =
   typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_BASE_DOMAIN
@@ -99,10 +99,17 @@ export const FRAMEWORK_CONFIG = {
     ),
     description: 'Java / Spring Boot',
   },
+  WORDPRESS: {
+    label: 'WordPress',
+    Logo: ({ size = 24, className }: { size?: number; className?: string }) => (
+      <SiWordpress size={size} className={cn('shrink-0 text-sky-700', className)} aria-hidden="true" />
+    ),
+    description: 'WordPress (SQLite)',
+  },
 } as const;
 
 export interface FrameworkLogoProps {
-  framework: 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'GO' | 'RUST' | 'JAVA';
+  framework: 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'GO' | 'RUST' | 'JAVA' | 'WORDPRESS';
   size?: number;
   className?: string;
   showLabel?: boolean;

@@ -260,6 +260,7 @@ enum ProjectType {
   GO
   RUST
   JAVA
+  WORDPRESS
 }
 
 model EnvironmentVariable {
