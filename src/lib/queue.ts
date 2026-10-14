@@ -15,8 +15,10 @@ export function getDeploymentQueue(): Queue<DeploymentJob> {
     deploymentQueue = new Queue<DeploymentJob>(QUEUE_NAME, {
       connection: getRedisConnection(),
       defaultJobOptions: {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 2000 },
+        // One attempt: a failed build almost always fails the same way again,
+        // and each retry is another full, resource-heavy build (a timed-out
+        // one would burn 3x the timeout). Users retry explicitly instead.
+        attempts: 1,
         removeOnComplete: { count: 100 },
       },
     });

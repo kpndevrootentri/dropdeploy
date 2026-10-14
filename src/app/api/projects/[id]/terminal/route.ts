@@ -3,8 +3,12 @@ import { z } from 'zod';
 import { getSession } from '@/lib/get-session';
 import { projectService } from '@/services/project';
 import { handleApiError } from '@/lib/api-error';
-import { dockerTerminalService } from '@/services/docker/docker-terminal.service';
+import { dockerOps, containerNameFor } from '@/lib/docker-ops';
 import { ValidationError, AppError } from '@/lib/errors';
+import { checkTerminalRateLimit } from '@/lib/rate-limit';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('terminal');
 
 const terminalCommandSchema = z.object({
     command: z.string().min(1, 'Command is required').max(1000, 'Command too long'),
@@ -21,6 +25,8 @@ export async function POST(
 ): Promise<NextResponse<unknown>> {
     try {
         const session = await getSession(req);
+        const limited = checkTerminalRateLimit(session.userId);
+        if (limited) return limited;
         const { id: projectId } = await params;
 
         const body = await req.json();
@@ -36,24 +42,25 @@ export async function POST(
             throw new AppError('NOT_DEPLOYED', 'Project is not currently deployed', 400);
         }
 
-        const containerName = `dropdeploy-${(project as { slug: string }).slug}`;
-        const command = parsed.data.command;
+        const containerName = containerNameFor((project as { slug: string }).slug);
 
-        // Route slash commands vs regular commands
-        const result = command.startsWith('/')
-            ? await dockerTerminalService.executeSlashCommand(containerName, command)
-            : await dockerTerminalService.executeCommand(containerName, command);
+        // Runs in the worker, which holds the Docker socket; this process doesn't.
+        const result = await dockerOps.terminal(containerName, parsed.data.command);
 
         return NextResponse.json({ success: true, data: result });
     } catch (error) {
-        // Surface command-validation / container errors with a friendly message
+        // User-facing terminal errors are TerminalErrors (an AppError) and pass
+        // through with their message; anything else — Docker API failures,
+        // socket errors — is logged and answered generically, so internal
+        // detail never reaches the browser.
         if (error instanceof Error && !(error instanceof AppError)) {
+            log.error('Terminal command failed', { error: error.message });
             return NextResponse.json(
                 {
                     success: false,
-                    error: { code: 'TERMINAL_ERROR', message: error.message },
+                    error: { code: 'TERMINAL_ERROR', message: 'The command could not be run. Try again, or redeploy the project.' },
                 },
-                { status: 400 },
+                { status: 500 },
             );
         }
         return handleApiError(error);

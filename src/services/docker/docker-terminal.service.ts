@@ -5,6 +5,18 @@
 
 import Docker from 'dockerode';
 import { getConfig } from '@/lib/config';
+import { AppError } from '@/lib/errors';
+
+/**
+ * An error whose message is meant for the terminal user (bad command, container
+ * stopped, timeout). Anything else thrown from here — Docker API failures and
+ * the like — is internal, and the route replaces its message with a generic one.
+ */
+export class TerminalError extends AppError {
+    constructor(message: string) {
+        super('TERMINAL_ERROR', message, 400);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -90,8 +102,15 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Allowed commands (safety allowlist)
+// Allowed commands
 // ---------------------------------------------------------------------------
+//
+// A convenience filter, NOT a security boundary: `node`, `python`, `awk` and
+// `find -exec` can all run arbitrary code. What bounds this terminal is the
+// container itself — the owner's own app, running as an unprivileged user
+// with capabilities dropped (see dockerfile.templates.ts, DockerService) — the
+// owner-only check on the route, the per-user rate limit, and the in-container
+// timeout below.
 
 const ALLOWED_COMMANDS = new Set([
     'ls', 'cat', 'pwd', 'echo', 'env', 'whoami',
@@ -106,6 +125,13 @@ const ALLOWED_COMMANDS = new Set([
 ]);
 
 const EXEC_TIMEOUT_MS = 30_000;
+/**
+ * Killed inside the container a little before the host gives up waiting.
+ * Closing the exec stream on the host does not stop the process — without
+ * this a `node -e 'setInterval(...)'` would run on after "timed out".
+ * `timeout` is present in every template's base image (busybox or coreutils).
+ */
+const IN_CONTAINER_TIMEOUT_S = Math.floor(EXEC_TIMEOUT_MS / 1000) - 2;
 
 function parseArgv(command: string): string[] {
     const args: string[] = [];
@@ -152,18 +178,18 @@ export class DockerTerminalService {
     private validateCommand(command: string): void {
         const trimmed = command.trim();
         if (!trimmed) {
-            throw new Error('Command cannot be empty');
+            throw new TerminalError('Command cannot be empty');
         }
 
         const baseCommand = trimmed.split(/\s+/)[0];
         if (!baseCommand || !ALLOWED_COMMANDS.has(baseCommand)) {
-            throw new Error(
+            throw new TerminalError(
                 `Command "${baseCommand}" is not allowed. Permitted commands: ${[...ALLOWED_COMMANDS].sort().join(', ')}`
             );
         }
 
         if (/[;|&`\n\r]/.test(trimmed)) {
-            throw new Error(
+            throw new TerminalError(
                 'Command contains disallowed shell operators (; | & ` newline). ' +
                 'Run a single command at a time.'
             );
@@ -191,7 +217,7 @@ export class DockerTerminalService {
             return this.docker.getContainer(match.Id);
         }
 
-        throw new Error(
+        throw new TerminalError(
             `Container "${containerName}" not found. Redeploy the project to create a named container.`
         );
     }
@@ -221,7 +247,7 @@ export class DockerTerminalService {
         const cmd = SLASH_COMMANDS.find((c) => c.name === name);
         if (!cmd) {
             const available = SLASH_COMMANDS.map((c) => c.name).join(', ');
-            throw new Error(`Unknown slash command "${name}". Available: ${available}`);
+            throw new TerminalError(`Unknown slash command "${name}". Available: ${available}`);
         }
 
         // Special: /help returns a formatted list
@@ -321,12 +347,15 @@ export class DockerTerminalService {
         // Verify the container is running
         const info = await container.inspect();
         if (!info.State.Running) {
-            throw new Error('Container is not running');
+            throw new TerminalError('Container is not running');
         }
 
         // string[] = user command (direct exec, no shell); string = server-controlled
         // slash command that may use shell features like pipes.
-        const cmd = Array.isArray(command) ? command : ['/bin/sh', '-c', command];
+        const cmd = [
+            'timeout', '-s', 'KILL', String(IN_CONTAINER_TIMEOUT_S),
+            ...(Array.isArray(command) ? command : ['/bin/sh', '-c', command]),
+        ];
 
         const exec = await container.exec({
             Cmd: cmd,
@@ -342,7 +371,7 @@ export class DockerTerminalService {
 
             const timeout = setTimeout(() => {
                 stream.destroy();
-                reject(new Error(`Command timed out after ${EXEC_TIMEOUT_MS / 1000}s`));
+                reject(new TerminalError(`Command timed out after ${EXEC_TIMEOUT_MS / 1000}s`));
             }, EXEC_TIMEOUT_MS);
 
             // dockerode multiplexes stdout/stderr via Docker stream protocol

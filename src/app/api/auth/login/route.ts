@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authService } from '@/services/auth';
 import { loginSchema } from '@/validators/auth.validator';
 import { handleApiError } from '@/lib/api-error';
+import { checkLoginRateLimit, getClientIp } from '@/lib/rate-limit';
 import { setAuthCookie, parseExpiresInToSeconds } from '@/lib/auth-cookie';
 import { getConfig } from '@/lib/config';
 
@@ -9,6 +10,8 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
   try {
     const body = await req.json();
     const dto = loginSchema.parse(body);
+    const limited = checkLoginRateLimit(getClientIp(req), dto.email);
+    if (limited) return limited;
     const result = await authService.login(dto);
     const res = NextResponse.json({
       success: true,

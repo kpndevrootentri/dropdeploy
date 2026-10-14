@@ -3,7 +3,8 @@ import type { NextRequest } from 'next/server';
 import * as jose from 'jose';
 import { randomUUID } from 'crypto';
 import { getTokenFromCookie } from '@/lib/auth-cookie';
-import { normalizeHostKey } from '@/lib/host-key';
+import { isPlatformHost, matchTenantSubdomain } from '@/lib/platform-host';
+import { isForeignOriginMutation } from '@/lib/csrf';
 import { isRoutableStatus } from '@/lib/domain-status';
 
 const DASHBOARD_PREFIX = '/dashboard';
@@ -23,52 +24,6 @@ function envFlag(value: string | undefined): boolean {
   return value !== undefined && ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
 }
 
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * True for hostnames that belong to the platform itself rather than to a
- * tenant. These must always fall through to the dashboard/auth guard and must
- * never be looked up as custom domains.
- *
- * IP literals count as platform hosts: local development and LAN testing reach
- * the app by raw IP (see `src/lib/local-ip.ts`), and health checks often do
- * too. Treating them as unknown tenant hosts would 404 all of that.
- *
- * `PLATFORM_EXTRA_HOSTS` is the escape hatch for every other named host an
- * operator points at this app — a monitoring alias, a staging CNAME, an
- * internal health check that connects by name. Without it, turning the feature
- * on would 404 them all.
- */
-function isPlatformHost(hostname: string, baseDomain: string): boolean {
-  const host = normalizeHostKey(hostname);
-  if (!host) return true;
-  if (host === 'localhost' || host.endsWith('.localhost')) return true;
-  // IPv4 literal, or an IPv6 literal in brackets.
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith('[')) return true;
-  if (baseDomain && (host === baseDomain || host.endsWith(`.${baseDomain}`))) return true;
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL;
-  if (appUrl) {
-    try {
-      if (host === new URL(appUrl).hostname.toLowerCase()) return true;
-    } catch {
-      // Malformed APP_URL — nothing to compare against.
-    }
-  }
-
-  const extra = process.env.PLATFORM_EXTRA_HOSTS;
-  if (extra) {
-    for (const entry of extra.split(',')) {
-      const allowed = normalizeHostKey(entry.trim());
-      if (allowed && (host === allowed || host.endsWith(`.${allowed}`))) return true;
-    }
-  }
-
-  return false;
-}
-
 /** Rewrites the current request into the in-app proxy route for `slug`. */
 function rewriteToProxy(request: NextRequest, slug: string): NextResponse {
   const url = request.nextUrl.clone();
@@ -77,10 +32,24 @@ function rewriteToProxy(request: NextRequest, slug: string): NextResponse {
   return NextResponse.rewrite(url);
 }
 
+/**
+ * Headers for everything the platform itself serves (never tenant sites,
+ * which are rewritten before this point and set their own).
+ *
+ * The dashboard must not be framable: a page on any other site could
+ * otherwise overlay it invisibly and steer a signed-in user's clicks onto
+ * "Delete project", the terminal, or an admin action.
+ */
+function withPlatformHeaders(response: NextResponse): NextResponse {
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('Content-Security-Policy', "frame-ancestors 'none'");
+  return response;
+}
+
 function withRequestId(req: NextRequest, response: NextResponse): NextResponse {
   const requestId = req.headers.get('x-request-id') ?? randomUUID();
   response.headers.set('x-request-id', requestId);
-  return response;
+  return withPlatformHeaders(response);
 }
 
 /**
@@ -106,14 +75,11 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const baseDomain = process.env.BASE_DOMAIN ?? '';
 
   // Match {slug}.{BASE_DOMAIN} (with optional :port for local dev)
-  const subdomainPattern = new RegExp(
-    `^([a-z0-9][a-z0-9-]*)\\.${escapeRegex(baseDomain)}(?::\\d+)?$`
-  );
-  const match = hostname.match(subdomainPattern);
+  const subdomainSlug = matchTenantSubdomain(hostname, baseDomain);
 
-  if (match) {
+  if (subdomainSlug) {
     // Rewrite to internal proxy route while preserving query string
-    return rewriteToProxy(request, match[1]);
+    return rewriteToProxy(request, subdomainSlug);
   }
 
   const { pathname } = request.nextUrl;
@@ -201,12 +167,26 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 
   // For API routes: inject request ID and pass through (no auth redirect needed here)
   if (pathname.startsWith('/api/')) {
+    if (
+      isForeignOriginMutation(
+        request.method,
+        hostname,
+        request.headers.get('origin'),
+        request.headers.get('sec-fetch-site'),
+      )
+    ) {
+      return NextResponse.json(
+        { success: false, error: { code: 'FORBIDDEN', message: 'Cross-origin request refused' } },
+        { status: 403 },
+      );
+    }
+
     const requestId = request.headers.get('x-request-id') ?? randomUUID();
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set('x-request-id', requestId);
     const response = NextResponse.next({ request: { headers: requestHeaders } });
     response.headers.set('x-request-id', requestId);
-    return response;
+    return withPlatformHeaders(response);
   }
 
   const token = getTokenFromCookie(request);

@@ -2,11 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authService } from '@/services/auth';
 import { registerSchema } from '@/validators/auth.validator';
 import { handleApiError } from '@/lib/api-error';
+import { ForbiddenError } from '@/lib/errors';
+import { checkRegisterRateLimit, getClientIp } from '@/lib/rate-limit';
 import { setAuthCookie, parseExpiresInToSeconds } from '@/lib/auth-cookie';
 import { getConfig } from '@/lib/config';
 
 export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
   try {
+    if (!getConfig().ALLOW_PUBLIC_REGISTRATION) {
+      throw new ForbiddenError('Registration is closed. Ask an administrator for an account.');
+    }
+    const limited = checkRegisterRateLimit(getClientIp(req));
+    if (limited) return limited;
     const body = await req.json();
     const dto = registerSchema.parse(body);
     const result = await authService.register(dto);

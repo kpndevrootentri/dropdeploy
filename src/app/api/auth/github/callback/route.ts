@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as jose from 'jose';
 import { getRedisConnection } from '@/lib/redis';
 import { getConfig } from '@/lib/config';
+import { getSession } from '@/lib/get-session';
 import { gitProviderService } from '@/services/git-provider';
 import { createLogger } from '@/lib/logger';
 import { exchangeGitHubCode, fetchGitHubUser, githubCallbackUrl } from '@/lib/providers/github';
@@ -62,6 +63,16 @@ export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
     const redis = getRedisConnection();
     const userId = await redis.getdel(`oauth:state:${nonce}`);
     if (!userId) return isPopup ? popupError('OAuth state expired or already used') : plainRedirectError('OAuth state expired or already used');
+
+    // The state proves which account *started* this flow; the session proves
+    // the browser finishing it is signed in to that same account. Without this
+    // check an attacker can send a victim an authorize URL carrying the
+    // attacker's state, and the victim's token lands on the attacker's account.
+    const session = await getSession(req).catch(() => null);
+    if (session?.userId !== userId) {
+      const msg = 'Sign in to the account that started this connection and try again';
+      return isPopup ? popupError(msg) : plainRedirectError(msg);
+    }
 
     // Exchange code for access token
     const tokenData = await exchangeGitHubCode(

@@ -97,6 +97,17 @@
 # wildcard issuance into Caddy over DNS-01 before it expires.
 *.{$BASE_DOMAIN}, {$BASE_DOMAIN} {
 	tls {$WILDCARD_CERT} {$WILDCARD_KEY}
+
+	# The in-app proxy route serves tenant content. Reached directly on the
+	# dashboard host it would run tenant JS same-origin with the dashboard API,
+	# so it is only valid behind the host rewrite in src/proxy.ts. The route
+	# itself refuses platform hosts too — defence in depth, not instead of.
+	@dashboard_proxy {
+		host {$BASE_DOMAIN}
+		path /api/proxy /api/proxy/*
+	}
+	respond @dashboard_proxy 404
+
 	import app_upstream
 }
 

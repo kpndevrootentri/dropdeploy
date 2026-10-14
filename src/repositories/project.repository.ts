@@ -1,5 +1,6 @@
 import type { Project, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { isReservedSlug } from '@/lib/reserved-slugs';
 import type { CreateProjectDto, UpdateProjectDto } from '@/types/project.types';
 
 export interface IProjectRepository {
@@ -127,7 +128,8 @@ export class ProjectRepository implements IProjectRepository {
       .replace(/^-+|-+$/g, '') || 'project';
     let slug = slugBase;
     let counter = 0;
-    while (await this.findBySlug(slug)) {
+    // A reserved name gets a numeric suffix like any taken one: `admin` → `admin-1`.
+    while (isReservedSlug(slug) || (await this.findBySlug(slug))) {
       counter += 1;
       slug = `${slugBase}-${counter}`;
     }

@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
-import { cookies } from 'next/headers';
-import { getTokenFromCookie, AUTH_COOKIE_NAME } from '@/lib/auth-cookie';
+import { headers } from 'next/headers';
+import { getTokenFromCookie, getTokenFromCookieHeader } from '@/lib/auth-cookie';
 import { authService } from '@/services/auth';
-import { UnauthorizedError } from '@/lib/errors';
+import { ForbiddenError, UnauthorizedError } from '@/lib/errors';
 
 export interface Session {
   userId: string;
@@ -14,21 +14,27 @@ export interface Session {
 /**
  * Returns the current user session from the request cookie.
  * Throws UnauthorizedError if not logged in or token invalid.
+ *
+ * A user whose password an admin reset must choose a new one before doing
+ * anything else. The dashboard pages enforce that with a redirect; this makes
+ * the API enforce it too, so the admin-known password cannot be used through
+ * the API or the CLI. Only the password-change route opts out.
  */
-export async function getSession(req: NextRequest): Promise<Session> {
+export async function getSession(
+  req: NextRequest,
+  opts: { allowPendingPasswordReset?: boolean } = {},
+): Promise<Session> {
   const bearerHeader = req.headers.get('authorization');
   const bearerToken = bearerHeader?.match(/^Bearer\s+(.+)$/i)?.[1];
   const token = getTokenFromCookie(req) ?? bearerToken;
   if (!token) {
     throw new UnauthorizedError('Not authenticated');
   }
-  const payload = await authService.verifyToken(token);
-  return {
-    userId: payload.sub,
-    email: payload.email,
-    role: payload.role ?? 'USER',
-    mustResetPassword: payload.mustResetPassword ?? false,
-  };
+  const session = await authService.verifySession(token);
+  if (session.mustResetPassword && !opts.allowPendingPasswordReset) {
+    throw new ForbiddenError('Set a new password before continuing');
+  }
+  return session;
 }
 
 /**
@@ -37,16 +43,9 @@ export async function getSession(req: NextRequest): Promise<Session> {
  */
 export async function getSessionFromCookies(): Promise<Session | null> {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
+    const token = getTokenFromCookieHeader((await headers()).get('cookie'));
     if (!token) return null;
-    const payload = await authService.verifyToken(token);
-    return {
-      userId: payload.sub,
-      email: payload.email,
-      role: payload.role ?? 'USER',
-      mustResetPassword: payload.mustResetPassword ?? false,
-    };
+    return await authService.verifySession(token);
   } catch {
     return null;
   }

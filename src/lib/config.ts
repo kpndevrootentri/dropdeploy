@@ -19,7 +19,12 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z.string().transform(Number).default('6379'),
-  JWT_SECRET: z.string().min(1).optional(),
+  REDIS_PASSWORD: z.string().optional(),
+  // HS256 tokens signed with a short secret can be brute-forced offline from
+  // any single token, which would let anyone mint an admin session. 24 is a
+  // floor against the obviously weak ("secret", "changeme"); generate a real
+  // one with `openssl rand -hex 32` (64 characters).
+  JWT_SECRET: z.string().min(24, 'JWT_SECRET must be at least 24 characters (use: openssl rand -hex 32)').optional(),
   JWT_EXPIRES_IN: z.string().default('7d'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
@@ -32,11 +37,24 @@ const envSchema = z.object({
   DOCKER_DATA_DIR: z.string().default(path.join(defaultBaseDir, 'docker')),
   BULLMQ_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(5),
   BULLMQ_JOB_TIMEOUT_MS: z.coerce.number().int().min(60_000).default(15 * 60 * 1000),
+  // Per-build limits. Builds run arbitrary install/build scripts, and up to
+  // BULLMQ_CONCURRENCY of them at once, on the host that also runs Postgres
+  // and the proxy for every site — unbounded, one build can OOM them all.
+  // Next.js builds are capped at a 2 GB heap, so leave headroom above that.
+  BUILD_MEMORY_MB: z.coerce.number().int().min(512).default(3072),
+  BUILD_CPUS: z.coerce.number().min(0.5).default(2),
+  // How long a new container gets to start listening before the deploy fails
+  // and the previous deployment stays live.
+  CONTAINER_READY_TIMEOUT_MS: z.coerce.number().int().min(5_000).default(90_000),
   CONTRIBUTOR_EMAIL: z.string().email().optional(),
   CONTRIBUTOR_PASSWORD: z.string().min(8).optional(),
   // Comma-separated list of blocked package names (npm, pip, etc.)
   // e.g. "malicious-pkg,evil-lib,badware"
   BLOCKED_PACKAGES: z.string().optional(),
+  // Comma-separated names exempted from the built-in blocklist. Several entries
+  // (colors, faker, ua-parser-js, …) are legitimate packages listed because
+  // specific versions were once compromised; allow them here when needed.
+  ALLOWED_PACKAGES: z.string().optional(),
   // Logging level: error | warn | info | http | verbose | debug | silly
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly']).default('info'),
   // OAuth — GitHub and GitLab (all optional; feature disabled when absent)
@@ -45,6 +63,11 @@ const envSchema = z.object({
   GITLAB_CLIENT_ID: z.string().optional(),
   GITLAB_CLIENT_SECRET: z.string().optional(),
   APP_URL: z.string().url().optional(),
+
+  // Self-service sign-up. Off by default: accounts are created by admins, and
+  // emails are never verified, so with this on anyone can register
+  // `x@<your-domain>` and pass every project's email-domain access grant.
+  ALLOW_PUBLIC_REGISTRATION: envBool(false),
 
   // ── Custom domains ───────────────────────────────────────────────────────
   // Master switch for the whole feature. When false the API rejects domain
@@ -56,6 +79,9 @@ const envSchema = z.object({
   TLS_CHECK_ENABLED: envBool(false),
   // A-record target shown to users for apex domains.
   PLATFORM_INGRESS_IP: z.string().optional(),
+  // Where the worker reaches the TLS edge to trigger certificate issuance.
+  // Caddy runs with host networking, so loopback.
+  EDGE_TLS_ADDRESS: z.string().default('127.0.0.1:443'),
   // CNAME target shown to users for sub-domains, e.g. "ingress.en3.wtf".
   CUSTOM_DOMAIN_CNAME_TARGET: z.string().optional(),
   // Shared secret the edge sends to /api/internal/tls-check. When set, the

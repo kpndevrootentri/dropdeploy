@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as zlib from 'zlib';
 import AdmZip from 'adm-zip';
 import { ValidationError } from '@/lib/errors';
 
@@ -23,6 +24,42 @@ function sanitizePath(entryName: string): string | null {
 function isAllowed(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase();
   return ALLOWED_EXTENSIONS.has(ext);
+}
+
+const METHOD_STORED = 0;
+const METHOD_DEFLATED = 8;
+
+/**
+ * Decompresses one entry, producing at most `maxBytes`.
+ *
+ * Deliberately not `entry.getData()`: adm-zip only caps inflation at the
+ * entry's *declared* size, and skips the cap entirely when that is 0. A zip
+ * whose headers declare 0 bytes can therefore inflate a few MB into many GB,
+ * synchronously, inside the web process that also proxies every tenant site.
+ * The declared size is attacker-written and is never trusted here.
+ */
+function readEntryBounded(entry: AdmZip.IZipEntry, maxBytes: number): Buffer {
+  // General-purpose flag bit 0 (APPNOTE 4.4.4). Read directly because the
+  // @types spelling (`encripted`) does not match adm-zip's runtime getter.
+  if ((entry.header.flags & 0x1) === 0x1) {
+    throw new ValidationError(`Encrypted zip entries are not supported (${entry.entryName})`);
+  }
+  const compressed = entry.getCompressedData();
+  switch (entry.header.method) {
+    case METHOD_STORED:
+      if (compressed.length > maxBytes) break;
+      return compressed;
+    case METHOD_DEFLATED:
+      try {
+        return zlib.inflateRawSync(compressed, { maxOutputLength: Math.max(maxBytes, 1) });
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ERR_BUFFER_TOO_LARGE') break;
+        throw new ValidationError(`Corrupted zip entry (${entry.entryName})`);
+      }
+    default:
+      throw new ValidationError(`Unsupported zip compression method (${entry.entryName})`);
+  }
+  throw new ValidationError('Extracted content exceeds 100 MB limit');
 }
 
 /**
@@ -73,14 +110,15 @@ export async function extractZipToDir(buffer: Buffer, destDir: string): Promise<
     // Resolve once outside the loop for the boundary check
     const resolvedStagingDir = path.resolve(stagingDir);
 
+    // Cheap early rejection on the sizes the zip *declares*. Not a safety
+    // check on its own — see readEntryBounded — just a fast path for honest zips.
+    const declaredBytes = fileEntries.reduce((sum, e) => sum + e.header.size, 0);
+    if (declaredBytes > MAX_TOTAL_BYTES) {
+      throw new ValidationError('Extracted content exceeds 100 MB limit');
+    }
+
     let totalBytes = 0;
     for (const entry of fileEntries) {
-      // Check declared uncompressed size BEFORE decompressing to prevent zip bomb OOM.
-      // entry.header.size is the stored uncompressed size (can be 0 for stored entries).
-      totalBytes += entry.header.size;
-      if (totalBytes > MAX_TOTAL_BYTES) {
-        throw new ValidationError('Extracted content exceeds 100 MB limit');
-      }
 
       let relativePath = entry.entryName.replace(/\\/g, '/');
 
@@ -100,7 +138,9 @@ export async function extractZipToDir(buffer: Buffer, destDir: string): Promise<
       const resolvedDestPath = path.resolve(destPath);
       if (!resolvedDestPath.startsWith(resolvedStagingDir + path.sep)) continue;
 
-      const data = entry.getData();
+      // The budget is enforced on bytes actually produced, not declared.
+      const data = readEntryBounded(entry, MAX_TOTAL_BYTES - totalBytes);
+      totalBytes += data.length;
       await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
       await fs.promises.writeFile(destPath, data);
     }

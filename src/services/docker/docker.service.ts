@@ -4,14 +4,16 @@
 
 import Docker from 'dockerode';
 import * as fs from 'fs';
+import * as http from 'http';
 import * as net from 'net';
 import * as path from 'path';
 import * as tarStream from 'tar-stream';
 import type { Project } from '@prisma/client';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
-import { DOCKERFILE_TEMPLATES, CONTAINER_PORTS, type DockerfileProjectType, injectNextPublicBuildArgs } from './dockerfile.templates';
+import { DOCKERFILE_TEMPLATES, CONTAINER_PORTS, type DockerfileProjectType, injectBuildArgs } from './dockerfile.templates';
 import { patchNextConfig } from './nextjs-config-patcher';
+import { readRepoFile, writeRepoFile } from '@/lib/repo-fs';
 
 const log = createLogger('docker');
 
@@ -31,6 +33,50 @@ const CONTAINER_RESOURCES: Record<string, { memory: number; cpuShares: number }>
   VUE: { memory: 128 * 1024 * 1024, cpuShares: 256 },
   SVELTE: { memory: 128 * 1024 * 1024, cpuShares: 256 },
 };
+
+/**
+ * Network every tenant container joins instead of Docker's default bridge.
+ * Inter-container traffic is disabled on it, so one tenant's container cannot
+ * reach another's port directly — around the proxy's private-URL gate.
+ */
+export const TENANT_NETWORK = 'dropdeploy-tenants';
+
+/** The project's live container. */
+export const liveContainerName = (slug: string): string => `dropdeploy-${slug}`;
+
+/** A deployment's container while it starts up next to the live one. */
+export const candidateContainerName = (slug: string, deploymentId: string): string =>
+  `dropdeploy-${slug}-next-${deploymentId.slice(-8).toLowerCase()}`;
+
+/**
+ * Whether the app on 127.0.0.1:port answers HTTP — any status counts, a 500
+ * included: the app is up and handling requests. A bare TCP connect is not
+ * enough, because Docker's port proxy accepts connections on the host port
+ * before the app inside is listening, then drops them.
+ */
+function answersHttp(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const req = http.request(
+      { host: '127.0.0.1', port, path: '/', method: 'GET', timeout: 2000 },
+      (res) => {
+        res.resume();
+        resolve(true);
+      },
+    );
+    req.once('timeout', () => req.destroy());
+    req.once('error', () => resolve(false));
+    req.end();
+  });
+}
+
+/** Where each project's persistent volume is mounted inside its container. */
+const DATA_MOUNT = '/data';
+
+/** The persistent data volume of a project. */
+export const dataVolumeName = (slug: string): string => `dropdeploy-data-${slug}`;
+
+/** Image label naming the project an image was built for. */
+const SLUG_LABEL = 'dropdeploy.slug';
 
 export interface DockerServiceConfig {
   socketPath?: string;
@@ -61,11 +107,7 @@ export class DockerService {
     if (project.type === 'NEXTJS' && project.useStaticHosting) {
       key = 'NEXTJS_STATIC';
     }
-    let template = DOCKERFILE_TEMPLATES[key];
-    if (key === 'NEXTJS' || key === 'NEXTJS_STATIC') {
-      template = injectNextPublicBuildArgs(template, buildArgKeys);
-    }
-    return template;
+    return injectBuildArgs(DOCKERFILE_TEMPLATES[key], buildArgKeys);
   }
 
   /**
@@ -79,13 +121,14 @@ export class DockerService {
     buildArgs: Record<string, string> = {},
     secretValues: string[] = [],
     onLog?: (line: string) => void,
+    signal?: AbortSignal,
   ): Promise<string> {
     const imageName = `dropdeploy/${project.slug}:latest`;
     const dockerfilePath = path.join(contextPath, 'Dockerfile');
     const dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs));
-    await fs.promises.writeFile(dockerfilePath, dockerfile, 'utf8');
+    await writeRepoFile(dockerfilePath, dockerfile);
 
-    // Write .dockerignore to prevent .env files from leaking into image
+    // Write .dockerignore to keep .env files and .git out of the image
     await this.writeDockerignore(contextPath);
 
     // Patch Next.js config to skip lint/type errors during build;
@@ -95,11 +138,23 @@ export class DockerService {
     }
 
     log.info('Building image', { imageName });
+    const { BUILD_MEMORY_MB, BUILD_CPUS } = getConfig();
+    const buildMemory = BUILD_MEMORY_MB * 1024 * 1024;
     const stream = await this.docker.buildImage(
       { context: contextPath, src: ['.'] },
       {
         t: imageName,
+        // Lets removeSupersededImages find this project's images once a
+        // rebuild has moved the tag off them.
+        labels: { [SLUG_LABEL]: project.slug },
         ...(Object.keys(buildArgs).length > 0 ? { buildargs: buildArgs } : {}),
+        // Bound each RUN step. memswap equal to memory means no swap on top.
+        memory: buildMemory,
+        memswap: buildMemory,
+        cpuperiod: 100_000,
+        cpuquota: Math.round(BUILD_CPUS * 100_000),
+        // Aborting closes the connection, which makes the daemon cancel the build.
+        abortSignal: signal,
       } as Record<string, unknown>,
     );
 
@@ -154,16 +209,23 @@ export class DockerService {
   }
 
   /**
-   * Creates and starts a container from the image; returns the host port.
-   * Static projects expose 80, Node/Next expose 3000.
+   * Creates and starts a container from the image under `containerName`;
+   * returns the host port. Static projects expose 80, Node/Next expose 3000.
+   *
+   * Only a stale container of the *same* name is replaced. The project's live
+   * container keeps running: a redeploy starts its successor under a
+   * candidate name alongside it (see candidateContainerName), waits for it to
+   * be ready, switches traffic, and only then retires the old one.
    */
-  async runContainer(
-    imageName: string,
-    projectType: string,
-    containerName?: string,
-    envVars: Record<string, string> = {},
-    excludePorts: number[] = [],
-  ): Promise<number> {
+  async startContainer(opts: {
+    imageName: string;
+    projectType: string;
+    slug: string;
+    containerName: string;
+    envVars?: Record<string, string>;
+    excludePorts?: number[];
+  }): Promise<number> {
+    const { imageName, projectType, slug, containerName, envVars = {}, excludePorts = [] } = opts;
     try {
       await this.docker.getImage(imageName).inspect();
     } catch {
@@ -172,24 +234,16 @@ export class DockerService {
       );
     }
 
-    // Stop and remove existing container with the same name (redeploy scenario)
-    if (containerName) {
-      try {
-        const existing = this.docker.getContainer(containerName);
-        const info = await existing.inspect();
-        if (info.State.Running) {
-          await existing.stop();
-        }
-        await existing.remove();
-      } catch {
-        // Container doesn't exist — that's fine
-      }
-    }
+    // A leftover under this exact name (e.g. a candidate from a crashed
+    // deploy) is replaced. Never the live container, which has another name.
+    await this.stopAndRemoveContainer(containerName);
+
+    await this.ensureTenantNetwork();
 
     const containerPort = CONTAINER_PORTS[projectType as DockerfileProjectType] ?? 3000;
 
     // Convert env vars to Docker format: ["KEY=value", ...]
-    const envArray = Object.entries(envVars).map(
+    const envArray = Object.entries({ ...envVars, DROPDEPLOY_DATA_DIR: DATA_MOUNT }).map(
       ([key, value]) => `${key}=${value}`,
     );
 
@@ -209,12 +263,33 @@ export class DockerService {
         Env: envArray.length > 0 ? envArray : undefined,
         ExposedPorts: { [`${containerPort}/tcp`]: {} },
         HostConfig: {
+          // Loopback only. The in-app proxy reaches containers on 127.0.0.1,
+          // and it is the only thing that should: a port published on every
+          // interface is reachable from the internet (Docker's iptables rules
+          // bypass ufw), skipping the private-URL gate entirely.
           PortBindings: {
-            [`${containerPort}/tcp`]: [{ HostPort: String(hostPort) }],
+            [`${containerPort}/tcp`]: [{ HostIp: '127.0.0.1', HostPort: String(hostPort) }],
           },
+          NetworkMode: TENANT_NETWORK,
+          // Survives redeploys; everything else in the container is replaced.
+          Mounts: [{ Type: 'volume', Source: dataVolumeName(slug), Target: DATA_MOUNT }],
           Memory: resources.memory,
+          MemorySwap: resources.memory,
           CpuShares: resources.cpuShares,
-          RestartPolicy: { Name: 'on-failure', MaximumRetryCount: 3 },
+          // A fork bomb otherwise exhausts the host's PID table.
+          PidsLimit: 512,
+          SecurityOpt: ['no-new-privileges'],
+          // Only what nginx's root master needs (bind :80, drop to its worker
+          // user, own its temp dirs). Everything else — raw sockets (ARP/ICMP
+          // spoofing on the bridge), mknod, chroot, setfcap, kill — is gone.
+          // Non-root apps get none of these at all.
+          CapDrop: ['ALL'],
+          CapAdd: ['CHOWN', 'SETUID', 'SETGID', 'NET_BIND_SERVICE', 'DAC_OVERRIDE'],
+          // json-file logs are otherwise unbounded and fill the host disk.
+          LogConfig: { Type: 'json-file', Config: { 'max-size': '10m', 'max-file': '3' } },
+          // Come back after crashes (Docker backs off between attempts) and
+          // after host reboots; a container an admin stopped stays stopped.
+          RestartPolicy: { Name: 'unless-stopped' },
         },
       });
 
@@ -228,6 +303,89 @@ export class DockerService {
       }
     }
     throw new Error('Failed to start container after 3 port allocation attempts');
+  }
+
+  /**
+   * Waits until the app answers HTTP on its host port, or fails fast if the
+   * container exits. On failure the
+   * error carries the container's last log lines so the deploy log shows why.
+   */
+  async waitUntilReady(containerName: string, hostPort: number, timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    const container = this.docker.getContainer(containerName);
+    while (Date.now() < deadline) {
+      const info = await container.inspect();
+      // With restart-unless-stopped a crashing app looks "running" between
+      // restarts; any restart during startup means it crashed.
+      if (!info.State.Running || info.State.Restarting || info.RestartCount > 0) {
+        throw new Error(
+          `The app exited during startup (exit code ${info.State.ExitCode}).\n${await this.tailLogs(containerName)}`,
+        );
+      }
+      if (await answersHttp(hostPort)) return;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    throw new Error(
+      `The app did not start listening within ${Math.round(timeoutMs / 1000)}s.\n${await this.tailLogs(containerName)}`,
+    );
+  }
+
+  /**
+   * Retires the project's previous live container and gives the candidate the
+   * canonical name. Call after traffic has been switched to the candidate.
+   * The old container gets a short grace period for requests already in
+   * flight, then a normal `docker stop` (SIGTERM, then SIGKILL after 10s).
+   */
+  async promoteContainer(slug: string, candidateName: string, graceMs = 5_000): Promise<void> {
+    const liveName = liveContainerName(slug);
+    const old = this.docker.getContainer(liveName);
+    const exists = await old.inspect().then(() => true, () => false);
+    if (exists) {
+      await new Promise((r) => setTimeout(r, graceMs));
+      await this.stopAndRemoveContainer(liveName);
+    }
+    await this.docker.getContainer(candidateName).rename({ name: liveName });
+  }
+
+  /** Last lines of a container's output, for failure messages. */
+  private async tailLogs(containerName: string, lines = 30): Promise<string> {
+    try {
+      const buf = await this.docker.getContainer(containerName).logs({ stdout: true, stderr: true, tail: lines });
+      // Strip Docker's 8-byte multiplexing headers.
+      return (buf as unknown as Buffer).toString('utf8').replace(/[\x00-\x08]/g, '').trim() || '(no output)';
+    } catch {
+      return '(logs unavailable)';
+    }
+  }
+
+  /**
+   * Tags a built image for a specific deployment so it can be re-run later
+   * (rollback) after `:latest` has moved on. Returns the tag.
+   */
+  async tagForDeployment(imageName: string, slug: string, deploymentId: string): Promise<string> {
+    const tag = `d-${deploymentId}`;
+    await this.docker.getImage(imageName).tag({ repo: `dropdeploy/${slug}`, tag });
+    return `dropdeploy/${slug}:${tag}`;
+  }
+
+  /** Creates {@link TENANT_NETWORK} on first use. */
+  private async ensureTenantNetwork(): Promise<void> {
+    try {
+      await this.docker.getNetwork(TENANT_NETWORK).inspect();
+      return;
+    } catch {
+      // Not created yet.
+    }
+    try {
+      await this.docker.createNetwork({
+        Name: TENANT_NETWORK,
+        Driver: 'bridge',
+        Options: { 'com.docker.network.bridge.enable_icc': 'false' },
+      });
+    } catch (err) {
+      // Another worker created it between our inspect and create.
+      if (!String(err).includes('already exists')) throw err;
+    }
   }
 
   /**
@@ -248,19 +406,20 @@ export class DockerService {
   }
 
   /**
-   * Appends .env* exclusions to .dockerignore to prevent secret leakage.
+   * Appends the platform's exclusions to .dockerignore:
+   *  - `.env*`, so secret files never reach an image layer;
+   *  - `.git`, so a repo's history (and anything ever committed to it) is not
+   *    copied into the image — for static sites that would mean serving it.
+   *
+   * Always appended, never skipped when already present: later lines win in
+   * .dockerignore, so a repo line such as `!.env*` must not come after ours.
+   * The clone is reset and cleaned before every build, so this cannot pile up.
    */
   private async writeDockerignore(contextPath: string): Promise<void> {
     const ignorePath = path.join(contextPath, '.dockerignore');
-    const envIgnore = '\n# Prevent .env secret leakage\n.env*\n';
-    try {
-      const existing = await fs.promises.readFile(ignorePath, 'utf8');
-      if (!existing.includes('.env*')) {
-        await fs.promises.writeFile(ignorePath, existing + envIgnore, 'utf8');
-      }
-    } catch {
-      await fs.promises.writeFile(ignorePath, envIgnore.trim() + '\n', 'utf8');
-    }
+    const platformRules = '\n# DropDeploy: keep secrets and git history out of the image\n.env*\n.git\n';
+    const existing = await readRepoFile(ignorePath);
+    await writeRepoFile(ignorePath, existing === null ? platformRules.trimStart() : existing + platformRules);
   }
 
   /**
@@ -398,6 +557,40 @@ export class DockerService {
     } finally {
       await container.remove().catch(() => {});
     }
+  }
+
+  /**
+   * Removes a project's superseded images — the ones a rebuild left untagged
+   * when `dropdeploy/<slug>:latest` moved to the new build. Each redeploy
+   * otherwise leaves a full image behind until the disk fills.
+   *
+   * Non-forced: an image a container still runs is kept.
+   */
+  async removeSupersededImages(slug: string): Promise<void> {
+    let images: Docker.ImageInfo[];
+    try {
+      images = await this.docker.listImages({
+        filters: { label: [`${SLUG_LABEL}=${slug}`], dangling: ['true'] },
+      });
+    } catch (err) {
+      log.warn('Failed to list superseded images', { slug, error: String(err) });
+      return;
+    }
+    for (const image of images) {
+      await this.docker.getImage(image.Id).remove().catch((err: unknown) => {
+        log.warn('Failed to remove superseded image', { slug, imageId: image.Id, error: String(err) });
+      });
+    }
+  }
+
+  /** Deletes a project's persistent data volume. Call only after its container is gone. */
+  async removeDataVolume(slug: string): Promise<void> {
+    await this.docker.getVolume(dataVolumeName(slug)).remove().catch((err: unknown) => {
+      const msg = String(err);
+      if (!msg.includes('404') && !msg.includes('no such volume')) {
+        log.warn('Failed to remove data volume', { slug, error: msg });
+      }
+    });
   }
 
   /**

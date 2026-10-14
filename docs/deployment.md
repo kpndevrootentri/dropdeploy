@@ -101,7 +101,7 @@ EOF
 
 Test the connection:
 ```bash
-psql postgresql://dropdeploy:kpndevroot@localhost:5432/dropdeploy -c "\l"
+psql postgresql://dropdeploy:your_strong_password_here@localhost:5432/dropdeploy -c "\l"
 ```
 
 ---
@@ -114,11 +114,16 @@ sudo apt install -y redis-server
 # Bind to localhost only (security)
 sudo sed -i 's/^bind .*/bind 127.0.0.1/' /etc/redis/redis.conf
 
+# Require a password, and put the same value in .env as REDIS_PASSWORD
+REDIS_PASSWORD=$(openssl rand -hex 32)
+echo "requirepass $REDIS_PASSWORD" | sudo tee -a /etc/redis/redis.conf >/dev/null
+echo "REDIS_PASSWORD=$REDIS_PASSWORD"   # copy into .env
+
 # Enable and start
 sudo systemctl enable --now redis-server
 
 # Verify
-redis-cli ping   # PONG
+redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping   # PONG
 ```
 
 ---
@@ -421,7 +426,10 @@ module.exports = {
     {
       name: 'dropdeploy-app',
       script: 'node_modules/.bin/next',
-      args: 'start',
+      // Loopback only: the edge proxies to 127.0.0.1:3000. On *:3000 the app
+      // is reachable from tenant containers at the Docker gateway IP, which
+      // skips the edge's /api/internal block.
+      args: 'start -H 127.0.0.1',
       cwd: '/home/ubuntu/dropdeploy',
       instances: 1,
       exec_mode: 'fork',
@@ -486,6 +494,21 @@ pm2 status
 pm2 logs --lines 50
 ```
 
+### Run the web app without Docker access
+
+`dropdeploy-app` parses every request from the internet and proxies every tenant site. Running as the deploy user — a member of the `docker` group — any remote-code bug in it is root on the host. It doesn't need the socket: every Docker operation it makes (terminal, container info/stop/restart, project cleanup) is executed by the worker over the `docker-ops` queue (`src/lib/docker-ops.ts`), and the worker accepts those only for `dropdeploy-*` containers.
+
+Move the web app to its own user, outside the `docker` group, under systemd:
+
+```bash
+sudo apt install -y acl
+sudo scripts/split-web-user.sh install
+```
+
+The script creates `dropdeploy-web`, gives it read-only access to the checkout (so it can never change code the worker runs), read/write on `static-sites/` and `.next/cache`, installs `dropdeploy-web.service` with the Docker socket made inaccessible, removes `dropdeploy-app` from PM2, and verifies all of it. The worker and domain worker stay in PM2.
+
+Rollback: `sudo systemctl disable --now dropdeploy-web`, then `pm2 start ecosystem.config.js --only dropdeploy-app && pm2 save`.
+
 ---
 
 ## Step 13b — Supported Project Types
@@ -536,6 +559,20 @@ sudo ufw status
 # 3000 (Next.js), 5432 (Postgres), 6379 (Redis) should be blocked
 ```
 
+ufw does **not** filter traffic from containers — Docker installs its own iptables rules ahead of it. Two things close that gap:
+
+- Tenant containers publish their ports on `127.0.0.1` only, and the app binds to `127.0.0.1:3000` (`next start -H 127.0.0.1`, see Step 13), so neither is reachable from outside the host.
+- Containers must not reach the cloud metadata service, which hands out the instance role's AWS credentials. Block it with:
+
+```bash
+sudo scripts/harden-host.sh   # DOCKER-USER drop rule for 169.254.169.254, persisted via systemd
+
+# Verify: must time out
+docker run --rm curlimages/curl -m 3 http://169.254.169.254/
+```
+
+Then require IMDSv2 with a hop limit of 1 (the script prints the `aws ec2 modify-instance-metadata-options` command).
+
 ---
 
 ## Step 15 — Verify the Deployment
@@ -582,8 +619,9 @@ npm run db:push
 # Rebuild
 npm run build
 
-# Restart processes (zero-downtime reload for app)
-pm2 reload dropdeploy-app
+# Restart processes. After the web/worker split (see Step 13) the web app
+# is a systemd service; `after-build` re-grants .next/cache and restarts it.
+sudo scripts/split-web-user.sh after-build   # before the split: pm2 reload dropdeploy-app
 pm2 restart dropdeploy-worker
 pm2 restart dropdeploy-domains
 
@@ -602,20 +640,17 @@ pm2 status
 0 3 * * 0 docker container prune -f >> /home/ubuntu/logs/docker-prune.log 2>&1
 ```
 
-### Database backup (run daily)
+### Backups (run nightly)
+
+`scripts/backup.sh` backs up the database, uploaded/static sites and every project's persistent `/data` volume, keeps 14 days locally, and optionally copies each run to S3 (`BACKUP_S3_URI`). Restore commands are at the bottom of the script.
 
 ```bash
-# Add to crontab
-0 2 * * * pg_dump postgresql://dropdeploy:password@localhost:5432/dropdeploy \
-  | gzip > /home/ubuntu/backups/dropdeploy-$(date +%Y%m%d).sql.gz
-
-# Keep last 30 days
-0 2 * * * find /home/ubuntu/backups -name "*.sql.gz" -mtime +30 -delete
+mkdir -p /home/ubuntu/backups /home/ubuntu/logs
+# crontab -e
+15 3 * * * /home/ubuntu/ShipEntri/scripts/backup.sh >> /home/ubuntu/logs/backup.log 2>&1
 ```
 
-```bash
-mkdir -p /home/ubuntu/backups
-```
+Env var values in the database are encrypted with `ENV_ENCRYPTION_KEY`, which the backup does not contain. Keep a copy of `.env` somewhere separate and safe; without it those values cannot be restored.
 
 ### Log rotation
 

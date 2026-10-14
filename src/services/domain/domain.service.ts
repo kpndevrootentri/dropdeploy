@@ -1,7 +1,8 @@
 import { randomBytes } from 'crypto';
 import type { CustomDomain, DomainStatus } from '@prisma/client';
 import { domainRepository, type IDomainRepository } from '@/repositories/domain.repository';
-import { ISSUABLE_STATUSES } from '@/lib/domain-status';
+import { ISSUABLE_STATUSES, isRoutableStatus } from '@/lib/domain-status';
+import { probeEdgeTls } from '@/lib/edge-tls';
 import { projectRepository, type IProjectRepository } from '@/repositories/project.repository';
 import { userRepository, type IUserRepository } from '@/repositories/user.repository';
 import { auditLogRepository, type IAuditLogRepository } from '@/repositories/audit-log.repository';
@@ -48,6 +49,19 @@ const MAX_CONSECUTIVE_FAILURES = 5;
  * form that may not wrap.
  */
 const VERIFICATION_TOKEN_BYTES = 24;
+
+/**
+ * How long a claim that has never been verified holds its hostname against
+ * other projects.
+ *
+ * Claiming reserves a hostname before any DNS proof — that is what gives the
+ * owner a TXT token to publish. Without a limit, anyone could add
+ * `shop.victim.com` to their own project and the real owner would be told
+ * "already claimed" forever. After this window an unproven claim yields to
+ * the next project that asks; the newcomer still has to prove DNS control
+ * before anything is served, so yielding can never hand over a live domain.
+ */
+export const UNVERIFIED_CLAIM_TTL_MS = 72 * 60 * 60 * 1000;
 
 /**
  * How long to wait on the request that triggers certificate issuance.
@@ -138,7 +152,13 @@ export class DomainService implements IDomainService {
 
     // A pre-check gives a clear message; the unique index below is what
     // actually prevents two projects racing for the same hostname.
-    const existing = await this.domainRepo.findByHostname(hostname);
+    let existing = await this.domainRepo.findByHostname(hostname);
+    if (existing && existing.projectId !== projectId && this.isAbandonedClaim(existing)) {
+      await this.domainRepo.delete(existing.id);
+      await this.audit('domain.claim-expired', hostname, ownerId, existing.projectId);
+      log.info('Released an expired unverified claim', { hostname, from: existing.projectId, to: projectId });
+      existing = null;
+    }
     if (existing) {
       throw new ConflictError(
         existing.projectId === projectId
@@ -252,7 +272,7 @@ export class DomainService implements IDomainService {
   }
 
   /**
-   * Makes one HTTPS request to the hostname so the edge orders its certificate.
+   * Makes one TLS handshake with our edge for the hostname so it orders the certificate.
    *
    * On-demand TLS issues a certificate during the handshake for a host it does
    * not already have one for. That makes `PROVISIONING` a state the platform
@@ -261,21 +281,18 @@ export class DomainService implements IDomainService {
    * domain sat there until a human opened it — three for three in testing, one
    * of them for 34 minutes.
    *
-   * So the platform connects to itself. The response is irrelevant; a 404 or a
-   * 502 from the tenant's app still means the handshake completed, which is the
-   * only thing being tested here. Only a thrown error — DNS, TCP, or a failed
-   * handshake — counts as failure.
+   * So the platform connects to itself — to the edge's own address, with the
+   * hostname as SNI, never to wherever the hostname's DNS points (see
+   * probeEdgeTls). A completed handshake with a valid certificate is the only
+   * thing tested; no HTTP request is sent.
    *
    * Safe to call for any verified host: it reaches the same ask endpoint as a
    * stranger would, and is refused on exactly the same terms.
    */
   async triggerIssuance(hostname: string): Promise<boolean> {
     try {
-      await fetch(`https://${hostname}/`, {
-        method: 'HEAD',
-        redirect: 'manual',
-        signal: AbortSignal.timeout(ISSUANCE_TIMEOUT_MS),
-      });
+      const edge = this.cfg().EDGE_TLS_ADDRESS ?? '127.0.0.1:443';
+      await probeEdgeTls(hostname, edge, ISSUANCE_TIMEOUT_MS);
       return true;
     } catch (err) {
       log.warn('Certificate trigger failed', {
@@ -598,6 +615,15 @@ export class DomainService implements IDomainService {
   private async invalidateProject(projectId: string, ...extra: string[]): Promise<void> {
     const domains = await this.domainRepo.listByProject(projectId);
     await invalidateHost(...domains.map((d) => d.hostname), ...extra);
+  }
+
+  /** Never verified, not routable, and older than {@link UNVERIFIED_CLAIM_TTL_MS}. */
+  private isAbandonedClaim(domain: CustomDomain): boolean {
+    return (
+      domain.verifiedAt === null &&
+      !isRoutableStatus(domain.status) &&
+      Date.now() - domain.createdAt.getTime() > UNVERIFIED_CLAIM_TTL_MS
+    );
   }
 
   private async audit(action: string, targetKey: string, userId: string, projectId: string): Promise<void> {

@@ -116,17 +116,37 @@ describe('scanPackages — requirements.txt', () => {
     expect(blocked).not.toContain('requests');
   });
 
-  it('normalizes underscore vs dash — typing_extensions blocked as typing-extensions', async () => {
-    // blocklist has 'typing_extensions'; requirements.txt uses the dash form
-    await writeFile(dir, 'requirements.txt', 'typing-extensions>=4.0\n');
-    const { blocked } = await scanPackages(dir);
-    expect(blocked).toContain('typing-extensions');
+  it('normalizes underscore vs dash — an underscore blocklist entry catches the dash form', async () => {
+    // Operator blocklist uses the underscore form; requirements.txt the dash form.
+    await writeFile(dir, 'requirements.txt', 'evil-lib>=4.0\n');
+    const { blocked } = await scanPackages(dir, 'evil_lib');
+    expect(blocked).toContain('evil-lib');
   });
 
   it('normalizes underscore vs dash — both forms are caught', async () => {
+    await writeFile(dir, 'requirements.txt', 'evil_lib>=4.0\n');
+    const { blocked } = await scanPackages(dir, 'evil-lib');
+    expect(blocked).toContain('evil_lib');
+  });
+
+  it('does not block typing_extensions, a legitimate and ubiquitous package', async () => {
     await writeFile(dir, 'requirements.txt', 'typing_extensions>=4.0\n');
     const { blocked } = await scanPackages(dir);
-    expect(blocked).toContain('typing_extensions');
+    expect(blocked).toEqual([]);
+  });
+
+  it('follows -r includes inside the repo', async () => {
+    await fs.promises.mkdir(path.join(dir, 'requirements'));
+    await writeFile(dir, 'requirements.txt', '-r requirements/base.txt\nrequests\n');
+    await writeFile(dir, 'requirements/base.txt', 'colourama==1.0\n');
+    const { blocked } = await scanPackages(dir);
+    expect(blocked).toContain('colourama');
+  });
+
+  it('reads the name from a PEP 508 direct reference', async () => {
+    await writeFile(dir, 'requirements.txt', 'colourama @ https://example.com/colourama-1.0.tar.gz\n');
+    const { blocked } = await scanPackages(dir);
+    expect(blocked).toContain('colourama');
   });
 
   it('ignores comment lines and blank lines', async () => {
@@ -208,10 +228,10 @@ requests = "^2.28"
   it('normalizes underscore vs dash in pyproject.toml', async () => {
     await writeFile(dir, 'pyproject.toml', `
 [project]
-dependencies = ["typing-extensions>=4.0"]
+dependencies = ["evil-lib>=4.0"]
 `);
-    const { blocked } = await scanPackages(dir);
-    expect(blocked).toContain('typing-extensions');
+    const { blocked } = await scanPackages(dir, 'evil_lib');
+    expect(blocked).toContain('evil-lib');
   });
 
   it('passes a clean pyproject.toml', async () => {
@@ -299,5 +319,64 @@ describe('scanPackages — mixed manifests', () => {
     const { blocked } = await scanPackages(dir);
     const count = blocked.filter((p) => p === 'event-stream').length;
     expect(count).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// npm aliases and lockfiles
+// ---------------------------------------------------------------------------
+
+describe('scanPackages — npm aliases and package-lock.json', () => {
+  let dir: string;
+  beforeEach(async () => { dir = await makeTmpDir(); });
+  afterEach(async () => { await cleanup(dir); });
+
+  it('checks the package an npm alias installs, not just the alias name', async () => {
+    await writeFile(dir, 'package.json', JSON.stringify({
+      dependencies: { 'harmless-name': 'npm:evil-lib@1.0.0', '@scope/ok': 'npm:@scope/evil@2.0.0' },
+    }));
+    const { blocked } = await scanPackages(dir, 'evil-lib,@scope/evil');
+    expect(blocked).toEqual(expect.arrayContaining(['evil-lib', '@scope/evil']));
+  });
+
+  it('finds a blocked transitive dependency in a v3 lockfile', async () => {
+    await writeFile(dir, 'package.json', JSON.stringify({ dependencies: { express: '^4.0.0' } }));
+    await writeFile(dir, 'package-lock.json', JSON.stringify({
+      lockfileVersion: 3,
+      packages: {
+        '': { name: 'app' },
+        'node_modules/express': {},
+        'node_modules/express/node_modules/evil-lib': {},
+      },
+    }));
+    const { blocked } = await scanPackages(dir, 'evil-lib');
+    expect(blocked).toContain('evil-lib');
+    expect(blocked).not.toContain('express');
+  });
+
+  it('finds a blocked package in a v1 lockfile', async () => {
+    await writeFile(dir, 'package-lock.json', JSON.stringify({
+      lockfileVersion: 1,
+      dependencies: { a: { dependencies: { 'evil-lib': {} } } },
+    }));
+    const { blocked } = await scanPackages(dir, 'evil-lib');
+    expect(blocked).toContain('evil-lib');
+  });
+
+  it('does not block everyday transitive deps whose bad versions were unpublished', async () => {
+    // eslint depends on eslint-scope; many tools on rc. Only specific, long-gone
+    // versions were malicious, so a lockfile containing them is normal.
+    await writeFile(dir, 'package-lock.json', JSON.stringify({
+      lockfileVersion: 3,
+      packages: { 'node_modules/eslint-scope': {}, 'node_modules/rc': {}, 'node_modules/flatmap-stream': {} },
+    }));
+    const { blocked } = await scanPackages(dir);
+    expect(blocked).toEqual(['flatmap-stream']);
+  });
+
+  it('lets the operator allowlist exempt a built-in entry', async () => {
+    await writeFile(dir, 'package.json', JSON.stringify({ dependencies: { colors: '^1.4.0', faker: '^5.5.3' } }));
+    const { blocked } = await scanPackages(dir, '', 'colors');
+    expect(blocked).toEqual(['faker']);
   });
 });

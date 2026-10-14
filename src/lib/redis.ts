@@ -2,6 +2,12 @@ import Redis from 'ioredis';
 
 const REDIS_HOST = process.env.REDIS_HOST ?? 'localhost';
 const REDIS_PORT = parseInt(process.env.REDIS_PORT ?? '6379', 10);
+/**
+ * Optional; matches Redis `requirepass`. Redis holds OAuth state, deploy
+ * queues and rate-limit counters, and anything that can reach it unauthenticated
+ * — a misbound port, a container that can see the host — can rewrite them.
+ */
+const REDIS_PASSWORD = process.env.REDIS_PASSWORD || undefined;
 
 /**
  * Redis connection for BullMQ and caching.
@@ -11,6 +17,7 @@ export function createRedisConnection(): Redis {
   return new Redis({
     host: REDIS_HOST,
     port: REDIS_PORT,
+    password: REDIS_PASSWORD,
     maxRetriesPerRequest: null,
   });
 }

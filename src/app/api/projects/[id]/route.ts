@@ -3,6 +3,7 @@ import { getSession } from '@/lib/get-session';
 import { projectService } from '@/services/project';
 import { webhookService } from '@/services/webhook';
 import { handleApiError } from '@/lib/api-error';
+import { toPublicProject } from '@/lib/public-project';
 import { updateProjectSchema } from '@/validators/project.validator';
 import { ValidationError } from '@/lib/errors';
 import { auditLogRepository } from '@/repositories/audit-log.repository';
@@ -21,7 +22,7 @@ export async function GET(
     const session = await getSession(req);
     const { id } = await params;
     const project = await projectService.getByIdWithDeployments(id, session.userId);
-    return NextResponse.json({ success: true, data: project });
+    return NextResponse.json({ success: true, data: toPublicProject(project) });
   } catch (error) {
     return handleApiError(error);
   }
@@ -65,7 +66,7 @@ export async function PATCH(
       projectId: id,
     }).catch(() => {});
 
-    return NextResponse.json({ success: true, data: project });
+    return NextResponse.json({ success: true, data: project && toPublicProject(project) });
   } catch (error) {
     return handleApiError(error);
   }
