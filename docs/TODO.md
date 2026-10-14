@@ -65,6 +65,17 @@ graph TD
 - [x] Keep previous container available (tagged with version) until rollback window expires (images tagged `d-<deploymentId>`, last 3 kept)
 - [x] Add rollback button in project detail UI
 
+### WordPress Hosting
+
+- [x] Relay app redirects (with their cookies) instead of following them in the proxy; move `127.0.0.1` locations onto the visitor's host
+- [x] Raise the tenant request body limit to 64 MB (`experimental.proxyClientMaxBodySize`)
+- [x] `WORDPRESS` project type: detection (`wp-content/`), UI, docs
+- [x] Image: pinned WordPress core + repo `wp-content`, SQLite on the `/data` volume, Apache as `www-data` on 8080, 256 MB cap
+- [x] New WordPress projects start private so nobody else can claim the install wizard
+- [x] Consistent SQLite snapshot in `scripts/backup.sh`
+- [ ] Sleep idle containers and wake them on the next request (all project types)
+- [ ] Opt-in shared MariaDB for plugins that need MySQL
+
 ## AI
 
 [ ] implement an ai code review with project code
