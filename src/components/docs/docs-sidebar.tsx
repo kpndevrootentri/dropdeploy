@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { FaHtml5, FaNodeJs, FaReact, FaJava, FaRust } from 'react-icons/fa';
-import { SiNextdotjs, SiDjango, SiFastapi, SiFlask, SiVuedotjs, SiSvelte, SiGo } from 'react-icons/si';
+import { SiNextdotjs, SiDjango, SiFastapi, SiFlask, SiVuedotjs, SiSvelte, SiGo, SiWordpress } from 'react-icons/si';
 
 const NAV_SECTIONS = [
   {
@@ -30,6 +30,7 @@ const NAV_SECTIONS = [
       { href: '/docs/frameworks/go',      label: 'Go',                Icon: () => <SiGo      size={12} className="text-cyan-500 shrink-0" /> },
       { href: '/docs/frameworks/rust',    label: 'Rust',              Icon: () => <FaRust    size={12} className="text-orange-700 shrink-0" /> },
       { href: '/docs/frameworks/java',    label: 'Java / Spring Boot', Icon: () => <FaJava   size={12} className="text-red-600 shrink-0" /> },
+      { href: '/docs/frameworks/wordpress', label: 'WordPress', Icon: () => <SiWordpress size={12} className="text-sky-700 shrink-0" /> },
     ],
   },
 ];

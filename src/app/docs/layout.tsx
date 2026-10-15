@@ -14,7 +14,7 @@ export default async function DocsLayout({ children }: { children: React.ReactNo
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
+      <header className="border-b bg-background/80 backdrop-blur-xs sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
           <div className="flex items-center gap-6">
             <Link href="/" className="text-sm font-semibold tracking-tight hover:opacity-80 transition-opacity">

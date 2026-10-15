@@ -105,14 +105,20 @@ export class GitService implements IGitService {
     // Network operations are shallow (the build needs only the tip, and .git
     // never reaches the image), skip LFS payloads and submodules, never prompt,
     // and stop when the deployment job is aborted on timeout.
+    // simple-git refuses any GIT_* variable not named in allowEnvironment;
+    // every one in these environments is set by us, not inherited.
+    const netEnv = gitEnv(authEnv(repoUrl, credentials));
+    const localEnv = gitEnv();
     const netGit = (baseDir?: string) =>
       simpleGit({
         baseDir,
         abort: signal,
         // Our own GIT_CONFIG_* entry carries the auth header (see authEnv).
         unsafe: { allowUnsafeConfigEnvCount: true },
-      }).env(gitEnv(authEnv(repoUrl, credentials)));
-    const localGit = (baseDir: string) => simpleGit(baseDir).env(gitEnv());
+        allowEnvironment: Object.keys(netEnv),
+      }).env(netEnv);
+    const localGit = (baseDir: string) =>
+      simpleGit({ baseDir, allowEnvironment: Object.keys(localEnv) }).env(localEnv);
     await fs.promises.mkdir(getConfig().PROJECTS_DIR, { recursive: true });
 
     const gitDir = path.join(workDir, '.git');

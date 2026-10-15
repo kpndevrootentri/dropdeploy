@@ -89,7 +89,7 @@ interface ProjectDetail {
   deployments: Deployment[];
 }
 
-type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE';
+type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'WORDPRESS';
 type Tab = 'overview' | 'deployments' | 'analytics' | 'env' | 'domains' | 'settings' | 'advanced' | 'publish';
 
 interface TrafficData {
@@ -110,7 +110,7 @@ interface AnalyticsData {
   traffic: TrafficData | null;
 }
 
-const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE'];
+const FRAMEWORK_KEYS: FrameworkType[] = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'WORDPRESS'];
 const POLL_INTERVAL_MS = 2500;
 const LOCKED_STATIC_TYPES = ['STATIC', 'REACT', 'VUE', 'SVELTE'] as const;
 const STATIC_ELIGIBLE_TYPES = [...LOCKED_STATIC_TYPES, 'NEXTJS'] as const;
@@ -689,7 +689,7 @@ function FrequencyChart({
                 <div className="w-full bg-border rounded-sm" style={{ height: '2px' }} />
               )}
               {day.total > 0 && (
-                <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center z-10 bg-popover border rounded px-2 py-1 text-xs whitespace-nowrap shadow pointer-events-none">
+                <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center z-10 bg-popover border rounded px-2 py-1 text-xs whitespace-nowrap shadow-sm pointer-events-none">
                   <span className="font-medium">{formatShortDate(day.date)}</span>
                   <span>{day.total} deploy{day.total !== 1 ? 's' : ''}</span>
                   {day.succeeded > 0 && <span className="text-green-600">{day.succeeded} ok</span>}
@@ -733,7 +733,7 @@ function BuildTimeChart({
               )}
               style={{ height: `${heightPct}%` }}
             />
-            <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center z-10 bg-popover border rounded px-2 py-1 text-xs whitespace-nowrap shadow pointer-events-none">
+            <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center z-10 bg-popover border rounded px-2 py-1 text-xs whitespace-nowrap shadow-sm pointer-events-none">
               <span className="font-medium">{formatDuration(build.durationMs)}</span>
               <span className={isOk ? 'text-green-600' : 'text-destructive'}>
                 {build.status.toLowerCase()}
@@ -764,7 +764,7 @@ function TrafficChart({ days }: { days: { date: string; count: number }[] }): Re
                 <div className="w-full bg-border rounded-sm" style={{ height: '2px' }} />
               )}
               {day.count > 0 && (
-                <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center z-10 bg-popover border rounded px-2 py-1 text-xs whitespace-nowrap shadow pointer-events-none">
+                <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center z-10 bg-popover border rounded px-2 py-1 text-xs whitespace-nowrap shadow-sm pointer-events-none">
                   <span className="font-medium">{formatShortDate(day.date)}</span>
                   <span>{day.count} visit{day.count !== 1 ? 's' : ''}</span>
                 </div>
@@ -1276,7 +1276,7 @@ function SettingsPanel({
                       }}
                       className={cn(
                         'flex flex-col items-center gap-1.5 rounded-lg border-2 px-3 py-3 text-center transition-colors',
-                        'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                        'hover:bg-muted/50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                         isSelected
                           ? 'border-primary bg-primary/10'
                           : 'border-input bg-card'
@@ -1396,7 +1396,7 @@ function SettingsPanel({
                 disabled={autoDeploySaving}
                 onClick={() => { void handleAutoDeployToggle(!autoDeploy); }}
                 className={cn(
-                  'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+                  'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
                   autoDeploy ? 'bg-primary' : 'bg-input'
                 )}
               >
@@ -1442,7 +1442,7 @@ function SettingsPanel({
               disabled={privacySaving}
               onClick={() => { void handlePrivacyToggle(!isPrivate); }}
               className={cn(
-                'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+                'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
                 isPrivate ? 'bg-primary' : 'bg-input'
               )}
             >

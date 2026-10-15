@@ -318,7 +318,7 @@ export function DragDropZone({ onSuccess, disabled = false }: DragDropZoneProps)
     <>
       {/* Full-page drag overlay */}
       {dropState === 'dragging' && !disabled && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm pointer-events-none">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-xs pointer-events-none">
           <div className="flex flex-col items-center gap-4 rounded-3xl border-2 border-dashed border-primary bg-background/95 px-20 py-14 shadow-2xl">
             <div className="rounded-full bg-primary/10 p-5">
               <CloudUpload className="h-14 w-14 text-primary animate-bounce" />
@@ -336,7 +336,7 @@ export function DragDropZone({ onSuccess, disabled = false }: DragDropZoneProps)
         disabled={disabled}
         className={cn(
           'group w-full rounded-2xl border-2 border-dashed transition-all duration-200 text-left',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+          'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
           disabled
             ? 'cursor-not-allowed border-border/30 bg-muted/20 opacity-60'
             : dropState === 'dragging'
@@ -389,7 +389,7 @@ export function DragDropZone({ onSuccess, disabled = false }: DragDropZoneProps)
               ].map(({ icon, label }) => (
                 <span
                   key={label}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background px-3 py-1 text-xs text-muted-foreground shadow-sm"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background px-3 py-1 text-xs text-muted-foreground shadow-xs"
                 >
                   {icon}
                   {label}
@@ -403,7 +403,7 @@ export function DragDropZone({ onSuccess, disabled = false }: DragDropZoneProps)
             <div
               className={cn(
                 'inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-all duration-150',
-                'bg-primary text-primary-foreground shadow-sm',
+                'bg-primary text-primary-foreground shadow-xs',
                 'group-hover:shadow-md group-hover:brightness-105',
                 dropState === 'dragging' && 'opacity-0 pointer-events-none'
               )}

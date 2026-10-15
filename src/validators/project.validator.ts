@@ -19,7 +19,7 @@ export const createProjectSchema = z
     description: z.string().max(500).optional(),
     source: z.enum(['GITHUB', 'GITLAB']),
     githubUrl: z.string(),
-    type: z.enum(['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'GO', 'RUST', 'JAVA']).optional(),
+    type: z.enum(['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'GO', 'RUST', 'JAVA', 'WORDPRESS']).optional(),
     branch: branchSchema.optional(),
     useStaticHosting: z.boolean().optional(),
   })
@@ -47,7 +47,7 @@ export const createProjectSchema = z
 export const updateProjectSchema = z.object({
   name: z.string().min(3).max(50).optional(),
   description: z.string().max(500).optional().nullable(),
-  type: z.enum(['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'GO', 'RUST', 'JAVA']).optional(),
+  type: z.enum(['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'GO', 'RUST', 'JAVA', 'WORDPRESS']).optional(),
   branch: branchSchema.optional(),
   isPrivate: z.boolean().optional(),
   useStaticHosting: z.boolean().optional(),

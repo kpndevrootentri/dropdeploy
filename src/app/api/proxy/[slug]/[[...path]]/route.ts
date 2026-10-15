@@ -5,6 +5,7 @@ import { serveStaticFile } from '@/lib/static-serve';
 import { getTokenFromCookie, isAuthSetCookie, withoutAuthCookie } from '@/lib/auth-cookie';
 import { getConfig } from '@/lib/config';
 import { mayServeTenant } from '@/lib/platform-host';
+import { publicLocation } from '@/lib/upstream-location';
 import { projectAccessService } from '@/services/project-access';
 import { authService } from '@/services/auth';
 
@@ -330,8 +331,10 @@ async function handler(
   }
   const appCookies = withoutAuthCookie(request.headers.get('cookie'));
   if (appCookies) forwardHeaders.set('cookie', appCookies);
-  forwardHeaders.set('x-forwarded-host', request.headers.get('host') ?? '');
-  forwardHeaders.set('x-forwarded-proto', request.nextUrl.protocol.replace(':', ''));
+  const publicHost = request.headers.get('host') ?? '';
+  const publicProto = request.nextUrl.protocol.replace(':', '');
+  forwardHeaders.set('x-forwarded-host', publicHost);
+  forwardHeaders.set('x-forwarded-proto', publicProto);
 
   const hasBody = !['GET', 'HEAD'].includes(request.method);
 
@@ -349,6 +352,10 @@ async function handler(
       headers: forwardHeaders,
       body: hasBody ? request.body : undefined,
       signal: AbortSignal.any([request.signal, headersTimeout.signal]),
+      // Relay redirects to the browser instead of following them here: a
+      // followed redirect loses its Set-Cookie (login flows) and leaves the
+      // browser on the old URL.
+      redirect: 'manual',
       // duplex is required by Node.js fetch when body is a ReadableStream
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ...(hasBody && ({ duplex: 'half' } as any)),
@@ -381,6 +388,13 @@ async function handler(
   // own auth cookie is dropped: see isAuthSetCookie.
   for (const cookie of upstream.headers.getSetCookie()) {
     if (!isAuthSetCookie(cookie)) responseHeaders.append('set-cookie', cookie);
+  }
+  const location = upstream.headers.get('location');
+  if (location && publicHost) {
+    responseHeaders.set(
+      'location',
+      publicLocation(location, deployment.containerPort, `${publicProto}://${publicHost}`),
+    );
   }
 
   // Record hit async — skip internal Next.js asset paths

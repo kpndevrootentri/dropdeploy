@@ -11,7 +11,14 @@ import * as tarStream from 'tar-stream';
 import type { Project } from '@prisma/client';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
-import { DOCKERFILE_TEMPLATES, CONTAINER_PORTS, type DockerfileProjectType, injectBuildArgs } from './dockerfile.templates';
+import {
+  DOCKERFILE_TEMPLATES,
+  CONTAINER_PORTS,
+  WORDPRESS_CONFIG,
+  WORDPRESS_CONFIG_FILE,
+  type DockerfileProjectType,
+  injectBuildArgs,
+} from './dockerfile.templates';
 import { patchNextConfig } from './nextjs-config-patcher';
 import { readRepoFile, writeRepoFile } from '@/lib/repo-fs';
 
@@ -32,6 +39,7 @@ const CONTAINER_RESOURCES: Record<string, { memory: number; cpuShares: number }>
   FLASK: { memory: 256 * 1024 * 1024, cpuShares: 512 },
   VUE: { memory: 128 * 1024 * 1024, cpuShares: 256 },
   SVELTE: { memory: 128 * 1024 * 1024, cpuShares: 256 },
+  WORDPRESS: { memory: 256 * 1024 * 1024, cpuShares: 512 },
 };
 
 /**
@@ -127,6 +135,9 @@ export class DockerService {
     const dockerfilePath = path.join(contextPath, 'Dockerfile');
     const dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs));
     await writeRepoFile(dockerfilePath, dockerfile);
+    if (project.type === 'WORDPRESS') {
+      await writeRepoFile(path.join(contextPath, WORDPRESS_CONFIG_FILE), WORDPRESS_CONFIG);
+    }
 
     // Write .dockerignore to keep .env files and .git out of the image
     await this.writeDockerignore(contextPath);
