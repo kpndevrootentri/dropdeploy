@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -12,6 +13,17 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Eye, EyeOff, KeyRound, Gauge, ShieldCheck, ShieldOff, Trash2, Loader2 } from 'lucide-react';
+
+interface BulkResult {
+  created: string[];
+  skipped: string[];
+  invalid: string[];
+}
+
+/** Pulls every email-looking token out of pasted text or a CSV, ignoring headers and names. */
+function extractEmails(text: string): string[] {
+  return [...new Set((text.match(/[^\s,;"'<>()]+@[^\s,;"'<>()]+/g) ?? []).map((e) => e.toLowerCase()))];
+}
 
 interface AdminUser {
   id: string;
@@ -34,6 +46,14 @@ export default function AdminUsersPage(): React.ReactElement {
   const [invitePassword, setInvitePassword] = useState('');
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
+
+  // Bulk import modal
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importPassword, setImportPassword] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<BulkResult | null>(null);
 
   // Reset password modal
   const [resetOpen, setResetOpen] = useState(false);
@@ -189,6 +209,44 @@ export default function AdminUsersPage(): React.ReactElement {
     }
   };
 
+  const openImportModal = (): void => {
+    setImportText('');
+    setImportPassword('');
+    setImportError(null);
+    setImportResult(null);
+    setImportOpen(true);
+  };
+
+  const importEmails = extractEmails(importText);
+
+  const handleImport = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    if (importEmails.length === 0) {
+      setImportError('No email addresses found');
+      return;
+    }
+    setImportError(null);
+    setImporting(true);
+    try {
+      const res = await fetch('/api/admin/users/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails: importEmails, password: importPassword }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setImportError(body?.error?.message ?? body?.error ?? 'Failed to import users');
+        return;
+      }
+      setImportResult(body.data);
+      load();
+    } catch {
+      setImportError('Network error');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const handleInvite = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     setInviteError(null);
@@ -217,7 +275,10 @@ export default function AdminUsersPage(): React.ReactElement {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Users</h2>
-        <Button onClick={openModal}>Create User</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={openImportModal}>Import Users</Button>
+          <Button onClick={openModal}>Create User</Button>
+        </div>
       </div>
 
       {loading ? (
@@ -453,6 +514,102 @@ export default function AdminUsersPage(): React.ReactElement {
             <Button type="submit" form="quota-form" disabled={quotaSaving}>
               {quotaSaving ? 'Saving…' : 'Save'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Import Dialog */}
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Import Users</DialogTitle>
+          </DialogHeader>
+          {importResult ? (
+            <div className="space-y-3 text-sm">
+              <p>
+                <span className="font-semibold">{importResult.created.length}</span> created ·{' '}
+                <span className="font-semibold">{importResult.skipped.length}</span> already existed ·{' '}
+                <span className="font-semibold">{importResult.invalid.length}</span> invalid
+              </p>
+              {([['Already existed, not changed', importResult.skipped], ['Invalid', importResult.invalid]] as const).map(
+                ([label, list]) =>
+                  list.length > 0 && (
+                    <div key={label} className="space-y-1">
+                      <p className="text-muted-foreground">{label}</p>
+                      <p className="max-h-32 overflow-y-auto rounded-md bg-muted p-2 font-mono text-xs break-all">
+                        {list.join(', ')}
+                      </p>
+                    </div>
+                  ),
+              )}
+            </div>
+          ) : (
+            <form id="import-form" onSubmit={handleImport} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="import-emails">Emails</Label>
+                <Textarea
+                  id="import-emails"
+                  value={importText}
+                  onChange={(e) => setImportText(e.target.value)}
+                  rows={8}
+                  placeholder={'one@entri.me\ntwo@entri.me'}
+                  className="font-mono text-xs"
+                />
+                <div className="flex items-center justify-between gap-2">
+                  <Input
+                    type="file"
+                    accept=".csv,.txt,text/csv,text/plain"
+                    aria-label="Load emails from a CSV or text file"
+                    className="max-w-[60%] text-xs"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) setImportText(await file.text());
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    {importEmails.length} email{importEmails.length === 1 ? '' : 's'} found
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Paste emails or load a CSV. Any email address in the text is picked up; headers and names are ignored. Up to 500 at a time.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="import-password">Temporary password for all</Label>
+                <Input
+                  id="import-password"
+                  type="text"
+                  value={importPassword}
+                  onChange={(e) => setImportPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  placeholder="Min 8 characters"
+                  autoComplete="off"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Each user must set their own password on first login. Existing accounts are skipped, never changed.
+                </p>
+              </div>
+              {importError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {importError}
+                </p>
+              )}
+            </form>
+          )}
+          <DialogFooter>
+            {importResult ? (
+              <Button onClick={() => setImportOpen(false)}>Done</Button>
+            ) : (
+              <>
+                <Button variant="secondary" onClick={() => setImportOpen(false)} disabled={importing}>
+                  Cancel
+                </Button>
+                <Button type="submit" form="import-form" disabled={importing || importEmails.length === 0}>
+                  {importing ? 'Importing…' : `Import ${importEmails.length || ''} Users`}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,4 +1,5 @@
 import * as bcrypt from 'bcryptjs';
+import { z } from 'zod';
 import type { User, UserRole, Project } from '@prisma/client';
 import type { IUserRepository } from '@/repositories/user.repository';
 import { userRepository } from '@/repositories/user.repository';
@@ -35,6 +36,13 @@ function toPublicUser(user: User): PublicUser {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { passwordHash, tokenVersion, ...rest } = user;
   return rest;
+}
+
+export interface BulkCreateResult {
+  created: string[];
+  /** Already registered. */
+  skipped: string[];
+  invalid: string[];
 }
 
 export class AdminService {
@@ -128,6 +136,21 @@ export class AdminService {
     if (existing) throw new ConflictError('Email already registered');
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
     return toPublicUser(await this.userRepo.create({ email, passwordHash, role: 'USER', mustResetPassword: true }));
+  }
+
+  /**
+   * Creates USER accounts in bulk, all with one temporary password they must
+   * change on first login. Existing accounts are skipped, never changed.
+   */
+  async bulkCreateUsers(input: string[], password: string): Promise<BulkCreateResult> {
+    if (password.length < 8) throw new ValidationError('Password must be at least 8 characters');
+    const emails = [...new Set(input.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+    const isEmail = (e: string): boolean => z.string().email().safeParse(e).success;
+    const valid = emails.filter(isEmail);
+    const invalid = emails.filter((e) => !isEmail(e));
+    const created = valid.length ? await this.userRepo.createMany(valid, await bcrypt.hash(password, SALT_ROUNDS)) : [];
+    const createdSet = new Set(created);
+    return { created, skipped: valid.filter((e) => !createdSet.has(e)), invalid };
   }
 
   async listAllProjects(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date }[] })[]> {
