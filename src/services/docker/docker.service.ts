@@ -308,7 +308,7 @@ export class DockerService {
         await container.start();
         return hostPort;
       } catch (err) {
-        await container.remove().catch(() => { });
+        await container.remove({ v: true }).catch(() => { });
         if (!isPortConflictError(err) || attempt >= 2) throw err;
         log.warn('Port conflict on start, retrying', { hostPort, attempt: attempt + 1 });
       }
@@ -524,7 +524,7 @@ export class DockerService {
       const container = this.docker.getContainer(containerName);
       const info = await container.inspect();
       if (info.State.Running) await container.stop();
-      await container.remove();
+      await container.remove({ v: true });
     } catch {
       // Container doesn't exist or already removed — fine
     }
