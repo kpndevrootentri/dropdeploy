@@ -623,6 +623,7 @@ flowchart LR
 |--------|----------|-------------|
 | `GET` | `/api/admin/users` | List all users |
 | `POST` | `/api/admin/users` | Invite / create a user |
+| `POST` | `/api/admin/users/bulk` | Import many users with one temporary password |
 | `GET` | `/api/admin/users/:userId` | Get user details |
 | `PATCH` | `/api/admin/users/:userId/role` | Change user role |
 | `POST` | `/api/admin/users/:userId/reset-password` | Reset user password |

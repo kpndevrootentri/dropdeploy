@@ -6,6 +6,8 @@ export interface IUserRepository {
   findByEmail(email: string): Promise<User | null>;
   findAll(): Promise<User[]>;
   create(data: { email: string; passwordHash: string; role?: UserRole; mustResetPassword?: boolean }): Promise<User>;
+  /** Creates USER accounts that must reset their password; skips emails already registered. Returns the emails created. */
+  createMany(emails: string[], passwordHash: string): Promise<string[]>;
   updateRole(id: string, role: UserRole): Promise<User>;
   updateQuota(id: string, quota: number): Promise<User>;
   /** Custom domains the user may claim across all their projects. */
@@ -36,6 +38,15 @@ export class UserRepository implements IUserRepository {
         ...(data.mustResetPassword !== undefined ? { mustResetPassword: data.mustResetPassword } : {}),
       },
     });
+  }
+
+  async createMany(emails: string[], passwordHash: string): Promise<string[]> {
+    const users = await prisma.user.createManyAndReturn({
+      data: emails.map((email) => ({ email: email.toLowerCase(), passwordHash, mustResetPassword: true })),
+      skipDuplicates: true,
+      select: { email: true },
+    });
+    return users.map((u) => u.email);
   }
 
   /** Also revokes the user's sessions, so a demotion takes effect at once. */
