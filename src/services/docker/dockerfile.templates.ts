@@ -297,20 +297,23 @@ CMD ["java", "-jar", "app.jar"]
   // Core comes from the pinned image and is owned by root, so the site cannot
   // change it; the repo supplies only wp-content. The database (SQLite) and
   // uploads live on the /data volume, so they survive redeploys and rollbacks.
+  // The site lives outside /var/www/html: the base image declares that path a
+  // VOLUME, and the classic builder dockerode uses drops RUN changes inside it.
   WORDPRESS: `
 FROM wordpress:7.1-php8.3-apache
-RUN cp -a /usr/src/wordpress/. /var/www/html/
-COPY wp-content/ /var/www/html/wp-content/
+RUN cp -a /usr/src/wordpress/. /var/www/wordpress/
+WORKDIR /var/www/wordpress
+COPY wp-content/ /var/www/wordpress/wp-content/
 RUN curl -fsSL -o /tmp/sqlite.zip https://downloads.wordpress.org/plugin/sqlite-database-integration.3.1.0.zip \\
- && php -r '$z = new ZipArchive(); ($z->open("/tmp/sqlite.zip") === true && $z->extractTo("/var/www/html/wp-content/plugins")) || exit(1);' \\
+ && php -r '$z = new ZipArchive(); ($z->open("/tmp/sqlite.zip") === true && $z->extractTo("/var/www/wordpress/wp-content/plugins")) || exit(1);' \\
  && rm /tmp/sqlite.zip \\
- && cp /var/www/html/wp-content/plugins/sqlite-database-integration/db.copy /var/www/html/wp-content/db.php
-COPY ${WORDPRESS_CONFIG_FILE} /var/www/html/wp-config.php
-RUN rm -rf /var/www/html/wp-content/uploads \\
- && ln -s /data/uploads /var/www/html/wp-content/uploads \\
- && chown -R root:root /var/www/html \\
+ && cp /var/www/wordpress/wp-content/plugins/sqlite-database-integration/db.copy /var/www/wordpress/wp-content/db.php
+COPY ${WORDPRESS_CONFIG_FILE} /var/www/wordpress/wp-config.php
+RUN rm -rf /var/www/wordpress/wp-content/uploads \\
+ && ln -s /data/uploads /var/www/wordpress/wp-content/uploads \\
+ && chown -R root:root /var/www/wordpress \\
  && sed -i 's/^Listen 80$/Listen 8080/' /etc/apache2/ports.conf \\
- && sed -i 's/<VirtualHost \\*:80>/<VirtualHost *:8080>/' /etc/apache2/sites-available/000-default.conf \\
+ && sed -i -e 's/<VirtualHost \\*:80>/<VirtualHost *:8080>/' -e 's#/var/www/html#/var/www/wordpress#' /etc/apache2/sites-available/000-default.conf \\
  && printf '%s\\n' \\
     'ServerName localhost' \\
     '<IfModule mpm_prefork_module>' \\
@@ -323,7 +326,7 @@ RUN rm -rf /var/www/html/wp-content/uploads \\
     '<Files xmlrpc.php>' \\
     '  Require all denied' \\
     '</Files>' \\
-    '<Directory /var/www/html/wp-content/uploads>' \\
+    '<Directory /var/www/wordpress/wp-content/uploads>' \\
     '  <FilesMatch "\\.(php|phar|phtml)$">' \\
     '    Require all denied' \\
     '  </FilesMatch>' \\
