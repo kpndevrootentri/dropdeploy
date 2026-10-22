@@ -165,7 +165,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY --chown=app . .
 USER app
 EXPOSE 8000
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Migrate at start (/data is only mounted then); ";" keeps apps with no database starting
+CMD ["sh", "-c", "python manage.py migrate --noinput; exec python manage.py runserver 0.0.0.0:8000"]
 `.trim(),
 
   REACT: `
