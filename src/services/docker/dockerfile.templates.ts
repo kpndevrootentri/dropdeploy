@@ -165,8 +165,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY --chown=app . .
 USER app
 EXPOSE 8000
-# Migrate at start (/data is only mounted then); ";" keeps apps with no database starting
-CMD ["sh", "-c", "python manage.py migrate --noinput; exec python manage.py runserver 0.0.0.0:8000"]
+# At start, as /data is only mounted then: keep Django's default /app/db.sqlite3
+# on the volume (seeded once from a committed copy) so redeploys don't wipe it,
+# then migrate. ";" keeps apps with no database starting.
+# ponytail: only the default name is moved; a custom SQLite path must use DROPDEPLOY_DATA_DIR.
+CMD ["sh", "-c", "[ -f db.sqlite3 ] && [ ! -e /data/db.sqlite3 ] && mv db.sqlite3 /data/; ln -sf /data/db.sqlite3 db.sqlite3; python manage.py migrate --noinput; exec python manage.py runserver 0.0.0.0:8000"]
 `.trim(),
 
   REACT: `
