@@ -11,6 +11,9 @@ const nextConfig = {
     // uploads cost memory; raise only when tenants need bigger uploads.
     proxyClientMaxBodySize: '64mb',
   },
+  // Tenant apps own their URLs: stripping "/calculate/" to "/calculate" loops
+  // with Django's APPEND_SLASH. src/proxy.ts still strips it for platform pages.
+  skipTrailingSlashRedirect: true,
   serverExternalPackages: ['ssh2', 'dockerode', 'cpu-features', 'sshpk'],
   turbopack: {
     root: __dirname,
