@@ -42,6 +42,7 @@ describe('publicLocation', () => {
 describe('proxy route redirects', () => {
   const realFetch = global.fetch;
   let upstreamInit: RequestInit | undefined;
+  let upstreamUrl: unknown;
 
   beforeEach(() => {
     findFirst.mockResolvedValue({
@@ -50,7 +51,8 @@ describe('proxy route redirects', () => {
       projectId: 'p1',
       project: { id: 'p1', isPrivate: false, userId: 'u1' },
     });
-    global.fetch = jest.fn(async (_url: unknown, init?: RequestInit) => {
+    global.fetch = jest.fn(async (url: unknown, init?: RequestInit) => {
+      upstreamUrl = url;
       upstreamInit = init;
       const headers = new Headers({ location: `http://127.0.0.1:${PORT}/wp-admin/` });
       headers.append('set-cookie', 'wordpress_sec=a; Path=/; HttpOnly');
@@ -78,5 +80,16 @@ describe('proxy route redirects', () => {
       'wordpress_sec=a; Path=/; HttpOnly',
       'wordpress_logged_in=b; Path=/',
     ]);
+  });
+
+  it('keeps the trailing slash, which Django and WordPress routes depend on', async () => {
+    const request = new NextRequest('https://calc.app.test/calculate/?a=1', {
+      method: 'POST',
+      headers: { host: 'calc.app.test' },
+    });
+
+    await GET(request, { params: Promise.resolve({ slug: 'calc', path: ['calculate'] }) });
+
+    expect(upstreamUrl).toBe(`http://127.0.0.1:${PORT}/calculate/?a=1`);
   });
 });

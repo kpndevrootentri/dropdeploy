@@ -154,6 +154,15 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 
   // Non-subdomain request — auth/dashboard guard
 
+  // next.config.js skips Next's trailing-slash redirect so tenant paths pass
+  // through intact; platform URLs keep the one canonical form it enforced.
+  if (pathname !== '/' && pathname.endsWith('/')) {
+    // A plain URL: NextURL re-appends the slash it was parsed with.
+    const url = new URL(request.url);
+    url.pathname = pathname.replace(/\/+$/, '') || '/';
+    return NextResponse.redirect(url, 308);
+  }
+
   // Static assets must never be redirected — the browser needs them to render any page,
   // including /reset-password. Without this, mustResetPassword users would receive an
   // HTML redirect instead of JS chunks, causing "Unexpected token '<'" errors.

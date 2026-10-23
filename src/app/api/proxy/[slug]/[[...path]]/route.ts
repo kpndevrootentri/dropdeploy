@@ -277,7 +277,9 @@ async function handler(
   }
   // ─────────────────────────────────────────────────────────────────────────
 
-  const targetPath = path.length > 0 ? `/${path.join('/')}` : '/';
+  // Catch-all params drop a trailing slash; Django/WordPress routes depend on it.
+  const trailingSlash = request.nextUrl.pathname.endsWith('/') ? '/' : '';
+  const targetPath = path.length > 0 ? `/${path.join('/')}${trailingSlash}` : '/';
 
   if (deployment.servingMethod === 'STATIC_FILES') {
     const { STATIC_SERVE_DIR, NEXT_PUBLIC_APP_URL } = getConfig();
