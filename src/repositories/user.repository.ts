@@ -14,6 +14,13 @@ export interface IUserRepository {
   updateDomainQuota(id: string, quota: number): Promise<User>;
   setPassword(id: string, passwordHash: string, mustResetPassword?: boolean): Promise<User>;
   delete(id: string): Promise<void>;
+  /** Whether the dashboard product tour has been offered and answered. */
+  isTourSeen(id: string): Promise<boolean>;
+  /** Declined, skipped and completed all count; replays keep the first timestamp. */
+  markTourSeen(id: string): Promise<void>;
+  /** Whether the welcome modal has been shown and closed. */
+  isWelcomeSeen(id: string): Promise<boolean>;
+  markWelcomeSeen(id: string): Promise<void>;
 }
 
 export class UserRepository implements IUserRepository {
@@ -75,6 +82,26 @@ export class UserRepository implements IUserRepository {
 
   async delete(id: string): Promise<void> {
     await prisma.user.delete({ where: { id } });
+  }
+
+  async isTourSeen(id: string): Promise<boolean> {
+    const user = await prisma.user.findUnique({ where: { id }, select: { tourSeenAt: true } });
+    return user?.tourSeenAt != null;
+  }
+
+  /** One conditional update: keeps the first timestamp, and two calls cannot race. */
+  async markTourSeen(id: string): Promise<void> {
+    await prisma.user.updateMany({ where: { id, tourSeenAt: null }, data: { tourSeenAt: new Date() } });
+  }
+
+  async isWelcomeSeen(id: string): Promise<boolean> {
+    const user = await prisma.user.findUnique({ where: { id }, select: { welcomeSeenAt: true } });
+    return user?.welcomeSeenAt != null;
+  }
+
+  /** Same conditional update as markTourSeen. */
+  async markWelcomeSeen(id: string): Promise<void> {
+    await prisma.user.updateMany({ where: { id, welcomeSeenAt: null }, data: { welcomeSeenAt: new Date() } });
   }
 }
 

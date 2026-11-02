@@ -13,6 +13,7 @@ const ALLOWED_EVENTS = new Set([
   'publish_flow_start',
   'publish_flow_done',
   'signup',
+  'product_tour_started',
 ]);
 
 /** Largest request body accepted, in bytes. Events are a name and a few tags. */

@@ -29,6 +29,14 @@ model User {
   // Custom domains the user may claim across all their projects.
   domainQuota  Int @default(1) @map("domain_quota")
 
+  // When the dashboard product tour was offered and answered — declined,
+  // skipped or completed. Null means it is still to be offered.
+  // Existing accounts: scripts/backfill-tour-seen.sql, once, after db:push.
+  tourSeenAt DateTime? @map("tour_seen_at")
+  // When the welcome modal was closed. It is shown only to accounts with no
+  // projects. Existing accounts: the same backfill script.
+  welcomeSeenAt DateTime? @map("welcome_seen_at")
+
   projects      Project[]
   auditLogs     AuditLog[]
   gitProviders  GitProvider[]

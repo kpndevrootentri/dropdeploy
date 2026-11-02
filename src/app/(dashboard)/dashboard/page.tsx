@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -13,7 +12,10 @@ import {
 import { CreateProjectForm } from '@/components/features/create-project-form';
 import { DragDropZone } from '@/components/features/drag-drop-zone';
 import { ProjectList, type ProjectQuota } from '@/components/features/project-list';
-import { Plus, X } from 'lucide-react';
+import { ProductTour } from '@/components/features/product-tour';
+import { FirstDeployGuide, type FirstDeployChoice } from '@/components/features/first-deploy-guide';
+import { WelcomeModal } from '@/components/features/welcome-modal';
+import { Plus } from 'lucide-react';
 
 function QuotaBar({ quota }: { quota: ProjectQuota }): React.ReactElement {
   const { used, limit, available } = quota;
@@ -58,15 +60,16 @@ function QuotaBar({ quota }: { quota: ProjectQuota }): React.ReactElement {
 export default function DashboardPage(): React.ReactElement {
   const [listRefresh, setListRefresh] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
-  const [showWelcome, setShowWelcome] = useState(false);
   const [quota, setQuota] = useState<ProjectQuota | null>(null);
-
-  useEffect(() => {
-    const dismissed = localStorage.getItem('welcome-dismissed');
-    if (!dismissed) {
-      setShowWelcome(true);
-    }
-  }, []);
+  const [hasLive, setHasLive] = useState<boolean | null>(null);
+  const [guideChoice, setGuideChoice] = useState<FirstDeployChoice | null>(null);
+  // The drop zone opens the new project's page 1.4 s after an upload. Until then
+  // the tour offer is held back, so it shows on return instead of flashing now.
+  const [isLeaving, setIsLeaving] = useState(false);
+  // The email the welcome modal greets; null while it is not showing.
+  const [welcomeEmail, setWelcomeEmail] = useState<string | null>(null);
+  // Set once the user starts a deploy, so a slow welcome check can't open on top of it.
+  const hasStartedRef = useRef(false);
 
   const handleCreateSuccess = (): void => {
     setListRefresh((n) => n + 1);
@@ -74,16 +77,49 @@ export default function DashboardPage(): React.ReactElement {
   };
 
   const atLimit = quota !== null && quota.available === 0;
+  // No projects yet, and room to create one: show the first-deploy guide.
+  const isFresh = quota !== null && quota.used === 0 && quota.available > 0;
+  const formGuide = isFresh && (guideChoice === 'github' || guideChoice === 'url') ? guideChoice : undefined;
+
+  const pickGuide = (choice: FirstDeployChoice): void => {
+    hasStartedRef.current = true;
+    setGuideChoice(choice);
+    if (choice !== 'upload') setCreateOpen(true);
+  };
+
+  // Only an account with no projects is asked, and only until it closes the modal once.
+  useEffect(() => {
+    if (!isFresh) return;
+    const controller = new AbortController();
+    fetch('/api/onboarding/welcome', { signal: controller.signal })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success && data.data?.seen === false && !hasStartedRef.current) setWelcomeEmail(data.data.email ?? '');
+      })
+      // Aborted on unmount, or the request failed: no welcome this visit, nothing lost.
+      .catch(() => {});
+    return () => controller.abort();
+  }, [isFresh]);
+
+  const closeWelcome = (): void => {
+    setWelcomeEmail(null);
+    // A lost save only means the modal shows once more on the next visit.
+    void fetch('/api/onboarding/welcome', { method: 'POST' }).catch(() => {});
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <h2 className="text-2xl font-bold">Dashboard</h2>
-        <div className="flex flex-col items-end gap-3">
+        <div className="flex flex-col items-end gap-3" data-tour="create_project">
           {quota && <QuotaBar quota={quota} />}
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <Button
-              onClick={() => { if (!atLimit) setCreateOpen(true); }}
+              onClick={() => {
+                if (atLimit) return;
+                hasStartedRef.current = true;
+                setCreateOpen(true);
+              }}
               disabled={atLimit}
               title={atLimit ? 'Project quota reached' : undefined}
             >
@@ -97,37 +133,39 @@ export default function DashboardPage(): React.ReactElement {
                   Add a new project. Choose a name, framework, and paste your GitHub repository URL.
                 </DialogDescription>
               </DialogHeader>
-              <CreateProjectForm embedded onSuccess={handleCreateSuccess} />
+              <CreateProjectForm embedded onSuccess={handleCreateSuccess} guide={formGuide} />
             </DialogContent>
           </Dialog>
         </div>
       </div>
 
-      <DragDropZone onSuccess={handleCreateSuccess} disabled={atLimit} />
+      {isFresh && <FirstDeployGuide picked={guideChoice} onPick={pickGuide} />}
 
-      {showWelcome && (
-        <Card className="relative">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute right-2 top-2 h-6 w-6"
-            onClick={() => {
-              setShowWelcome(false);
-              localStorage.setItem('welcome-dismissed', 'true');
-            }}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-          <CardHeader>
-            <CardTitle>Welcome to DropDeploy</CardTitle>
-            <CardDescription>
-              Get your site online in two ways: drop a ZIP, HTML file, or folder directly onto the zone below for instant publishing — or click <strong>Create project</strong> to connect a GitHub repository.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
+      <DragDropZone
+        onSuccess={() => {
+          setIsLeaving(true);
+          handleCreateSuccess();
+        }}
+        disabled={atLimit}
+        highlighted={isFresh && guideChoice === 'upload'}
+        onDismissHighlight={() => setGuideChoice(null)}
+      />
 
-      <ProjectList onRefresh={listRefresh} onQuota={setQuota} />
+      <ProjectList onRefresh={listRefresh} onQuota={setQuota} onLive={setHasLive} />
+
+      <WelcomeModal
+        open={welcomeEmail !== null}
+        email={welcomeEmail ?? ''}
+        onPick={(choice) => {
+          closeWelcome();
+          pickGuide(choice);
+        }}
+        onClose={closeWelcome}
+      />
+
+      <Suspense fallback={null}>
+        <ProductTour hasLive={isLeaving ? null : hasLive} />
+      </Suspense>
     </div>
   );
 }

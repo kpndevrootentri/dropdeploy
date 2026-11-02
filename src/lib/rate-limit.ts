@@ -200,3 +200,15 @@ const ACCESS_GRANT_MAX = 20; // 20 grants per minute per user
 export function checkAccessGrantRateLimit(userId: string): NextResponse | null {
   return checkRateLimit(`access-grant:${userId}`, { windowMs: ACCESS_GRANT_WINDOW_MS, max: ACCESS_GRANT_MAX });
 }
+
+const TOUR_END_WINDOW_MS = 60_000; // 1 minute
+const TOUR_END_MAX = 10; // 10 per minute per user
+
+/**
+ * Rate limit recording how the dashboard tour ended — 10/min/user. Each call
+ * writes a platform_events row, and a person ends a tour a few times at most.
+ * Per user rather than per IP: a class behind one NAT must not share a bucket.
+ */
+export function checkTourEndRateLimit(userId: string): NextResponse | null {
+  return checkRateLimit(`tour-end:${userId}`, { windowMs: TOUR_END_WINDOW_MS, max: TOUR_END_MAX });
+}

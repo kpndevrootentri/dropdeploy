@@ -191,3 +191,34 @@
     @apply bg-background text-foreground;
   }
 }
+
+/*
+ * Spotlight motion for the product tour and the first-deploy guide. Both run
+ * only behind motion-safe:, so reduced-motion users get a still ring instead.
+ */
+@theme {
+  --animate-spotlight-pulse: spotlight-pulse 1.8s ease-out infinite;
+  --animate-guide-pulse: guide-pulse 1.6s ease-out infinite;
+
+  /* A white halo that swells out of the cut-out and fades: visible on the dim. */
+  @keyframes spotlight-pulse {
+    from {
+      box-shadow: 0 0 0 0 rgb(255 255 255 / 0.6);
+    }
+    to {
+      box-shadow: 0 0 0 14px rgb(255 255 255 / 0);
+    }
+  }
+
+  /* An outline, not a box-shadow, so it does not fight the ring-* it sits around. */
+  @keyframes guide-pulse {
+    from {
+      outline: 0 solid hsl(var(--primary) / 0.45);
+      outline-offset: 4px;
+    }
+    to {
+      outline: 10px solid hsl(var(--primary) / 0);
+      outline-offset: 4px;
+    }
+  }
+}
