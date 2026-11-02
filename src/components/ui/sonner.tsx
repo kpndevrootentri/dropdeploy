@@ -12,9 +12,10 @@ function Toaster({ ...props }: ToasterProps): React.ReactElement {
       className="toaster group"
       style={
         {
-          '--normal-bg': 'var(--popover)',
-          '--normal-text': 'var(--popover-foreground)',
-          '--normal-border': 'var(--border)',
+          // The theme tokens are bare HSL channels (globals.css), so they need hsl() to be a colour.
+          '--normal-bg': 'hsl(var(--popover))',
+          '--normal-text': 'hsl(var(--popover-foreground))',
+          '--normal-border': 'hsl(var(--border))',
           '--width': 'min(360px, calc(100vw - 2rem))',
         } as React.CSSProperties
       }
