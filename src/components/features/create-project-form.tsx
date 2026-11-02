@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { FRAMEWORK_CONFIG } from '@/components/ui/framework-logo';
 import { RepoPicker } from '@/components/features/repo-picker';
+import { GUIDE_RING } from '@/components/features/first-deploy-guide';
 import { cn } from '@/lib/utils';
 import { Github, Loader2, CheckCircle2, ChevronDown, AlertCircle, Plus, Wand2 } from 'lucide-react';
 
@@ -44,9 +45,11 @@ export interface CreateProjectFormProps {
   onSuccess?: () => void;
   className?: string;
   embedded?: boolean;
+  /** Set by the first-deploy guide: hint at, ring and focus the route the user picked. */
+  guide?: 'github' | 'url';
 }
 
-export function CreateProjectForm({ onSuccess, className, embedded = false }: CreateProjectFormProps): React.ReactElement {
+export function CreateProjectForm({ onSuccess, className, embedded = false, guide }: CreateProjectFormProps): React.ReactElement {
   const [view, setView] = useState<'form' | 'picker'>('form');
   const [pickerProvider, setPickerProvider] = useState<SourceType | null>(null);
 
@@ -71,6 +74,8 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
 
   const popupRef = useRef<Window | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const githubRef = useRef<HTMLDivElement>(null);
+  const urlInputRef = useRef<HTMLInputElement>(null);
 
   const fetchProviders = useCallback(async (): Promise<void> => {
     try {
@@ -84,6 +89,17 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
   useEffect(() => {
     void fetchProviders();
   }, [fetchProviders]);
+
+  // Once, on opening: re-running when the providers load would pull focus back
+  // from a field the user has moved on to.
+  useEffect(() => {
+    if (guide === 'url') urlInputRef.current?.focus();
+  }, [guide]);
+
+  useEffect(() => {
+    // The GitHub button only exists once the providers have loaded.
+    if (guide === 'github' && !providersLoading) githubRef.current?.querySelector('button')?.focus();
+  }, [guide, providersLoading]);
 
   useEffect(() => {
     const handler = (event: MessageEvent): void => {
@@ -230,6 +246,14 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
       <section className="space-y-3">
         <StepHeading n={1} label="Repository" />
 
+        {guide && (
+          <p className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+            {guide === 'github'
+              ? "Use GitHub below: connect your account if you haven't yet, then pick the repository to deploy."
+              : "Paste your repository's URL below, give the project a name, then click Create project."}
+          </p>
+        )}
+
         {connectError && (
           <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
@@ -238,15 +262,20 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
         )}
 
         <div className="grid grid-cols-2 gap-2">
-          <ProviderButton
-            label="GitHub"
-            icon={<Github className="h-4 w-4" />}
-            info={connectedMap['GITHUB'] ?? null}
-            loading={providersLoading}
-            connecting={connectingProvider === 'GITHUB'}
-            onConnect={() => openConnectPopup('GITHUB')}
-            onPick={() => openPicker('GITHUB')}
-          />
+          <div
+            ref={githubRef}
+            className={cn(guide === 'github' && cn('rounded-lg', GUIDE_RING))}
+          >
+            <ProviderButton
+              label="GitHub"
+              icon={<Github className="h-4 w-4" />}
+              info={connectedMap['GITHUB'] ?? null}
+              loading={providersLoading}
+              connecting={connectingProvider === 'GITHUB'}
+              onConnect={() => openConnectPopup('GITHUB')}
+              onPick={() => openPicker('GITHUB')}
+            />
+          </div>
           <ProviderButton
             label="GitLab"
             icon={<GitLabIcon size={16} />}
@@ -280,12 +309,16 @@ export function CreateProjectForm({ onSuccess, className, embedded = false }: Cr
               <div className="h-px flex-1 bg-border" />
             </div>
             <Input
+              ref={urlInputRef}
               type="url"
               value={repoUrl}
               onChange={(e) => setRepoUrl(e.target.value)}
               onBlur={() => { void handleUrlBlur(); }}
               placeholder="https://github.com/username/repo"
-              className="font-mono text-sm"
+              className={cn(
+                'font-mono text-sm',
+                guide === 'url' && GUIDE_RING,
+              )}
             />
           </>
         )}

@@ -18,10 +18,13 @@ export interface ProjectQuota {
 export function ProjectList({
   onRefresh,
   onQuota,
+  onLive,
   className,
 }: {
   onRefresh?: number;
   onQuota?: (quota: ProjectQuota) => void;
+  /** Called after every load with whether any project is serving. */
+  onLive?: (hasLive: boolean) => void;
   className?: string;
 }): React.ReactElement {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -30,11 +33,14 @@ export function ProjectList({
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onQuotaRef = useRef(onQuota);
   onQuotaRef.current = onQuota;
+  const onLiveRef = useRef(onLive);
+  onLiveRef.current = onLive;
 
   const applyResponse = useCallback((data: { success: boolean; data: ProjectItem[]; quota?: ProjectQuota }) => {
     if (data?.success && Array.isArray(data.data)) {
       setProjects(data.data);
       if (data.quota) onQuotaRef.current?.(data.quota);
+      onLiveRef.current?.(data.data.some((p) => p.deployments?.[0]?.status === 'DEPLOYED'));
     }
   }, []);
 

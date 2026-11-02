@@ -9,7 +9,8 @@ const config: Config = {
   transform: {
     '^.+\\.tsx?$': ['ts-jest', { tsconfig: { module: 'commonjs' } }],
   },
-  testMatch: ['**/__tests__/**/*.test.ts'],
+  // .tsx suites opt into a browser-like DOM with a `@jest-environment jsdom` docblock.
+  testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx'],
 };
 
 export default config;

@@ -164,7 +164,7 @@ graph TD
 
 ### UI Polish
 
-- [ ] Onboarding wizard for first-time users
+- [x] Onboarding wizard for first-time users
 - [ ] Mobile responsiveness improvements
 - [ ] Global error boundary with retry
 

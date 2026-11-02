@@ -7,7 +7,11 @@ import { isPlatformHost, matchTenantSubdomain } from '@/lib/platform-host';
 import { isForeignOriginMutation } from '@/lib/csrf';
 import { isRoutableStatus } from '@/lib/domain-status';
 
-const DASHBOARD_PREFIX = '/dashboard';
+/**
+ * The top-level pages of the (dashboard) route group. Each renders the
+ * dashboard shell, so each needs a login; a new folder there belongs here too.
+ */
+const LOGIN_REQUIRED_PREFIXES = ['/dashboard', '/projects', '/settings'];
 /** Left to the TLS-terminating edge, which answers HTTP-01 challenges itself. */
 const ACME_CHALLENGE_PREFIX = '/.well-known/acme-challenge/';
 const ADMIN_PREFIX = '/dashboard/admin';
@@ -230,7 +234,11 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return withRequestId(request, NextResponse.redirect(new URL('/dashboard', request.url)));
   }
 
-  if (pathname.startsWith(DASHBOARD_PREFIX) && !isAuthenticated) {
+  // Whole path segments only, so /projects guards /projects/abc but not /projectsx.
+  const requiresLogin = LOGIN_REQUIRED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+  if (requiresLogin && !isAuthenticated) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('from', pathname);
     return withRequestId(request, NextResponse.redirect(loginUrl));

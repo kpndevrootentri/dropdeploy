@@ -69,7 +69,11 @@ export function ProjectTile({
     <Card className="flex flex-col overflow-hidden transition-shadow hover:shadow-md">
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
-          <Link href={`/projects/${project.id}`} className="min-w-0 flex-1 group">
+          <Link
+            href={`/projects/${project.id}`}
+            className="min-w-0 flex-1 group"
+            data-tour={hasDeployed ? 'project_open' : undefined}
+          >
             <CardTitle className="truncate text-base group-hover:underline">{project.name}</CardTitle>
             <CardDescription className="mt-0.5 truncate text-xs">/{project.slug}</CardDescription>
           </Link>
@@ -137,7 +141,10 @@ export function ProjectTile({
           </div>
         ) : (
           <div className="mt-auto space-y-2">
-            <div className="flex items-center gap-2 rounded-md border bg-muted/50 px-2 py-1.5 text-xs">
+            <div
+              className="flex items-center gap-2 rounded-md border bg-muted/50 px-2 py-1.5 text-xs"
+              data-tour="live_url"
+            >
               <span className="truncate text-muted-foreground" title={url}>
                 {url}
               </span>

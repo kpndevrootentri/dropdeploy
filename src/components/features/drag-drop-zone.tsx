@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import JSZip from 'jszip';
 import { Button } from '@/components/ui/button';
+import { Spotlight } from '@/components/features/spotlight';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -49,6 +50,10 @@ interface DroppedFile {
 export interface DragDropZoneProps {
   onSuccess?: () => void;
   disabled?: boolean;
+  /** Spotlights the zone, and scrolls it into view and focuses it, when it turns true. */
+  highlighted?: boolean;
+  /** Called on Esc or a click outside the spotlight. */
+  onDismissHighlight?: () => void;
 }
 
 // readEntries returns at most 100 entries per call; loop until the batch is empty.
@@ -86,7 +91,12 @@ async function readAllFilesFromEntry(
   }
 }
 
-export function DragDropZone({ onSuccess, disabled = false }: DragDropZoneProps): React.ReactElement {
+export function DragDropZone({
+  onSuccess,
+  disabled = false,
+  highlighted = false,
+  onDismissHighlight,
+}: DragDropZoneProps): React.ReactElement {
   const router = useRouter();
   const [dropState, setDropState] = useState<DropState>('idle');
   const [uploadState, setUploadState] = useState<UploadState>('idle');
@@ -96,12 +106,31 @@ export function DragDropZone({ onSuccess, disabled = false }: DragDropZoneProps)
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // State rather than a ref: the spotlight needs the element as a prop.
+  const [zone, setZone] = useState<HTMLButtonElement | null>(null);
+  // A ref, so a parent passing a new function each render does not re-scroll the zone.
+  const onDismissRef = useRef(onDismissHighlight);
+  onDismissRef.current = onDismissHighlight;
   const dragCounterRef = useRef(0);
   // Holds the dropped FileSystemEntry for folder uploads — avoids the window global slot.
   const entryRef = useRef<FileSystemEntry | null>(null);
   // XHR ref for aborting in-flight uploads on unmount.
   const xhrRef = useRef<XMLHttpRequest | null>(null);
   const mountedRef = useRef(true);
+
+  useEffect(() => {
+    if (!highlighted || !zone) return;
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    zone.scrollIntoView({ block: 'center', behavior });
+    // Focused so Enter opens the file browser for keyboard users.
+    zone.focus({ preventScroll: true });
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onDismissRef.current?.();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [highlighted, zone]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -314,6 +343,9 @@ export function DragDropZone({ onSuccess, disabled = false }: DragDropZoneProps)
 
   const displayName = droppedFile?.isFolder ? droppedFile.folderName : droppedFile?.file?.name;
 
+  // Idle only: the naming dialog (dropState 'modal') must never sit under the click-catcher.
+  const isSpotlit = highlighted && !disabled && dropState === 'idle';
+
   return (
     <>
       {/* Full-page drag overlay */}
@@ -329,14 +361,20 @@ export function DragDropZone({ onSuccess, disabled = false }: DragDropZoneProps)
         </div>
       )}
 
+      {isSpotlit && zone && <Spotlight target={zone} onOutsideClick={onDismissHighlight} />}
+
       {/* Main drop zone */}
       <button
+        ref={setZone}
         type="button"
         onClick={() => !disabled && fileInputRef.current?.click()}
         disabled={disabled}
+        data-tour="drop_zone"
         className={cn(
           'group w-full rounded-2xl border-2 border-dashed transition-all duration-200 text-left',
           'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+          // Above the spotlight's click-catcher (z-[90]), so it stays clickable inside the cut-out.
+          isSpotlit && 'relative z-[95]',
           disabled
             ? 'cursor-not-allowed border-border/30 bg-muted/20 opacity-60'
             : dropState === 'dragging'

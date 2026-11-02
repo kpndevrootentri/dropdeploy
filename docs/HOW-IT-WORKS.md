@@ -614,6 +614,10 @@ flowchart LR
 | `GET` | `/api/projects/:id/showcase` | Get showcase config |
 | `POST` | `/api/projects/:id/showcase` | Create / update showcase |
 | `POST` | `/api/analytics/event` | Fire-and-forget platform event (signup, deploy_triggered, etc.) |
+| `GET` | `/api/onboarding/tour` | Whether the dashboard tour was already offered and answered |
+| `POST` | `/api/onboarding/tour` | Record how the tour ended (saves "seen"); 10/min per user |
+| `GET` | `/api/onboarding/welcome` | Whether the welcome modal was already closed, and the email it greets |
+| `POST` | `/api/onboarding/welcome` | Record that the welcome modal was closed (saves "seen", once) |
 | `GET` | `/api/proxy/:slug/[...path]` | Reverse proxy to deployed container (records ProxyHit) |
 | `GET` | `/api/health` | Health check |
 
