@@ -90,10 +90,17 @@ export function ReuploadCard({ projectId, onSuccess, disabled = false }: Reuploa
   }, [projectId, onSuccess]);
 
   return (
-    <Card>
+    <Card
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files[0];
+        if (file && state !== 'uploading' && !disabled) handleFile(file);
+      }}
+    >
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Re-upload</CardTitle>
-        <CardDescription>Replace the current deployment with a new file.</CardDescription>
+        <CardDescription>Replace the current deployment with a new file — click below or drop it here.</CardDescription>
       </CardHeader>
       <CardContent>
         <input

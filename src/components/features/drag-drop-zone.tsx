@@ -27,7 +27,8 @@ import {
   Info,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { detectUploadFileType } from '@/lib/upload-utils';
+import { detectUploadFileType, matchUploadProject } from '@/lib/upload-utils';
+import { getProjectUrl } from '@/components/ui/framework-logo';
 
 function nameFromFilename(filename: string): string {
   return filename
@@ -47,9 +48,19 @@ interface DroppedFile {
   isFolder: boolean;
 }
 
+export interface UploadTarget {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 export interface DragDropZoneProps {
   onSuccess?: () => void;
   disabled?: boolean;
+  /** Upload sites a dropped file can replace; one matching the file's name is pre-selected. */
+  uploadProjects?: UploadTarget[];
+  /** False at the project quota: a drop can still replace a site, but not create one. */
+  canCreate?: boolean;
   /** Spotlights the zone, and scrolls it into view and focuses it, when it turns true. */
   highlighted?: boolean;
   /** Called on Esc or a click outside the spotlight. */
@@ -94,6 +105,8 @@ async function readAllFilesFromEntry(
 export function DragDropZone({
   onSuccess,
   disabled = false,
+  uploadProjects = [],
+  canCreate = true,
   highlighted = false,
   onDismissHighlight,
 }: DragDropZoneProps): React.ReactElement {
@@ -105,6 +118,13 @@ export function DragDropZone({
   const [droppedFile, setDroppedFile] = useState<DroppedFile | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [resultUrl, setResultUrl] = useState<string | null>(null);
+  // The site to replace; null publishes a new one.
+  const [targetId, setTargetId] = useState<string | null>(null);
+  // Refs: the window drop listener is bound once, and the list arrives after it.
+  const uploadProjectsRef = useRef(uploadProjects);
+  uploadProjectsRef.current = uploadProjects;
+  const canCreateRef = useRef(canCreate);
+  canCreateRef.current = canCreate;
   const fileInputRef = useRef<HTMLInputElement>(null);
   // State rather than a ref: the spotlight needs the element as a prop.
   const [zone, setZone] = useState<HTMLButtonElement | null>(null);
@@ -185,6 +205,7 @@ export function DragDropZone({
     if (entry?.isDirectory) {
       setDroppedFile({ file: null, folderName: entry.name, isFolder: true });
       setProjectName(nameFromFilename(entry.name));
+      setTargetId(matchUploadProject(entry.name, uploadProjectsRef.current)?.id ?? null);
       entryRef.current = entry;
       setDropState('modal');
       setUploadState('idle');
@@ -205,6 +226,7 @@ export function DragDropZone({
 
     setDroppedFile({ file, folderName: null, isFolder: false });
     setProjectName(nameFromFilename(file.name));
+    setTargetId(matchUploadProject(file.name, uploadProjectsRef.current)?.id ?? null);
     setDropState('modal');
     setUploadState('idle');
     setErrorMessage(null);
@@ -224,6 +246,7 @@ export function DragDropZone({
 
     setDroppedFile({ file, folderName: null, isFolder: false });
     setProjectName(nameFromFilename(file.name));
+    setTargetId(matchUploadProject(file.name, uploadProjectsRef.current)?.id ?? null);
     setDropState('modal');
     setUploadState('idle');
     setErrorMessage(null);
@@ -231,7 +254,7 @@ export function DragDropZone({
 
   const handleDeploy = useCallback(async (): Promise<void> => {
     if (!droppedFile && uploadState !== 'error') return;
-    if (!projectName.trim()) return;
+    if (!targetId && (!projectName.trim() || !canCreateRef.current)) return;
 
     setErrorMessage(null);
     setUploadProgress(0);
@@ -265,12 +288,13 @@ export function DragDropZone({
     setUploadState('uploading');
     const formData = new FormData();
     formData.append('file', fileToUpload);
-    formData.append('name', projectName.trim());
+    // Replacing keeps the site's name, so only a new site sends one.
+    if (!targetId) formData.append('name', projectName.trim());
 
     await new Promise<void>((resolve) => {
       const xhr = new XMLHttpRequest();
       xhrRef.current = xhr;
-      xhr.open('POST', '/api/projects/upload');
+      xhr.open('POST', targetId ? `/api/projects/${targetId}/upload` : '/api/projects/upload');
       xhr.withCredentials = true;
 
       xhr.upload.onprogress = (e) => {
@@ -323,7 +347,7 @@ export function DragDropZone({
 
       xhr.send(formData);
     });
-  }, [droppedFile, projectName, uploadState, onSuccess, router]);
+  }, [droppedFile, projectName, targetId, uploadState, onSuccess, router]);
 
   const resetModal = useCallback((): void => {
     setDroppedFile(null);
@@ -332,6 +356,7 @@ export function DragDropZone({
     setUploadProgress(0);
     setErrorMessage(null);
     setResultUrl(null);
+    setTargetId(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, []);
 
@@ -342,6 +367,9 @@ export function DragDropZone({
       : <FileCode className="h-5 w-5 text-blue-400" />;
 
   const displayName = droppedFile?.isFolder ? droppedFile.folderName : droppedFile?.file?.name;
+  const target = uploadProjects.find((p) => p.id === targetId) ?? null;
+  const targetHost = target ? getProjectUrl(target.slug).replace(/^https?:\/\//, '') : null;
+  const isBusy = uploadState === 'uploading' || uploadState === 'zipping';
 
   // Idle only: the naming dialog (dropState 'modal') must never sit under the click-catcher.
   const isSpotlit = highlighted && !disabled && dropState === 'idle';
@@ -413,7 +441,9 @@ export function DragDropZone({
             <p className="text-sm text-muted-foreground max-w-sm mx-auto leading-relaxed">
               {disabled
                 ? 'Project quota reached — contact an admin to create more projects'
-                : 'Drop your files here, or click the button below to browse. No setup required.'}
+                : !canCreate
+                  ? 'Project quota reached — you can still drop a new version of one of your sites.'
+                  : 'Drop your files here, or click the button below to browse. No setup required.'}
             </p>
           </div>
 
@@ -496,7 +526,11 @@ export function DragDropZone({
             <DialogDescription>
               {uploadState === 'success'
                 ? 'Your site was published instantly.'
-                : 'Give your site a name and hit Publish.'}
+                : target
+                  ? 'This replaces the live site. Earlier uploads are kept, so you can roll back from the project page.'
+                  : canCreate
+                    ? 'Give your site a name and hit Publish.'
+                    : 'Pick the site this is a new version of.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -509,8 +543,35 @@ export function DragDropZone({
               </div>
             )}
 
-            {/* Project name */}
-            {uploadState !== 'success' && (
+            {/* New site or a new version of an existing one */}
+            {uploadState !== 'success' && uploadProjects.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="ddz-target" className="font-medium">
+                  Where should this go?
+                </Label>
+                <select
+                  id="ddz-target"
+                  value={targetId ?? ''}
+                  onChange={(e) => setTargetId(e.target.value || null)}
+                  disabled={isBusy}
+                  className={cn(
+                    'flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm',
+                    'ring-offset-background focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                    'disabled:cursor-not-allowed disabled:opacity-50',
+                  )}
+                >
+                  <option value="" disabled={!canCreate}>
+                    {canCreate ? 'A new site' : 'A new site (project quota reached)'}
+                  </option>
+                  {uploadProjects.map((p) => (
+                    <option key={p.id} value={p.id}>Replace {p.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Project name: a replaced site keeps its own */}
+            {uploadState !== 'success' && !target && canCreate && (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="ddz-name" className="font-medium">
                   What do you want to call your site?
@@ -610,17 +671,18 @@ export function DragDropZone({
                   size="default"
                   onClick={() => { void handleDeploy(); }}
                   disabled={
-                    !projectName.trim() ||
-                    uploadState === 'uploading' ||
-                    uploadState === 'zipping' ||
-                    !droppedFile
+                    isBusy ||
+                    !droppedFile ||
+                    (!target && (!projectName.trim() || !canCreate))
                   }
-                  className="min-w-24"
+                  className="min-w-24 max-w-full"
                 >
-                  {(uploadState === 'uploading' || uploadState === 'zipping') ? (
+                  {isBusy ? (
                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Publishing…</>
                   ) : uploadState === 'error' ? (
                     'Try again'
+                  ) : targetHost ? (
+                    <><Rocket className="mr-2 h-4 w-4 shrink-0" /><span className="truncate">Replace {targetHost}</span></>
                   ) : (
                     <><Rocket className="mr-2 h-4 w-4" />Publish</>
                   )}

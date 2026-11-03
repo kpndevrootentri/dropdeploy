@@ -14,7 +14,8 @@
 #   - read-only access to the app checkout (it must not be able to change code
 #     the worker, which does hold Docker access, will later run)
 #   - read access to .env
-#   - read/write on the static-sites directory, shared with the worker user
+#   - read/write on the static-sites and uploads directories, shared with the
+#     worker user
 #   - read/write on .next/cache only (re-applied by `after-build`)
 #   - a systemd unit, dropdeploy-web.service, that also makes the Docker
 #     socket inaccessible to the process outright
@@ -43,6 +44,7 @@ DATA_DIR=${DATA_DIR:-/home/ubuntu/.dropdeploy}
 DEPLOY_USER=${DEPLOY_USER:-ubuntu}
 APP_PORT=${APP_PORT:-3000}
 STATIC_DIR="$DATA_DIR/static-sites"
+UPLOADS_DIR="$DATA_DIR/uploads"
 UNIT=/etc/systemd/system/dropdeploy-web.service
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -97,10 +99,14 @@ install() {
   # Static sites: written by the web app (zip uploads) and by the worker
   # (static builds), replaced wholesale by either — both need full access,
   # and default ACLs keep that true for entries the other one creates.
-  mkdir -p "$STATIC_DIR"
-  chown "$DEPLOY_USER:" "$STATIC_DIR"
-  setfacl -R -m "u:$WEB_USER:rwX,u:$DEPLOY_USER:rwX" "$STATIC_DIR"
-  setfacl -R -d -m "u:$WEB_USER:rwX,u:$DEPLOY_USER:rwX" "$STATIC_DIR"
+  # Kept uploads (for rollback): written by the web app, removed by the
+  # worker when a project is deleted.
+  for dir in "$STATIC_DIR" "$UPLOADS_DIR"; do
+    mkdir -p "$dir"
+    chown "$DEPLOY_USER:" "$dir"
+    setfacl -R -m "u:$WEB_USER:rwX,u:$DEPLOY_USER:rwX" "$dir"
+    setfacl -R -d -m "u:$WEB_USER:rwX,u:$DEPLOY_USER:rwX" "$dir"
+  done
 
   apply_cache_acl
 
@@ -135,7 +141,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=-$STATIC_DIR -$APP_DIR/.next/cache
+ReadWritePaths=-$STATIC_DIR -$UPLOADS_DIR -$APP_DIR/.next/cache
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes

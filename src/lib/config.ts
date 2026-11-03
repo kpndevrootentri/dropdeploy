@@ -34,6 +34,9 @@ const envSchema = z.object({
   DOCKER_SOCKET: z.string().optional(),
   PROJECTS_DIR: z.string().default(path.join(defaultBaseDir, 'projects')),
   STATIC_SERVE_DIR: z.string().default(path.join(defaultBaseDir, 'static-sites')),
+  // The last few uploaded files of each upload project, kept for rollback.
+  // Defaults to `uploads/` next to STATIC_SERVE_DIR (see getConfig).
+  UPLOADS_DIR: z.string().optional(),
   DOCKER_DATA_DIR: z.string().default(path.join(defaultBaseDir, 'docker')),
   BULLMQ_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(5),
   BULLMQ_JOB_TIMEOUT_MS: z.coerce.number().int().min(60_000).default(15 * 60 * 1000),
@@ -96,7 +99,7 @@ const envSchema = z.object({
   PLATFORM_EXTRA_HOSTS: z.string().optional(),
 });
 
-type Env = z.infer<typeof envSchema>;
+type Env = z.infer<typeof envSchema> & { UPLOADS_DIR: string };
 
 let config: Env | null = null;
 
@@ -110,7 +113,12 @@ export function getConfig(): Env {
   if (!parsed.success) {
     throw new Error(`Invalid env: ${parsed.error.message}`);
   }
-  config = parsed.data;
+  // Beside static-sites rather than under the home directory: the web app and
+  // the worker run as different users, and both must find the same files.
+  config = {
+    ...parsed.data,
+    UPLOADS_DIR: parsed.data.UPLOADS_DIR || path.join(path.dirname(parsed.data.STATIC_SERVE_DIR), 'uploads'),
+  };
   return config;
 }
 

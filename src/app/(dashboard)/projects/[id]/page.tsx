@@ -399,7 +399,8 @@ function DeploymentRow({
   const canCancel = deployment.status === 'QUEUED';
   const canRedeploy = deployment.status === 'DEPLOYED' || deployment.status === 'CANCELLED';
   const isLive = deployment.status === 'DEPLOYED' && deployment.subdomain !== null;
-  const canRollback = deployment.status === 'DEPLOYED' && !isLive && !!deployment.imageTag;
+  // Uploads keep their file instead of an image; a pruned one is refused by the server.
+  const canRollback = deployment.status === 'DEPLOYED' && !isLive && (!!deployment.imageTag || isUpload);
 
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
@@ -599,7 +600,9 @@ function DeploymentRow({
             disabled={rollingBack || isDeployInProgress}
             title={isDeployInProgress
               ? 'A deployment is already in progress'
-              : 'Run this deployment again (same build, current environment variables)'}
+              : isUpload
+                ? 'Publish this uploaded version again'
+                : 'Run this deployment again (same build, current environment variables)'}
           >
             {rollingBack ? (
               <Loader2 className="h-3 w-3 animate-spin" />
