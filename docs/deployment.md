@@ -506,7 +506,7 @@ sudo apt install -y acl
 sudo scripts/split-web-user.sh install
 ```
 
-The script creates `dropdeploy-web`, gives it read-only access to the checkout (so it can never change code the worker runs), read/write on `static-sites/` and `.next/cache`, installs `dropdeploy-web.service` with the Docker socket made inaccessible, removes `dropdeploy-app` from PM2, and verifies all of it. The worker and domain worker stay in PM2.
+The script creates `dropdeploy-web`, gives it read-only access to the checkout (so it can never change code the worker runs), read/write on `static-sites/`, `uploads/` and `.next/cache`, installs `dropdeploy-web.service` with the Docker socket made inaccessible, removes `dropdeploy-app` from PM2, and verifies all of it. The worker and domain worker stay in PM2.
 
 Rollback: `sudo systemctl disable --now dropdeploy-web`, then `pm2 start ecosystem.config.js --only dropdeploy-app && pm2 save`.
 
