@@ -34,6 +34,8 @@ const envSchema = z.object({
   DOCKER_SOCKET: z.string().optional(),
   PROJECTS_DIR: z.string().default(path.join(defaultBaseDir, 'projects')),
   STATIC_SERVE_DIR: z.string().default(path.join(defaultBaseDir, 'static-sites')),
+  // The last few uploaded files of each upload project, kept for rollback.
+  UPLOADS_DIR: z.string().default(path.join(defaultBaseDir, 'uploads')),
   DOCKER_DATA_DIR: z.string().default(path.join(defaultBaseDir, 'docker')),
   BULLMQ_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(5),
   BULLMQ_JOB_TIMEOUT_MS: z.coerce.number().int().min(60_000).default(15 * 60 * 1000),

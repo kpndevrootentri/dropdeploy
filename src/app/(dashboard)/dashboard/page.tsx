@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { CreateProjectForm } from '@/components/features/create-project-form';
 import { DragDropZone } from '@/components/features/drag-drop-zone';
-import { ProjectList, type ProjectQuota } from '@/components/features/project-list';
+import { ProjectList, type ProjectItem, type ProjectQuota } from '@/components/features/project-list';
 import { ProductTour } from '@/components/features/product-tour';
 import { FirstDeployGuide, type FirstDeployChoice } from '@/components/features/first-deploy-guide';
 import { WelcomeModal } from '@/components/features/welcome-modal';
@@ -62,6 +62,8 @@ export default function DashboardPage(): React.ReactElement {
   const [createOpen, setCreateOpen] = useState(false);
   const [quota, setQuota] = useState<ProjectQuota | null>(null);
   const [hasLive, setHasLive] = useState<boolean | null>(null);
+  // Sites a dropped file can replace instead of becoming a new project.
+  const [uploadProjects, setUploadProjects] = useState<ProjectItem[]>([]);
   const [guideChoice, setGuideChoice] = useState<FirstDeployChoice | null>(null);
   // The drop zone opens the new project's page 1.4 s after an upload. Until then
   // the tour offer is held back, so it shows on return instead of flashing now.
@@ -146,12 +148,20 @@ export default function DashboardPage(): React.ReactElement {
           setIsLeaving(true);
           handleCreateSuccess();
         }}
-        disabled={atLimit}
+        uploadProjects={uploadProjects}
+        canCreate={!atLimit}
+        // Replacing a site needs no free slot, so only an account with nothing to replace is shut out.
+        disabled={atLimit && uploadProjects.length === 0}
         highlighted={isFresh && guideChoice === 'upload'}
         onDismissHighlight={() => setGuideChoice(null)}
       />
 
-      <ProjectList onRefresh={listRefresh} onQuota={setQuota} onLive={setHasLive} />
+      <ProjectList
+        onRefresh={listRefresh}
+        onQuota={setQuota}
+        onLive={setHasLive}
+        onProjects={(projects) => setUploadProjects(projects.filter((p) => p.source === 'UPLOAD'))}
+      />
 
       <WelcomeModal
         open={welcomeEmail !== null}

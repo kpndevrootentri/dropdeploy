@@ -192,6 +192,7 @@ DOCKER_SOCKET="/var/run/docker.sock"
 PROJECTS_DIR="/home/ubuntu/.dropdeploy/projects"
 DOCKER_DATA_DIR="/home/ubuntu/.dropdeploy/docker"
 STATIC_SERVE_DIR="/home/ubuntu/.dropdeploy/static-sites"
+UPLOADS_DIR="/home/ubuntu/.dropdeploy/uploads"
 
 # App URL — use your actual domain
 NEXT_PUBLIC_APP_URL="https://app.yourdomain.com"
