@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import type { User, UserRole, Project } from '@prisma/client';
@@ -8,6 +9,7 @@ import { projectRepository } from '@/repositories/project.repository';
 import { dockerOps, containerNameFor, type IDockerOps, type ContainerInfo } from '@/lib/docker-ops';
 import { deploymentService } from '@/services/deployment';
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/errors';
+import { inviteService, type InviteService } from '@/services/invite';
 
 import { SALT_ROUNDS } from '@/services/auth/auth.service';
 
@@ -38,11 +40,22 @@ function toPublicUser(user: User): PublicUser {
   return rest;
 }
 
-export interface BulkCreateResult {
-  created: string[];
+export interface BulkInviteResult {
+  /** New accounts, each with the one-time token for its invite link. */
+  created: { email: string; inviteToken: string }[];
   /** Already registered. */
   skipped: string[];
   invalid: string[];
+}
+
+/** A hash of random bytes nobody ever sees: the account cannot sign in until its invite is accepted. */
+async function unusablePasswordHash(): Promise<string> {
+  return bcrypt.hash(randomBytes(32).toString('hex'), SALT_ROUNDS);
+}
+
+/** A password for an admin to hand over once; the user must replace it at next sign-in. */
+export function generatePassword(): string {
+  return randomBytes(12).toString('base64url');
 }
 
 export class AdminService {
@@ -50,6 +63,7 @@ export class AdminService {
     private readonly userRepo: IUserRepository,
     private readonly projectRepo: IProjectRepository,
     private readonly docker: IDockerOps,
+    private readonly invites: Pick<InviteService, 'issue'>,
   ) {}
 
   /**
@@ -135,25 +149,37 @@ export class AdminService {
     await this.userRepo.delete(userId);
   }
 
-  async createUser(email: string, password: string): Promise<PublicUser> {
+  /**
+   * Creates a USER who cannot sign in until they open their invite link and
+   * choose a password. The token is returned once and never stored in clear.
+   */
+  async inviteUser(email: string): Promise<{ user: PublicUser; inviteToken: string }> {
     const existing = await this.userRepo.findByEmail(email);
     if (existing) throw new ConflictError('Email already registered');
-    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-    return toPublicUser(await this.userRepo.create({ email, passwordHash, role: 'USER', mustResetPassword: true }));
+    const user = await this.userRepo.create({
+      email,
+      passwordHash: await unusablePasswordHash(),
+      role: 'USER',
+      mustResetPassword: true,
+    });
+    return { user: toPublicUser(user), inviteToken: await this.invites.issue(user.id) };
   }
 
   /**
-   * Creates USER accounts in bulk, all with one temporary password they must
-   * change on first login. Existing accounts are skipped, never changed.
+   * Invites many users at once, each with their own one-time link. Existing
+   * accounts are skipped, never changed.
    */
-  async bulkCreateUsers(input: string[], password: string): Promise<BulkCreateResult> {
-    if (password.length < 8) throw new ValidationError('Password must be at least 8 characters');
+  async bulkInviteUsers(input: string[]): Promise<BulkInviteResult> {
     const emails = [...new Set(input.map((e) => e.trim().toLowerCase()).filter(Boolean))];
     const isEmail = (e: string): boolean => z.string().email().safeParse(e).success;
     const valid = emails.filter(isEmail);
     const invalid = emails.filter((e) => !isEmail(e));
-    const created = valid.length ? await this.userRepo.createMany(valid, await bcrypt.hash(password, SALT_ROUNDS)) : [];
-    const createdSet = new Set(created);
+    const users = valid.length ? await this.userRepo.createMany(valid, await unusablePasswordHash()) : [];
+    const created = [];
+    for (const user of users) {
+      created.push({ email: user.email, inviteToken: await this.invites.issue(user.id) });
+    }
+    const createdSet = new Set(users.map((u) => u.email));
     return { created, skipped: valid.filter((e) => !createdSet.has(e)), invalid };
   }
 
@@ -209,14 +235,20 @@ export class AdminService {
     return toPublicUser(await this.userRepo.updateDomainQuota(userId, quota));
   }
 
-  async resetUserPassword(userId: string, newPassword: string): Promise<void> {
+  /**
+   * Sets a password the admin hands over. With no password given, one is
+   * generated and returned so the admin can copy it once.
+   */
+  async resetUserPassword(userId: string, newPassword?: string): Promise<{ generatedPassword?: string }> {
     const user = await this.userRepo.findById(userId);
     if (!user) throw new NotFoundError('User');
-    if (newPassword.length < 8) throw new ValidationError('Password must be at least 8 characters');
-    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    const password = newPassword ?? generatePassword();
+    if (password.length < 8) throw new ValidationError('Password must be at least 8 characters');
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
     // The admin now knows this password, so the user must replace it on next
     // sign-in; setPassword also signs them out everywhere.
     await this.userRepo.setPassword(userId, passwordHash, true);
+    return newPassword === undefined ? { generatedPassword: password } : {};
   }
 
   async forceRedeploy(projectId: string, actorId: string): Promise<void> {
@@ -227,4 +259,4 @@ export class AdminService {
   }
 }
 
-export const adminService = new AdminService(userRepository, projectRepository, dockerOps);
+export const adminService = new AdminService(userRepository, projectRepository, dockerOps, inviteService);

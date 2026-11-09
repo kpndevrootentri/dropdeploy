@@ -131,7 +131,7 @@ function useClock(active: boolean): number {
 // CopyValue — a value you are meant to paste somewhere else
 // ---------------------------------------------------------------------------
 
-function CopyValue({
+export function CopyValue({
   label,
   value,
   hint,

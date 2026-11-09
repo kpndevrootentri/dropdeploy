@@ -17,6 +17,7 @@ function setup(removeProjectResources = jest.fn(async () => undefined)) {
     userRepo as unknown as IUserRepository,
     projectRepo as unknown as IProjectRepository,
     docker as unknown as IDockerOps,
+    { issue: jest.fn() },
   );
   return { service, userRepo, docker };
 }

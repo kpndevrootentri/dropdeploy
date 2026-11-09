@@ -600,6 +600,7 @@ flowchart LR
 | `GET` | `/api/auth/github/callback` | GitHub OAuth callback |
 | `GET` | `/api/auth/gitlab/connect` | Start GitLab OAuth flow |
 | `GET` | `/api/auth/gitlab/callback` | GitLab OAuth callback |
+| `POST` | `/api/auth/invite/accept` | Public: set a password from an invite link (`{ token, password }`) |
 | `GET` | `/api/git-providers` | List connected providers (username + avatar) |
 | `DELETE` | `/api/git-providers/:provider` | Disconnect a provider |
 | `GET` | `/api/git-providers/:provider/repos` | Search repos (`?q=&page=&refresh=`) |
@@ -626,11 +627,11 @@ flowchart LR
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/admin/users` | List all users |
-| `POST` | `/api/admin/users` | Invite / create a user |
-| `POST` | `/api/admin/users/bulk` | Import many users with one temporary password |
+| `POST` | `/api/admin/users` | Invite a user; returns a one-time invite link path (7 days, single use) |
+| `POST` | `/api/admin/users/bulk` | Invite many users, each with their own one-time link |
 | `GET` | `/api/admin/users/:userId` | Get user details |
 | `PATCH` | `/api/admin/users/:userId/role` | Change user role |
-| `POST` | `/api/admin/users/:userId/reset-password` | Reset user password |
+| `PATCH` | `/api/admin/users/:userId/reset-password` | Reset user password (`{ newPassword }`, or `{ generate: true }` to get one back once) |
 | `DELETE` | `/api/admin/users/:userId` | Delete user |
 | `GET` | `/api/admin/projects` | List all projects across all users |
 | `GET` | `/api/admin/projects/:projectId` | Get project details (any user) |
