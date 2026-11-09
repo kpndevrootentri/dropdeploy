@@ -29,7 +29,10 @@ export type DockerOpRequest =
   | { op: 'containerStats'; containerName: string }
   | { op: 'stopContainer'; containerName: string }
   | { op: 'restartContainer'; containerName: string }
-  | { op: 'removeProjectResources'; slug: string };
+  | { op: 'removeProjectResources'; slug: string }
+  | { op: 'listTenantContainers' }
+  | { op: 'listDanglingImages' }
+  | { op: 'removeSupersededImages'; slug: string };
 
 /**
  * What the worker returns. User-facing failures (a disallowed terminal
@@ -52,6 +55,22 @@ export interface ContainerInfo {
   restartCount: number;
 }
 
+/** A container started from a project image; it inherits the image's `dropdeploy.slug` label. */
+export interface LabelledContainer {
+  name: string;
+  /** The label value: the slug of the project the image was built for. */
+  slug: string;
+  state: string;
+}
+
+/** An untagged project image a rebuild left behind. */
+export interface DanglingImage {
+  id: string;
+  slug: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
 export interface TerminalResult {
   stdout: string;
   stderr: string;
@@ -70,6 +89,9 @@ const TIMEOUT_MS: Record<DockerOpRequest['op'], number> = {
   stopContainer: 30_000,
   restartContainer: 30_000,
   removeProjectResources: 60_000,
+  listTenantContainers: 15_000,
+  listDanglingImages: 15_000,
+  removeSupersededImages: 60_000,
 };
 
 let queue: Queue<DockerOpRequest, DockerOpResult> | null = null;
@@ -137,6 +159,12 @@ export interface IDockerOps {
   restartContainer(containerName: string): Promise<void>;
   /** Container, images, served static files and git clone of a deleted project. */
   removeProjectResources(slug: string): Promise<void>;
+  /** Every container carrying the project slug label, running or not. */
+  listTenantContainers(): Promise<LabelledContainer[]>;
+  /** Untagged images carrying the project slug label. */
+  listDanglingImages(): Promise<DanglingImage[]>;
+  /** Removes one project's untagged images; ones a container still uses are kept. */
+  removeSupersededImages(slug: string): Promise<void>;
 }
 
 export const dockerOps: IDockerOps = {
@@ -146,4 +174,7 @@ export const dockerOps: IDockerOps = {
   stopContainer: (containerName) => call({ op: 'stopContainer', containerName }),
   restartContainer: (containerName) => call({ op: 'restartContainer', containerName }),
   removeProjectResources: (slug) => call({ op: 'removeProjectResources', slug }),
+  listTenantContainers: () => call({ op: 'listTenantContainers' }),
+  listDanglingImages: () => call({ op: 'listDanglingImages' }),
+  removeSupersededImages: (slug) => call({ op: 'removeSupersededImages', slug }),
 };

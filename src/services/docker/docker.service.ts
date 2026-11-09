@@ -12,6 +12,7 @@ import type { Project } from '@prisma/client';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
 import { containerUsageFromStats, type ContainerUsage, type RawContainerStats } from '@/lib/container-usage';
+import type { DanglingImage, LabelledContainer } from '@/lib/docker-ops';
 import {
   DOCKERFILE_TEMPLATES,
   CONTAINER_PORTS,
@@ -603,6 +604,27 @@ export class DockerService {
         log.warn('Failed to remove superseded image', { slug, imageId: image.Id, error: String(err) });
       });
     }
+  }
+
+  /** Containers started from project images, which inherit the image's slug label. */
+  async listLabelledContainers(): Promise<LabelledContainer[]> {
+    const containers = await this.docker.listContainers({ all: true, filters: { label: [SLUG_LABEL] } });
+    return containers.map((c) => ({
+      name: (c.Names[0] ?? '').replace(/^\//, ''),
+      slug: c.Labels?.[SLUG_LABEL] ?? '',
+      state: c.State,
+    }));
+  }
+
+  /** Untagged project images: what {@link removeSupersededImages} would remove. */
+  async listDanglingProjectImages(): Promise<DanglingImage[]> {
+    const images = await this.docker.listImages({ filters: { label: [SLUG_LABEL], dangling: ['true'] } });
+    return images.map((i) => ({
+      id: i.Id,
+      slug: i.Labels?.[SLUG_LABEL] ?? '',
+      sizeBytes: i.Size,
+      createdAt: new Date(i.Created * 1000).toISOString(),
+    }));
   }
 
   /** Deletes a project's persistent data volume. Call only after its container is gone. */

@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { adminRequest } from '@/components/admin/admin-request';
+import { MaintenancePanel } from '@/components/admin/maintenance-panel';
 
 interface Settings {
   defaultProjectQuota: number;
@@ -66,63 +67,66 @@ export default function AdminSettingsPage(): React.ReactElement {
   if (!settings) return <p className="text-sm text-muted-foreground">Loading…</p>;
 
   return (
-    <form onSubmit={save} className="space-y-4 max-w-2xl">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">New accounts</CardTitle>
-          <CardDescription>Applied when an account is created, by an admin, by import or by sign-up. Existing users keep their quotas.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="default-project-quota">Default max projects</Label>
-            <Input id="default-project-quota" type="number" min={0} max={1000} step={1} required value={form.projectQuota} onChange={(e) => setForm({ ...form, projectQuota: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="default-domain-quota">Default max custom domains</Label>
-            <Input id="default-domain-quota" type="number" min={0} max={1000} step={1} required value={form.domainQuota} onChange={(e) => setForm({ ...form, domainQuota: e.target.value })} />
-          </div>
-          <div className="sm:col-span-2 space-y-1">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={settings.publicRegistrationAllowed && form.signupOpen}
-                disabled={!settings.publicRegistrationAllowed}
-                onChange={(e) => setForm({ ...form, signupOpen: e.target.checked })}
-              />
-              Allow self sign-up
-            </label>
-            <p className="text-xs text-muted-foreground">
-              {settings.publicRegistrationAllowed
-                ? 'The server allows sign-up (ALLOW_PUBLIC_REGISTRATION). Untick to close it without a redeploy.'
-                : 'Closed by the server: ALLOW_PUBLIC_REGISTRATION is off. Only whoever runs the server can open sign-up, because emails are not verified.'}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="space-y-8">
+      <form onSubmit={save} className="space-y-4 max-w-2xl">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">New accounts</CardTitle>
+            <CardDescription>Applied when an account is created, by an admin, by import or by sign-up. Existing users keep their quotas.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="default-project-quota">Default max projects</Label>
+              <Input id="default-project-quota" type="number" min={0} max={1000} step={1} required value={form.projectQuota} onChange={(e) => setForm({ ...form, projectQuota: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="default-domain-quota">Default max custom domains</Label>
+              <Input id="default-domain-quota" type="number" min={0} max={1000} step={1} required value={form.domainQuota} onChange={(e) => setForm({ ...form, domainQuota: e.target.value })} />
+            </div>
+            <div className="sm:col-span-2 space-y-1">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={settings.publicRegistrationAllowed && form.signupOpen}
+                  disabled={!settings.publicRegistrationAllowed}
+                  onChange={(e) => setForm({ ...form, signupOpen: e.target.checked })}
+                />
+                Allow self sign-up
+              </label>
+              <p className="text-xs text-muted-foreground">
+                {settings.publicRegistrationAllowed
+                  ? 'The server allows sign-up (ALLOW_PUBLIC_REGISTRATION). Untick to close it without a redeploy.'
+                  : 'Closed by the server: ALLOW_PUBLIC_REGISTRATION is off. Only whoever runs the server can open sign-up, because emails are not verified.'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Maintenance banner</CardTitle>
-          <CardDescription>Shown above the dashboard to every signed-in user. Leave empty to hide it.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Label htmlFor="banner-message" className="sr-only">Banner message</Label>
-          <Textarea id="banner-message" rows={2} maxLength={500} value={form.banner} onChange={(e) => setForm({ ...form, banner: e.target.value })} placeholder="Deploys are paused 18:00–18:30 UTC for maintenance." />
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Maintenance banner</CardTitle>
+            <CardDescription>Shown above the dashboard to every signed-in user. Leave empty to hide it.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Label htmlFor="banner-message" className="sr-only">Banner message</Label>
+            <Textarea id="banner-message" rows={2} maxLength={500} value={form.banner} onChange={(e) => setForm({ ...form, banner: e.target.value })} placeholder="Deploys are paused 18:00–18:30 UTC for maintenance." />
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Traffic data</CardTitle>
-          <CardDescription>How long the Maintenance cleanup keeps proxy hits. Minimum 7 days.</CardDescription>
-        </CardHeader>
-        <CardContent className="max-w-xs space-y-2">
-          <Label htmlFor="retention-days">Keep proxy hits for (days)</Label>
-          <Input id="retention-days" type="number" min={7} max={3650} step={1} required value={form.retentionDays} onChange={(e) => setForm({ ...form, retentionDays: e.target.value })} />
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Traffic data</CardTitle>
+            <CardDescription>How long the Maintenance cleanup keeps proxy hits. Minimum 7 days.</CardDescription>
+          </CardHeader>
+          <CardContent className="max-w-xs space-y-2">
+            <Label htmlFor="retention-days">Keep proxy hits for (days)</Label>
+            <Input id="retention-days" type="number" min={7} max={3650} step={1} required value={form.retentionDays} onChange={(e) => setForm({ ...form, retentionDays: e.target.value })} />
+          </CardContent>
+        </Card>
 
-      <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</Button>
-    </form>
+        <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</Button>
+      </form>
+      <MaintenancePanel />
+    </div>
   );
 }

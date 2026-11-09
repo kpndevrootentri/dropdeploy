@@ -34,6 +34,8 @@ describe('AdminToolsService.getProjectDetails', () => {
       { listByProject: async () => [] } as never,
       { revoke: jest.fn() },
       { containerStats } as unknown as IDockerOps,
+      {} as never,
+      {} as never,
     );
 
   it('returns env var names only, never values', async () => {

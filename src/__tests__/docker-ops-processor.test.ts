@@ -4,9 +4,16 @@ import type { DockerOpRequest } from '@/lib/docker-ops';
 const stopContainer = jest.fn(async () => undefined);
 const executeCommand = jest.fn(async () => ({ stdout: 'ok', stderr: '', exitCode: 0 }));
 const removeProjectResources = jest.fn(async () => undefined);
+const removeSupersededImages = jest.fn(async () => undefined);
 
 jest.mock('@/services/docker', () => ({
-  dockerService: { stopContainer, restartContainer: jest.fn(), getContainerInfo: jest.fn(), getContainerStats: jest.fn() },
+  dockerService: {
+    stopContainer,
+    restartContainer: jest.fn(),
+    getContainerInfo: jest.fn(),
+    getContainerStats: jest.fn(),
+    removeSupersededImages,
+  },
 }));
 jest.mock('@/services/docker/docker-terminal.service', () => ({
   dockerTerminalService: { executeCommand, executeSlashCommand: jest.fn() },
@@ -50,6 +57,12 @@ describe('processDockerOp', () => {
     await expect(processDockerOp(job({ op: 'removeProjectResources', slug: '../../etc' })))
       .resolves.toMatchObject({ ok: false });
     expect(removeProjectResources).not.toHaveBeenCalled();
+  });
+
+  it('refuses an invalid slug for image pruning', async () => {
+    await expect(processDockerOp(job({ op: 'removeSupersededImages', slug: 'a b' })))
+      .resolves.toMatchObject({ ok: false });
+    expect(removeSupersededImages).not.toHaveBeenCalled();
   });
 
   it('fails the job, rather than returning details, on an internal error', async () => {
