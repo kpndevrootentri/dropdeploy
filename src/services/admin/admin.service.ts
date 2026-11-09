@@ -128,6 +128,10 @@ export class AdminService {
       }
     }
 
+    // The DB cascade drops the project rows but not their containers, images or files.
+    for (const project of await this.projectRepo.findByUserId(userId)) {
+      await this.docker.removeProjectResources(project.slug);
+    }
     await this.userRepo.delete(userId);
   }
 
