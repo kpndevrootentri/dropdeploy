@@ -640,7 +640,7 @@ flowchart LR
 | `POST` | `/api/admin/projects/:projectId/stop` | Stop container |
 | `GET` | `/api/admin/projects/:projectId/container` | Container status |
 | `POST` | `/api/admin/projects/:projectId/transfer` | Transfer project to another user |
-| `GET` | `/api/admin/analytics` | Platform-wide analytics (users, deployments, traffic, showcase, events) |
+| `GET` | `/api/admin/analytics` | Platform-wide analytics (users, deployments, traffic, showcase, events); `?days=7\|14\|30\|90`, default 14 |
 | `GET` | `/api/admin/stats` | User and project totals for the admin overview |
 | `GET` | `/api/admin/users/export` | All users as CSV (no password hashes or tokens) |
 | `GET` | `/api/admin/projects/export` | All projects as CSV (no env values or secrets) |
@@ -693,14 +693,14 @@ Events are stored in `PlatformEvent` with optional `userId` and `meta` JSON. The
 
 ### Admin Analytics Dashboard
 
-`/dashboard/admin/analytics` is a contributor-only page showing platform-wide metrics sourced from `GET /api/admin/analytics`:
+`/dashboard/admin/analytics` is a contributor-only page showing platform-wide metrics sourced from `GET /api/admin/analytics`. A range picker (7 / 14 / 30 / 90 days, whitelisted server-side) sets the window for the per-day charts and the range-only stats; totals stay all-time.
 
 | Section | Metrics |
 |---------|---------|
 | **Users** | Total users, new this week, 14-day signups chart |
 | **Projects** | Total projects, new this week, framework distribution, 14-day new-projects chart |
-| **Deployments** | Total, succeeded, failed, success rate, deploys this week, 14-day frequency chart (total / success / failed per day) |
-| **Traffic** | Total proxy hits, hits this week, 14-day hits chart, device breakdown |
+| **Deployments** | Total, succeeded, failed, success rate, deploys this week, per-day frequency chart (total / success / failed), build time p50/p95 (successful builds, rollbacks and uploads excluded), failed deploys grouped by `buildStep` (there is no error-message column) |
+| **Traffic** | Total proxy hits, hits this week, per-day hits chart, device breakdown, top 10 projects by hits in the range |
 | **Showcase** | Total showcases, published count, total views, top 5 by view count |
 | **Platform Events** | Event counts by type, events this week |
 
