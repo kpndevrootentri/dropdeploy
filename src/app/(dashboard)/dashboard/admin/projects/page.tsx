@@ -5,8 +5,9 @@ import { getProjectUrl } from '@/components/ui/framework-logo';
 import React from 'react';
 import {
   Square, RotateCcw, Rocket, Trash2, Loader2,
-  ChevronDown, ChevronUp, Container, Cpu, MemoryStick, Clock, Hash, Network,
+  ChevronDown, ChevronUp, Container, Cpu, MemoryStick, Clock, Hash, Network, Info,
 } from 'lucide-react';
+import { ProjectDetailsDrawer } from '@/components/admin/project-details-drawer';
 
 interface Deployment {
   id: string;
@@ -151,6 +152,7 @@ export default function AdminProjectsPage(): React.ReactElement {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [detailsFor, setDetailsFor] = useState<AdminProject | null>(null);
 
   const TRANSITIONAL = ['QUEUED', 'BUILDING'];
 
@@ -315,6 +317,15 @@ export default function AdminProjectsPage(): React.ReactElement {
                           <span className="text-[10px] leading-none font-medium">Redeploy</span>
                         </button>
 
+                        <button
+                          title="Details — Env var names, collaborators, domains and live usage"
+                          onClick={() => setDetailsFor(p)}
+                          className="inline-flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-md border border-transparent text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                        >
+                          <Info className="w-4 h-4" />
+                          <span className="text-[10px] leading-none font-medium">Details</span>
+                        </button>
+
                         <div className="w-px h-8 bg-border" />
 
                         <button
@@ -361,6 +372,7 @@ export default function AdminProjectsPage(): React.ReactElement {
           </tbody>
         </table>
       </div>
+      <ProjectDetailsDrawer project={detailsFor} onClose={() => setDetailsFor(null)} />
     </div>
   );
 }

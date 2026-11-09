@@ -49,6 +49,8 @@ async function run(request: DockerOpRequest): Promise<unknown> {
     }
     case 'containerInfo':
       return dockerService.getContainerInfo(assertContainerName(request.containerName));
+    case 'containerStats':
+      return dockerService.getContainerStats(assertContainerName(request.containerName));
     case 'stopContainer':
       await dockerService.stopContainer(assertContainerName(request.containerName));
       return null;

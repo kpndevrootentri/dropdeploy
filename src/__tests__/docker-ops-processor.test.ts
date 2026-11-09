@@ -6,7 +6,7 @@ const executeCommand = jest.fn(async () => ({ stdout: 'ok', stderr: '', exitCode
 const removeProjectResources = jest.fn(async () => undefined);
 
 jest.mock('@/services/docker', () => ({
-  dockerService: { stopContainer, restartContainer: jest.fn(), getContainerInfo: jest.fn() },
+  dockerService: { stopContainer, restartContainer: jest.fn(), getContainerInfo: jest.fn(), getContainerStats: jest.fn() },
 }));
 jest.mock('@/services/docker/docker-terminal.service', () => ({
   dockerTerminalService: { executeCommand, executeSlashCommand: jest.fn() },
@@ -25,6 +25,11 @@ describe('processDockerOp', () => {
     await expect(processDockerOp(job({ op: 'stopContainer', containerName: 'dropdeploy-shop' })))
       .resolves.toEqual({ ok: true, value: null });
     expect(stopContainer).toHaveBeenCalledWith('dropdeploy-shop');
+  });
+
+  it('refuses container stats for a non-project container', async () => {
+    await expect(processDockerOp(job({ op: 'containerStats', containerName: 'postgres' })))
+      .resolves.toMatchObject({ ok: false, code: 'INVALID_DOCKER_OPERATION' });
   });
 
   it.each(['caddy', 'postgres', 'dropdeploy-', 'dropdeploy-../x', 'dropdeploy-a;b'])(

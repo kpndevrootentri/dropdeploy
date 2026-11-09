@@ -11,6 +11,7 @@ import * as tarStream from 'tar-stream';
 import type { Project } from '@prisma/client';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
+import { containerUsageFromStats, type ContainerUsage, type RawContainerStats } from '@/lib/container-usage';
 import {
   DOCKERFILE_TEMPLATES,
   CONTAINER_PORTS,
@@ -486,6 +487,16 @@ export class DockerService {
         memoryLimitBytes: info.HostConfig?.Memory ?? 0,
         restartCount: info.RestartCount ?? 0,
       };
+    } catch {
+      return null;
+    }
+  }
+
+  /** One stats sample of a container; null if it is missing or stopped. */
+  async getContainerStats(containerName: string): Promise<ContainerUsage | null> {
+    try {
+      const stats = await this.docker.getContainer(containerName).stats({ stream: false });
+      return containerUsageFromStats(stats as unknown as RawContainerStats);
     } catch {
       return null;
     }

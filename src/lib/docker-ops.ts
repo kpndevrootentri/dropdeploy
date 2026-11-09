@@ -19,12 +19,14 @@
 import { Queue, QueueEvents } from 'bullmq';
 import { createRedisConnection } from '@/lib/redis';
 import { AppError } from '@/lib/errors';
+import type { ContainerUsage } from '@/lib/container-usage';
 
 export const DOCKER_OPS_QUEUE = 'docker-ops';
 
 export type DockerOpRequest =
   | { op: 'terminal'; containerName: string; command: string }
   | { op: 'containerInfo'; containerName: string }
+  | { op: 'containerStats'; containerName: string }
   | { op: 'stopContainer'; containerName: string }
   | { op: 'restartContainer'; containerName: string }
   | { op: 'removeProjectResources'; slug: string };
@@ -63,6 +65,8 @@ export const containerNameFor = (slug: string): string => `dropdeploy-${slug}`;
 const TIMEOUT_MS: Record<DockerOpRequest['op'], number> = {
   terminal: 40_000,
   containerInfo: 10_000,
+  // A non-streaming stats call waits for two samples, about two seconds.
+  containerStats: 10_000,
   stopContainer: 30_000,
   restartContainer: 30_000,
   removeProjectResources: 60_000,
@@ -127,6 +131,8 @@ async function call<T>(request: DockerOpRequest): Promise<T> {
 export interface IDockerOps {
   terminal(containerName: string, command: string): Promise<TerminalResult>;
   containerInfo(containerName: string): Promise<ContainerInfo | null>;
+  /** Null when the container is missing or stopped. */
+  containerStats(containerName: string): Promise<ContainerUsage | null>;
   stopContainer(containerName: string): Promise<void>;
   restartContainer(containerName: string): Promise<void>;
   /** Container, images, served static files and git clone of a deleted project. */
@@ -136,6 +142,7 @@ export interface IDockerOps {
 export const dockerOps: IDockerOps = {
   terminal: (containerName, command) => call({ op: 'terminal', containerName, command }),
   containerInfo: (containerName) => call({ op: 'containerInfo', containerName }),
+  containerStats: (containerName) => call({ op: 'containerStats', containerName }),
   stopContainer: (containerName) => call({ op: 'stopContainer', containerName }),
   restartContainer: (containerName) => call({ op: 'restartContainer', containerName }),
   removeProjectResources: (slug) => call({ op: 'removeProjectResources', slug }),
