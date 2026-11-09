@@ -11,19 +11,16 @@ interface Stats {
 export default function AdminOverviewPage(): React.ReactElement {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      fetch('/api/admin/users').then((r) => r.json()),
-      fetch('/api/admin/projects').then((r) => r.json()),
-    ])
-      .then(([usersRes, projectsRes]) => {
-        setStats({
-          userCount: usersRes.data?.length ?? 0,
-          projectCount: projectsRes.data?.length ?? 0,
-        });
+    fetch('/api/admin/stats')
+      .then((r) => r.json())
+      .then((res: { success: boolean; data?: Stats; error?: { message: string } }) => {
+        if (res.success && res.data) setStats(res.data);
+        else setError(res.error?.message ?? 'Failed to load stats');
       })
-      .catch(() => {})
+      .catch(() => setError('Failed to load stats'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -32,6 +29,8 @@ export default function AdminOverviewPage(): React.ReactElement {
       <h2 className="text-2xl font-bold">Admin Overview</h2>
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : error ? (
+        <p className="text-sm text-destructive" role="alert">{error}</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           <Card>
