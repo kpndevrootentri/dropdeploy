@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -137,12 +138,12 @@ export default function AdminUsersPage(): React.ReactElement {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        alert(body?.error ?? 'Failed to change role');
+        toast.error(body?.error?.message ?? body?.error ?? 'Failed to change role');
         return;
       }
       load();
     } catch {
-      alert('Network error');
+      toast.error('Network error');
     } finally {
       setActing(null);
     }
@@ -155,12 +156,12 @@ export default function AdminUsersPage(): React.ReactElement {
       const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        alert(body?.error ?? 'Failed to delete user');
+        toast.error(body?.error?.message ?? body?.error ?? 'Failed to delete user');
         return;
       }
       load();
     } catch {
-      alert('Network error');
+      toast.error('Network error');
     } finally {
       setActing(null);
     }

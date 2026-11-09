@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import { getProjectUrl } from '@/components/ui/framework-logo';
 import React from 'react';
 import {
@@ -191,12 +192,12 @@ export default function AdminProjectsPage(): React.ReactElement {
       const res = await fetch(url, { method });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        alert(body?.error ?? 'Action failed');
+        toast.error(body?.error?.message ?? body?.error ?? 'Action failed');
         return;
       }
       void load();
     } catch {
-      alert('Network error');
+      toast.error('Network error');
     } finally {
       setActing(null);
     }
