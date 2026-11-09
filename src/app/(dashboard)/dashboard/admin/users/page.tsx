@@ -39,6 +39,7 @@ interface AdminUser {
 export default function AdminUsersPage(): React.ReactElement {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
 
   // Create user modal
@@ -79,8 +80,11 @@ export default function AdminUsersPage(): React.ReactElement {
     setLoading(true);
     fetch('/api/admin/users')
       .then((r) => r.json())
-      .then((res) => setUsers(res.data ?? []))
-      .catch(() => {})
+      .then((res) => {
+        if (res.success) { setUsers(res.data ?? []); setError(null); }
+        else setError(res.error?.message ?? 'Failed to load users');
+      })
+      .catch(() => setError('Failed to load users'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -286,6 +290,7 @@ export default function AdminUsersPage(): React.ReactElement {
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
         <div className="overflow-x-auto">
+          {error && <p className="mb-4 text-sm text-destructive" role="alert">{error}</p>}
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b text-left text-muted-foreground">
@@ -387,7 +392,7 @@ export default function AdminUsersPage(): React.ReactElement {
                   </tr>
                 );
               })}
-              {users.length === 0 && (
+              {users.length === 0 && !error && (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-muted-foreground">
                     No users found.
