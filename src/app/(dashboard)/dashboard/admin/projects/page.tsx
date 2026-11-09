@@ -5,7 +5,7 @@ import { getProjectUrl } from '@/components/ui/framework-logo';
 import React from 'react';
 import {
   Square, RotateCcw, Rocket, Trash2, Loader2,
-  ChevronDown, ChevronUp, Container, Cpu, MemoryStick, Clock, Hash, Network,
+  ChevronDown, ChevronUp, Container, Cpu, MemoryStick, Clock, Hash, Network, History,
 } from 'lucide-react';
 
 interface Deployment {
@@ -146,6 +146,106 @@ function ContainerDetails({ projectId }: { projectId: string }): React.ReactElem
   );
 }
 
+interface DeploymentSummary {
+  id: string;
+  status: string;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  commitHash: string | null;
+  buildStep: string | null;
+  rollbackOfId: string | null;
+}
+
+const DEPLOY_STATUS_CLASS: Record<string, string> = {
+  DEPLOYED: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+  FAILED: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+  BUILDING: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+};
+
+function formatDuration(startedAt: string | null, completedAt: string | null): string {
+  if (!startedAt || !completedAt) return '—';
+  const s = Math.round((new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000);
+  return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
+}
+
+function DeploymentHistory({ projectId }: { projectId: string }): React.ReactElement {
+  const [deployments, setDeployments] = useState<DeploymentSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [openLogId, setOpenLogId] = useState<string | null>(null);
+  // Keyed by deployment so a slow response can never land under another row.
+  const [logs, setLogs] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    fetch(`/api/admin/projects/${projectId}/deployments`)
+      .then((r) => r.json())
+      .then((body) => {
+        if (!body.success) throw new Error(body?.error?.message ?? body?.error ?? 'Failed to load deployments');
+        setDeployments(body.data);
+      })
+      .catch((err: Error) => setError(err.message || 'Failed to load deployments'));
+  }, [projectId]);
+
+  const toggleLog = (deploymentId: string): void => {
+    if (openLogId === deploymentId) {
+      setOpenLogId(null);
+      return;
+    }
+    setOpenLogId(deploymentId);
+    const setLog = (text: string): void => setLogs((prev) => ({ ...prev, [deploymentId]: text }));
+    // Re-fetched on every open: a building deployment's log keeps growing.
+    fetch(`/api/admin/projects/${projectId}/deployments/${deploymentId}/logs`)
+      .then((r) => r.json())
+      .then((body) => {
+        if (!body.success) throw new Error(body?.error?.message ?? body?.error ?? 'Failed to load the log');
+        setLog(body.data.buildLog || 'No build log was recorded for this deployment.');
+      })
+      .catch((err: Error) => setLog(err.message || 'Failed to load the log'));
+  };
+
+  if (error) return <p className="text-xs text-destructive py-1" role="alert">{error}</p>;
+  if (!deployments) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
+        <Loader2 className="w-3 h-3 animate-spin" /> Fetching deployments…
+      </div>
+    );
+  }
+  if (deployments.length === 0) return <p className="text-xs text-muted-foreground py-1">No deployments yet.</p>;
+
+  return (
+    <ul className="divide-y text-xs">
+      {deployments.map((d) => (
+        <li key={d.id} className="py-1.5">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span className={`inline-block px-2 py-0.5 rounded font-medium ${DEPLOY_STATUS_CLASS[d.status] ?? 'bg-muted text-muted-foreground'}`}>
+              {d.status}
+            </span>
+            <span className="text-muted-foreground">{new Date(d.createdAt).toLocaleString()}</span>
+            <span className="text-muted-foreground">took {formatDuration(d.startedAt, d.completedAt)}</span>
+            {d.commitHash && <code className="font-mono">{d.commitHash.slice(0, 7)}</code>}
+            {d.rollbackOfId && <span className="text-muted-foreground">rollback</span>}
+            {d.status === 'BUILDING' && d.buildStep && <span className="text-muted-foreground">{d.buildStep}</span>}
+            <button
+              type="button"
+              onClick={() => toggleLog(d.id)}
+              aria-expanded={openLogId === d.id}
+              className="ml-auto text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+            >
+              {openLogId === d.id ? 'Hide log' : 'View log'}
+            </button>
+          </div>
+          {openLogId === d.id && (
+            <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs leading-relaxed text-zinc-300 whitespace-pre-wrap break-all">
+              {logs[d.id] ?? 'Loading…'}
+            </pre>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function AdminProjectsPage(): React.ReactElement {
   const [projects, setProjects] = useState<AdminProject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -228,7 +328,7 @@ export default function AdminProjectsPage(): React.ReactElement {
               const isRedeploying = acting === `${p.id}:redeploy`;
               const isDeleting   = acting === `${p.id}:delete`;
               const isOpen       = expanded.has(p.id);
-              const canExpand    = latestDeployment?.status === 'DEPLOYED';
+              const canExpand    = !!latestDeployment;
 
               return (
                 <React.Fragment key={p.id}>
@@ -238,7 +338,9 @@ export default function AdminProjectsPage(): React.ReactElement {
                       <button
                         disabled={!canExpand}
                         onClick={() => toggleExpanded(p.id)}
-                        title={canExpand ? 'Show container details' : 'No container (not deployed)'}
+                        title={canExpand ? 'Show container and deployments' : 'Never deployed'}
+                        aria-label={isOpen ? 'Hide details' : 'Show details'}
+                        aria-expanded={isOpen}
                         className="inline-flex items-center justify-center w-6 h-6 rounded text-muted-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                       >
                         {isOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -345,6 +447,13 @@ export default function AdminProjectsPage(): React.ReactElement {
                           </span>
                         </div>
                         <ContainerDetails projectId={p.id} />
+                        <div className="flex items-center gap-2 mt-3 mb-1">
+                          <History className="w-3.5 h-3.5 text-muted-foreground" />
+                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                            Recent deployments
+                          </span>
+                        </div>
+                        <DeploymentHistory projectId={p.id} />
                       </td>
                     </tr>
                   )}
