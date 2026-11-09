@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { getProjectUrl } from '@/components/ui/framework-logo';
+import { Button } from '@/components/ui/button';
 import React from 'react';
 import {
   Square, RotateCcw, Rocket, Trash2, Loader2,
@@ -212,6 +213,11 @@ export default function AdminProjectsPage(): React.ReactElement {
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" asChild>
+          <a href="/api/admin/projects/export" download>Export CSV</a>
+        </Button>
+      </div>
       {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">

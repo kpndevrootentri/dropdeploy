@@ -281,6 +281,9 @@ export default function AdminUsersPage(): React.ReactElement {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Users</h2>
         <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <a href="/api/admin/users/export" download>Export CSV</a>
+          </Button>
           <Button variant="outline" onClick={openImportModal}>Import Users</Button>
           <Button onClick={openModal}>Create User</Button>
         </div>
