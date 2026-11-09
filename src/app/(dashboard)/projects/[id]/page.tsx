@@ -84,6 +84,7 @@ interface ProjectDetail {
   isPrivate: boolean;
   useStaticHosting: boolean;
   autoDeploy: boolean;
+  stoppedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   deployments: Deployment[];
@@ -1962,7 +1963,7 @@ function OverviewPanel({
               {deployUrl}
             </span>
             {project.isPrivate && <PrivateBadge />}
-            <StatusBadge status="DEPLOYED" />
+            <StatusBadge status={project.stoppedAt ? 'STOPPED' : 'DEPLOYED'} />
             <div className="flex shrink-0 gap-1">
               <Button
                 variant="ghost"

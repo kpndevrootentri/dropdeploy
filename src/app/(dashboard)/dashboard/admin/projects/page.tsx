@@ -28,6 +28,7 @@ interface AdminProject {
   type: string;
   user: ProjectOwner;
   deployments: Deployment[];
+  stoppedAt: string | null;
   createdAt: string;
 }
 
@@ -229,6 +230,8 @@ export default function AdminProjectsPage(): React.ReactElement {
               const isDeleting   = acting === `${p.id}:delete`;
               const isOpen       = expanded.has(p.id);
               const canExpand    = latestDeployment?.status === 'DEPLOYED';
+              // An admin stop leaves the deployment DEPLOYED; stoppedAt says the container is down.
+              const isStopped    = canExpand && !!p.stoppedAt;
 
               return (
                 <React.Fragment key={p.id}>
@@ -253,7 +256,11 @@ export default function AdminProjectsPage(): React.ReactElement {
                       </span>
                     </td>
                     <td className="py-3 pr-4">
-                      {latestDeployment ? (
+                      {isStopped ? (
+                        <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                          STOPPED
+                        </span>
+                      ) : latestDeployment ? (
                         <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
                           latestDeployment.status === 'DEPLOYED' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
                           latestDeployment.status === 'FAILED'   ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
@@ -267,7 +274,7 @@ export default function AdminProjectsPage(): React.ReactElement {
                       )}
                     </td>
                     <td className="py-3 pr-4">
-                      {latestDeployment?.status === 'DEPLOYED' ? (
+                      {canExpand && !isStopped ? (
                         <a
                           href={getProjectUrl(p.slug, latestDeployment.containerPort)}
                           target="_blank"
@@ -284,7 +291,7 @@ export default function AdminProjectsPage(): React.ReactElement {
                       <div className="flex items-center gap-2">
                         <button
                           title="Stop — Stops the running container without deleting the project"
-                          disabled={!!isActing || !['DEPLOYED', 'BUILDING'].includes(latestDeployment?.status ?? '')}
+                          disabled={!!isActing || isStopped || !['DEPLOYED', 'BUILDING'].includes(latestDeployment?.status ?? '')}
                           onClick={() => {
                             if (!confirm(`Stop container for "${p.name}"?`)) return;
                             void action(`/api/admin/projects/${p.id}/stop`, 'POST', `${p.id}:stop`);
