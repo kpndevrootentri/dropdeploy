@@ -29,6 +29,12 @@ function isPortConflictError(err: unknown): boolean {
   return msg.includes('port is already allocated') || msg.includes('address already in use');
 }
 
+/** Docker's "no such container" (404) and "already in that state" (304) replies. */
+function isMissingOrUnchanged(err: unknown): boolean {
+  const status = (err as { statusCode?: number } | null)?.statusCode;
+  return status === 404 || status === 304;
+}
+
 const CONTAINER_RESOURCES: Record<string, { memory: number; cpuShares: number }> = {
   STATIC: { memory: 128 * 1024 * 1024, cpuShares: 256 },
   NODEJS: { memory: 512 * 1024 * 1024, cpuShares: 1024 },
@@ -498,9 +504,13 @@ export class DockerService {
     try {
       const container = this.docker.getContainer(containerName);
       const info = await container.inspect();
-      if (info.State.Running) await container.stop();
-    } catch {
-      // Container doesn't exist or already stopped — fine
+      // A crash-looping container is Restarting, not Running; stop it too, or
+      // its restart policy brings it back while the project reads as stopped.
+      if (info.State.Running || info.State.Restarting) await container.stop();
+    } catch (err) {
+      // Missing (404) or already stopped (304) is fine. Anything else must reach
+      // the caller, which records the stop only when it really happened.
+      if (!isMissingOrUnchanged(err)) throw err;
     }
   }
 
@@ -511,8 +521,8 @@ export class DockerService {
     try {
       const container = this.docker.getContainer(containerName);
       await container.restart();
-    } catch {
-      // Container doesn't exist — fine
+    } catch (err) {
+      if (!isMissingOrUnchanged(err)) throw err;
     }
   }
 

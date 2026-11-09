@@ -13,6 +13,8 @@ export interface IProjectRepository {
   update(id: string, data: UpdateProjectDto): Promise<Project>;
   delete(id: string): Promise<void>;
   transferOwner(id: string, newUserId: string): Promise<Project>;
+  /** Records that the live container was stopped (a date) or started again (null). */
+  setStoppedAt(id: string, stoppedAt: Date | null): Promise<void>;
   /** Enable auto-deploy and persist the GitHub hook id + encrypted webhook secret. */
   setWebhookConfig(id: string, data: { githubHookId: string; webhookSecretEnc: string; webhookSecretIv: string; webhookSecretTag: string }): Promise<Project>;
   /** Disable auto-deploy and clear all webhook fields. */
@@ -89,6 +91,10 @@ export class ProjectRepository implements IProjectRepository {
 
   async transferOwner(id: string, newUserId: string): Promise<Project> {
     return prisma.project.update({ where: { id }, data: { userId: newUserId } });
+  }
+
+  async setStoppedAt(id: string, stoppedAt: Date | null): Promise<void> {
+    await prisma.project.update({ where: { id }, data: { stoppedAt } });
   }
 
   async setWebhookConfig(

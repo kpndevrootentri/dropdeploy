@@ -181,13 +181,21 @@ export class AdminService {
   async stopContainer(projectId: string): Promise<void> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
-    await this.docker.stopContainer(containerNameFor(project.slug));
+    const name = containerNameFor(project.slug);
+    // Static-hosted and never-deployed projects have nothing to stop; marking
+    // them stopped would show STOPPED while the site keeps serving.
+    if (!(await this.docker.containerInfo(name))) {
+      throw new ValidationError('This project has no container to stop');
+    }
+    await this.docker.stopContainer(name);
+    await this.projectRepo.setStoppedAt(projectId, new Date());
   }
 
   async restartContainer(projectId: string): Promise<void> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
     await this.docker.restartContainer(containerNameFor(project.slug));
+    await this.projectRepo.setStoppedAt(projectId, null);
   }
 
   async updateUserQuota(userId: string, quota: number): Promise<PublicUser> {
