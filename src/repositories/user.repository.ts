@@ -1,13 +1,21 @@
 import type { User, UserRole } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
+/** Starting quotas for a new account; the schema defaults apply when omitted. */
+export interface NewUserQuotas {
+  projectQuota: number;
+  domainQuota: number;
+}
+
+export type NewUserData = { email: string; passwordHash: string; role?: UserRole; mustResetPassword?: boolean } & Partial<NewUserQuotas>;
+
 export interface IUserRepository {
   findById(id: string): Promise<User | null>;
   findByEmail(email: string): Promise<User | null>;
   findAll(): Promise<User[]>;
-  create(data: { email: string; passwordHash: string; role?: UserRole; mustResetPassword?: boolean }): Promise<User>;
+  create(data: NewUserData): Promise<User>;
   /** Creates USER accounts that must reset their password; skips emails already registered. Returns the emails created. */
-  createMany(emails: string[], passwordHash: string): Promise<string[]>;
+  createMany(emails: string[], passwordHash: string, quotas?: NewUserQuotas): Promise<string[]>;
   updateRole(id: string, role: UserRole): Promise<User>;
   updateQuota(id: string, quota: number): Promise<User>;
   /** Custom domains the user may claim across all their projects. */
@@ -36,20 +44,22 @@ export class UserRepository implements IUserRepository {
     return prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
   }
 
-  async create(data: { email: string; passwordHash: string; role?: UserRole; mustResetPassword?: boolean }): Promise<User> {
+  async create(data: NewUserData): Promise<User> {
     return prisma.user.create({
       data: {
         email: data.email.toLowerCase(),
         passwordHash: data.passwordHash,
         ...(data.role ? { role: data.role } : {}),
         ...(data.mustResetPassword !== undefined ? { mustResetPassword: data.mustResetPassword } : {}),
+        ...(data.projectQuota !== undefined ? { projectQuota: data.projectQuota } : {}),
+        ...(data.domainQuota !== undefined ? { domainQuota: data.domainQuota } : {}),
       },
     });
   }
 
-  async createMany(emails: string[], passwordHash: string): Promise<string[]> {
+  async createMany(emails: string[], passwordHash: string, quotas?: NewUserQuotas): Promise<string[]> {
     const users = await prisma.user.createManyAndReturn({
-      data: emails.map((email) => ({ email: email.toLowerCase(), passwordHash, mustResetPassword: true })),
+      data: emails.map((email) => ({ email: email.toLowerCase(), passwordHash, mustResetPassword: true, ...quotas })),
       skipDuplicates: true,
       select: { email: true },
     });

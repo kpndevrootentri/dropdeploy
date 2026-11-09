@@ -1,7 +1,7 @@
 import * as bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import type { User, UserRole, Project } from '@prisma/client';
-import type { IUserRepository } from '@/repositories/user.repository';
+import type { IUserRepository, NewUserQuotas } from '@/repositories/user.repository';
 import { userRepository } from '@/repositories/user.repository';
 import type { IProjectRepository } from '@/repositories/project.repository';
 import { projectRepository } from '@/repositories/project.repository';
@@ -10,6 +10,7 @@ import { deploymentService } from '@/services/deployment';
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/errors';
 
 import { SALT_ROUNDS } from '@/services/auth/auth.service';
+import { platformSettingsService, type PlatformSettingsService } from '@/services/platform-settings/platform-settings.service';
 
 /** One row of the admin user table. Deliberately excludes `passwordHash`. */
 export interface AdminUserRow {
@@ -50,7 +51,14 @@ export class AdminService {
     private readonly userRepo: IUserRepository,
     private readonly projectRepo: IProjectRepository,
     private readonly docker: IDockerOps,
+    private readonly settings: Pick<PlatformSettingsService, 'get'> = platformSettingsService,
   ) {}
+
+  /** Quotas for accounts created now, from the admin-editable platform settings. */
+  private async newUserQuotas(): Promise<NewUserQuotas> {
+    const { defaultProjectQuota, defaultDomainQuota } = await this.settings.get();
+    return { projectQuota: defaultProjectQuota, domainQuota: defaultDomainQuota };
+  }
 
   /**
    * Users for the admin table, with both quotas and both usage counts.
@@ -135,7 +143,9 @@ export class AdminService {
     const existing = await this.userRepo.findByEmail(email);
     if (existing) throw new ConflictError('Email already registered');
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-    return toPublicUser(await this.userRepo.create({ email, passwordHash, role: 'USER', mustResetPassword: true }));
+    return toPublicUser(
+      await this.userRepo.create({ email, passwordHash, role: 'USER', mustResetPassword: true, ...(await this.newUserQuotas()) }),
+    );
   }
 
   /**
@@ -148,7 +158,9 @@ export class AdminService {
     const isEmail = (e: string): boolean => z.string().email().safeParse(e).success;
     const valid = emails.filter(isEmail);
     const invalid = emails.filter((e) => !isEmail(e));
-    const created = valid.length ? await this.userRepo.createMany(valid, await bcrypt.hash(password, SALT_ROUNDS)) : [];
+    const created = valid.length
+      ? await this.userRepo.createMany(valid, await bcrypt.hash(password, SALT_ROUNDS), await this.newUserQuotas())
+      : [];
     const createdSet = new Set(created);
     return { created, skipped: valid.filter((e) => !createdSet.has(e)), invalid };
   }

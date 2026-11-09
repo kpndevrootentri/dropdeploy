@@ -5,6 +5,7 @@ import { UnauthorizedError, ConflictError, ValidationError } from '@/lib/errors'
 import { getConfig } from '@/lib/config';
 import type { RegisterDto, LoginDto } from '@/validators/auth.validator';
 import type { User } from '@prisma/client';
+import { platformSettingsService, type PlatformSettingsService } from '@/services/platform-settings/platform-settings.service';
 
 /** bcrypt cost for new hashes. Existing cost-10 hashes still verify and upgrade on the next password change. */
 export const SALT_ROUNDS = 12;
@@ -41,7 +42,8 @@ export interface AuthServiceConfig {
 export class AuthService {
   constructor(
     private readonly userRepo: IUserRepository,
-    private readonly config: AuthServiceConfig
+    private readonly config: AuthServiceConfig,
+    private readonly settings: Pick<PlatformSettingsService, 'get'> = platformSettingsService,
   ) {}
 
   /**
@@ -53,7 +55,13 @@ export class AuthService {
       throw new ConflictError('Email already registered');
     }
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
-    const user = await this.userRepo.create({ email: dto.email, passwordHash });
+    const { defaultProjectQuota, defaultDomainQuota } = await this.settings.get();
+    const user = await this.userRepo.create({
+      email: dto.email,
+      passwordHash,
+      projectQuota: defaultProjectQuota,
+      domainQuota: defaultDomainQuota,
+    });
     const tokens = await this.issueTokens(user);
     return { userId: user.id, tokens };
   }

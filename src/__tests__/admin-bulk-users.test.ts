@@ -5,12 +5,14 @@ import { AdminService } from '@/services/admin/admin.service';
 import type { IUserRepository } from '@/repositories/user.repository';
 import type { IProjectRepository } from '@/repositories/project.repository';
 import type { IDockerOps } from '@/lib/docker-ops';
+import { DEFAULT_PLATFORM_SETTINGS } from '@/services/platform-settings/platform-settings.service';
 
 function setup(registered: string[]) {
   const userRepo = {
     createMany: jest.fn(async (emails: string[]) => emails.filter((e) => !registered.includes(e))),
   };
-  const service = new AdminService(userRepo as unknown as IUserRepository, {} as IProjectRepository, {} as IDockerOps);
+  const settings = { get: async () => ({ ...DEFAULT_PLATFORM_SETTINGS, defaultProjectQuota: 3, defaultDomainQuota: 0 }) };
+  const service = new AdminService(userRepo as unknown as IUserRepository, {} as IProjectRepository, {} as IDockerOps, settings);
   return { service, userRepo };
 }
 
@@ -21,7 +23,10 @@ describe('AdminService.bulkCreateUsers', () => {
       [' New@Entri.me ', 'new@entri.me', 'old@entri.me', 'not-an-email', ''],
       'password',
     );
-    expect(userRepo.createMany).toHaveBeenCalledWith(['new@entri.me', 'old@entri.me'], expect.any(String));
+    expect(userRepo.createMany).toHaveBeenCalledWith(['new@entri.me', 'old@entri.me'], expect.any(String), {
+      projectQuota: 3,
+      domainQuota: 0,
+    });
     expect(result).toEqual({ created: ['new@entri.me'], skipped: ['old@entri.me'], invalid: ['not-an-email'] });
   });
 
