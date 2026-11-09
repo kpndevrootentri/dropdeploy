@@ -5,6 +5,7 @@ import {
   type UpsertShowcaseDto,
   type PagedShowcase,
   type FindPublishedOptions,
+  type AdminShowcaseRow,
 } from '@/repositories/showcase.repository';
 import { projectRepository, type IProjectRepository } from '@/repositories/project.repository';
 import { NotFoundError, ValidationError } from '@/lib/errors';
@@ -74,6 +75,27 @@ export class ShowcaseService {
     assertPublicLink(data.contactUrl, 'Contact URL', ['http:', 'https:', 'mailto:']);
 
     return this.showcaseRepo.upsert(projectId, data);
+  }
+
+  // ── Admin (no ownership check; callers must require CONTRIBUTOR) ─────────
+
+  async adminList(): Promise<AdminShowcaseRow[]> {
+    return this.showcaseRepo.listAll();
+  }
+
+  /**
+   * Unpublish, republish or feature an entry. Republishing is limited to
+   * entries that were published before (an owner's unpublish clears
+   * `publishedAt`; an admin's keeps it), so an admin never publishes a draft
+   * the owner chose not to. The owner can still edit and republish.
+   */
+  async adminSetFlags(projectId: string, flags: { isPublished?: boolean; featured?: boolean }): Promise<ProjectShowcase> {
+    const showcase = await this.showcaseRepo.findByProjectId(projectId);
+    if (!showcase) throw new NotFoundError('Showcase');
+    if (flags.isPublished && !showcase.isPublished && !showcase.publishedAt) {
+      throw new ValidationError('Only the owner can publish a draft');
+    }
+    return this.showcaseRepo.setFlags(projectId, flags);
   }
 
   async getPublished(opts?: FindPublishedOptions): Promise<PagedShowcase> {
