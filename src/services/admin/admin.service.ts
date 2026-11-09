@@ -10,6 +10,8 @@ import { dockerOps, containerNameFor, type IDockerOps, type ContainerInfo } from
 import { deploymentService } from '@/services/deployment';
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/errors';
 import { inviteService, type InviteService } from '@/services/invite';
+import { getConfig } from '@/lib/config';
+import { planRedeployAll, type RedeployCandidate, type RedeployFilters } from './redeploy-plan';
 
 import { SALT_ROUNDS } from '@/services/auth/auth.service';
 
@@ -38,6 +40,15 @@ function toPublicUser(user: User): PublicUser {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { passwordHash, tokenVersion, ...rest } = user;
   return rest;
+}
+
+export interface RedeployAllResult {
+  /** Worker builds that run at once (BULLMQ_CONCURRENCY); the rest wait in the queue. */
+  concurrency: number;
+  eligible: { id: string; name: string; ownerEmail: string; type: string; source: string }[];
+  skipped: { id: string; name: string; reason: string }[];
+  /** Present only when the deploys were actually queued. */
+  results?: { id: string; name: string; outcome: 'queued' | 'failed'; error?: string }[];
 }
 
 export interface BulkInviteResult {
@@ -256,6 +267,58 @@ export class AdminService {
     if (!project) throw new NotFoundError('Project');
     // Bypass ownership check by delegating to deploymentService with the project's actual owner
     await deploymentService.createDeployment(projectId, project.userId);
+  }
+
+  /**
+   * Rebuilds every repository project that matches the filters, or with
+   * `dryRun` only lists what would happen. Deploys go through the normal
+   * queue, one at a time here, so the worker's concurrency caps the load on
+   * the host that also serves every site.
+   */
+  async redeployAll(filters: RedeployFilters, dryRun: boolean): Promise<RedeployAllResult> {
+    const { prisma } = await import('@/lib/prisma');
+    const [projects, active] = await Promise.all([
+      this.projectRepo.findAll(),
+      prisma.deployment.findMany({
+        where: { status: { in: ['QUEUED', 'BUILDING'] } },
+        select: { projectId: true },
+      }),
+    ]);
+    const candidates: RedeployCandidate[] = projects.map((p) => ({
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      type: p.type,
+      source: p.source,
+      githubUrl: p.githubUrl,
+      userId: p.userId,
+      ownerEmail: p.user.email,
+      lastStatus: p.deployments[0]?.status ?? null,
+    }));
+    const { eligible, skipped } = planRedeployAll(candidates, new Set(active.map((d) => d.projectId)), filters);
+
+    const result: RedeployAllResult = {
+      concurrency: getConfig().BULLMQ_CONCURRENCY,
+      eligible: eligible.map((p) => ({ id: p.id, name: p.name, ownerEmail: p.ownerEmail, type: p.type, source: p.source })),
+      skipped: skipped.map(({ project, reason }) => ({ id: project.id, name: project.name, reason })),
+    };
+    if (dryRun) return result;
+
+    result.results = [];
+    for (const project of eligible) {
+      try {
+        await deploymentService.createDeployment(project.id, project.userId);
+        result.results.push({ id: project.id, name: project.name, outcome: 'queued' });
+      } catch (err) {
+        result.results.push({
+          id: project.id,
+          name: project.name,
+          outcome: 'failed',
+          error: err instanceof Error ? err.message : 'Failed to queue',
+        });
+      }
+    }
+    return result;
   }
 }
 

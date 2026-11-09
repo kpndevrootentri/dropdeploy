@@ -636,6 +636,7 @@ flowchart LR
 | `GET` | `/api/admin/projects` | List all projects across all users |
 | `GET` | `/api/admin/projects/:projectId` | Get project details (any user) |
 | `POST` | `/api/admin/projects/:projectId/deploy` | Force-deploy any project |
+| `POST` | `/api/admin/projects/redeploy-all` | Rebuild every matching repository project (`{ type?, source?, dryRun, confirm: "redeploy all" }`); skips uploads, never-deployed projects and ones already queued or building; the worker's `BULLMQ_CONCURRENCY` caps how many build at once |
 | `POST` | `/api/admin/projects/:projectId/restart` | Restart container |
 | `POST` | `/api/admin/projects/:projectId/stop` | Stop container |
 | `GET` | `/api/admin/projects/:projectId/container` | Container status |
