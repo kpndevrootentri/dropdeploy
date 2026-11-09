@@ -34,6 +34,7 @@ export interface AdminUserRow {
   projectQuota: number;
   domainQuota: number;
   mustResetPassword: boolean;
+  suspendedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   _count: { projects: number; customDomains: number };
@@ -113,6 +114,7 @@ export class AdminService {
           projectQuota: true,
           domainQuota: true,
           mustResetPassword: true,
+          suspendedAt: true,
           createdAt: true,
           updatedAt: true,
           _count: { select: { projects: true } },
@@ -138,11 +140,7 @@ export class AdminService {
 
     // If demoting a contributor, ensure at least one other contributor remains
     if (role !== 'CONTRIBUTOR' && user.role === 'CONTRIBUTOR') {
-      const { prisma } = await import('@/lib/prisma');
-      const contributorCount = await prisma.user.count({ where: { role: 'CONTRIBUTOR' } });
-      if (contributorCount <= 1) {
-        throw new ConflictError('Cannot remove the last CONTRIBUTOR');
-      }
+      await this.assertAnotherActiveContributor(userId, 'Cannot remove the last CONTRIBUTOR');
     }
 
     const updated = toPublicUser(await this.userRepo.updateRole(userId, role));
@@ -158,15 +156,46 @@ export class AdminService {
     if (!user) throw new NotFoundError('User');
 
     if (user.role === 'CONTRIBUTOR') {
-      const { prisma } = await import('@/lib/prisma');
-      const contributorCount = await prisma.user.count({ where: { role: 'CONTRIBUTOR' } });
-      if (contributorCount <= 1) {
-        throw new ConflictError('Cannot delete the last CONTRIBUTOR');
-      }
+      await this.assertAnotherActiveContributor(userId, 'Cannot delete the last CONTRIBUTOR');
     }
 
     await this.userRepo.delete(userId);
     await this.record(actorId, 'USER_DELETED', userTarget(user));
+  }
+
+  /**
+   * Throws unless a CONTRIBUTOR other than `userId` is active. Suspended ones
+   * do not count: they cannot sign in to reinstate anyone.
+   */
+  private async assertAnotherActiveContributor(userId: string, message: string): Promise<void> {
+    const { prisma } = await import('@/lib/prisma');
+    const others = await prisma.user.count({
+      where: { role: 'CONTRIBUTOR', suspendedAt: null, id: { not: userId } },
+    });
+    if (others === 0) throw new ConflictError(message);
+  }
+
+  /** Suspending blocks sign-in and revokes every session; the user's sites keep running. */
+  async setUserSuspended(userId: string, suspended: boolean, actorId: string): Promise<PublicUser> {
+    if (suspended && userId === actorId) {
+      throw new ValidationError('You cannot suspend your own account');
+    }
+    const user = await this.userRepo.findById(userId);
+    if (!user) throw new NotFoundError('User');
+    if (suspended && user.role === 'CONTRIBUTOR') {
+      await this.assertAnotherActiveContributor(userId, 'Cannot suspend the last active CONTRIBUTOR');
+    }
+    const updated = toPublicUser(await this.userRepo.setSuspended(userId, suspended));
+    await this.record(actorId, suspended ? 'USER_SUSPENDED' : 'USER_UNSUSPENDED', userTarget(user));
+    return updated;
+  }
+
+  /** Revokes every browser session and CLI token the user holds. */
+  async signOutEverywhere(userId: string, actorId: string): Promise<void> {
+    const user = await this.userRepo.findById(userId);
+    if (!user) throw new NotFoundError('User');
+    await this.userRepo.revokeSessions(userId);
+    await this.record(actorId, 'USER_SIGNED_OUT', userTarget(user));
   }
 
   async createUser(email: string, password: string, actorId: string): Promise<PublicUser> {

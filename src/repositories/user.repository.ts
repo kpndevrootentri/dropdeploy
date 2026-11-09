@@ -13,6 +13,10 @@ export interface IUserRepository {
   /** Custom domains the user may claim across all their projects. */
   updateDomainQuota(id: string, quota: number): Promise<User>;
   setPassword(id: string, passwordHash: string, mustResetPassword?: boolean): Promise<User>;
+  /** Suspends or reinstates the user; both revoke every outstanding session. */
+  setSuspended(id: string, suspended: boolean): Promise<User>;
+  /** Signs the user out of every browser and CLI. */
+  revokeSessions(id: string): Promise<void>;
   delete(id: string): Promise<void>;
   /** Whether the dashboard product tour has been offered and answered. */
   isTourSeen(id: string): Promise<boolean>;
@@ -78,6 +82,17 @@ export class UserRepository implements IUserRepository {
       where: { id },
       data: { passwordHash, mustResetPassword, tokenVersion: { increment: 1 } },
     });
+  }
+
+  async setSuspended(id: string, suspended: boolean): Promise<User> {
+    return prisma.user.update({
+      where: { id },
+      data: { suspendedAt: suspended ? new Date() : null, tokenVersion: { increment: 1 } },
+    });
+  }
+
+  async revokeSessions(id: string): Promise<void> {
+    await prisma.user.update({ where: { id }, data: { tokenVersion: { increment: 1 } } });
   }
 
   async delete(id: string): Promise<void> {
