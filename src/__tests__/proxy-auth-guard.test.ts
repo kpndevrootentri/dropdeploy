@@ -57,3 +57,15 @@ describe('login guard on platform pages', () => {
     }
   });
 });
+
+describe('admin pages while viewing as a user', () => {
+  it('sends a view-as session away from admin pages, whatever role it claims', async () => {
+    const token = await new jose.SignJWT({ sub: 'u1', role: 'CONTRIBUTOR', imp: 'admin' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setExpirationTime('5m')
+      .sign(new TextEncoder().encode(SECRET));
+    const res = await get('/dashboard/admin/users', `auth-token=${token}`);
+    expect(res.status).toBe(307);
+    expect(new URL(res.headers.get('location') ?? '').pathname).toBe('/dashboard');
+  });
+});

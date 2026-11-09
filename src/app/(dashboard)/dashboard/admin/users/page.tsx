@@ -198,6 +198,25 @@ export default function AdminUsersPage(): React.ReactElement {
     }
   };
 
+  const handleViewAs = async (user: AdminUser): Promise<void> => {
+    if (!confirm(`View the dashboard as ${user.email}? It is read-only, ends after 30 minutes and is recorded.`)) return;
+    setActing(`${user.id}:viewas`);
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/impersonate`, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast.error(body?.error?.message ?? body?.error ?? 'Could not view as this user');
+        setActing(null);
+        return;
+      }
+      // A full load, so no admin state stays in memory under the user's session.
+      window.location.href = '/dashboard';
+    } catch {
+      toast.error('Network error');
+      setActing(null);
+    }
+  };
+
   const openQuotaModal = (user: AdminUser): void => {
     setQuotaTarget(user);
     setQuotaValue(String(user.projectQuota));
@@ -391,6 +410,17 @@ export default function AdminUsersPage(): React.ReactElement {
                         >
                           <KeyRound className="w-4 h-4" />
                           <span className="text-[10px] leading-none font-medium">Reset PW</span>
+                        </button>
+
+                        {/* View as user */}
+                        <button
+                          title={isContributor ? 'Admins cannot be viewed as' : 'View as — see the dashboard as this user, read-only, for 30 minutes'}
+                          disabled={!!isActing || isContributor}
+                          onClick={() => void handleViewAs(u)}
+                          className="inline-flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-md border border-transparent text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {acting === `${u.id}:viewas` ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+                          <span className="text-[10px] leading-none font-medium">View as</span>
                         </button>
 
                         {/* Set Quota */}

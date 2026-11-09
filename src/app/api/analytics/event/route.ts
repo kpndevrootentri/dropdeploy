@@ -61,7 +61,8 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
     prisma.platformEvent.create({
       data: {
         event,
-        userId: session?.userId ?? null,
+        // An admin viewing as a user must not add to that user's funnel.
+        userId: session?.impersonatorId ? null : (session?.userId ?? null),
         meta: meta ?? undefined,
       },
     }).catch(() => {});

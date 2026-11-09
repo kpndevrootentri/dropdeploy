@@ -601,6 +601,7 @@ flowchart LR
 | `GET` | `/api/auth/gitlab/connect` | Start GitLab OAuth flow |
 | `GET` | `/api/auth/gitlab/callback` | GitLab OAuth callback |
 | `POST` | `/api/auth/invite/accept` | Public: set a password from an invite link (`{ token, password }`) |
+| `POST` | `/api/auth/impersonation/exit` | End "view as user" and restore the admin's own session |
 | `GET` | `/api/git-providers` | List connected providers (username + avatar) |
 | `DELETE` | `/api/git-providers/:provider` | Disconnect a provider |
 | `GET` | `/api/git-providers/:provider/repos` | Search repos (`?q=&page=&refresh=`) |
@@ -633,6 +634,7 @@ flowchart LR
 | `PATCH` | `/api/admin/users/:userId/role` | Change user role |
 | `PATCH` | `/api/admin/users/:userId/reset-password` | Reset user password (`{ newPassword }`, or `{ generate: true }` to get one back once) |
 | `DELETE` | `/api/admin/users/:userId` | Delete user |
+| `POST` | `/api/admin/users/:userId/impersonate` | View the dashboard as a non-admin user: read-only, 30 minutes, recorded as a `PlatformEvent` |
 | `GET` | `/api/admin/projects` | List all projects across all users |
 | `GET` | `/api/admin/projects/:projectId` | Get project details (any user) |
 | `POST` | `/api/admin/projects/:projectId/deploy` | Force-deploy any project |
@@ -645,6 +647,16 @@ flowchart LR
 | `GET` | `/api/admin/stats` | User and project totals for the admin overview |
 | `GET` | `/api/admin/users/export` | All users as CSV (no password hashes or tokens) |
 | `GET` | `/api/admin/projects/export` | All projects as CSV (no env values or secrets) |
+
+### View as user
+
+An admin can open the dashboard as a non-admin user to see what they see. The session is a 30-minute JWT for the user carrying `imp` (the admin's id) and `itv` (the admin's `tokenVersion`); the admin's own token waits in the `admin-restore` cookie (httpOnly, host-only, path `/api/auth/impersonation/exit`).
+
+- **Read-only:** `getSession` — which every authenticated API route calls — refuses anything but GET/HEAD, plus `/api/admin/*`, the GitHub/GitLab OAuth routes and repo listing even for GET. The proxy keeps the session off `/dashboard/admin`.
+- **Ends early** when the admin is demoted or signed out everywhere, or the user becomes an admin (`verifySession` re-checks both users).
+- **Never** for another admin or yourself.
+- **Exit** restores the saved session only if it is a live admin session and the current view (if still valid) belongs to that admin; otherwise both cookies are cleared.
+- Start and exit are recorded as `admin.impersonate.start` / `admin.impersonate.exit` platform events.
 
 ---
 

@@ -3,12 +3,15 @@ import { headers } from 'next/headers';
 import { getTokenFromCookie, getTokenFromCookieHeader } from '@/lib/auth-cookie';
 import { authService } from '@/services/auth';
 import { ForbiddenError, UnauthorizedError } from '@/lib/errors';
+import { impersonationBlockReason } from '@/lib/impersonation';
 
 export interface Session {
   userId: string;
   email: string;
   role: string;
   mustResetPassword: boolean;
+  /** Set while an admin views as this user. Every API request passes here, so this is where viewing is kept read-only. */
+  impersonatorId?: string;
 }
 
 /**
@@ -31,6 +34,10 @@ export async function getSession(
     throw new UnauthorizedError('Not authenticated');
   }
   const session = await authService.verifySession(token);
+  if (session.impersonatorId) {
+    const blocked = impersonationBlockReason(req.method, req.nextUrl.pathname);
+    if (blocked) throw new ForbiddenError(blocked);
+  }
   if (session.mustResetPassword && !opts.allowPendingPasswordReset) {
     throw new ForbiddenError('Set a new password before continuing');
   }
