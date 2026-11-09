@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, FolderGit2, Users, BarChart2 } from 'lucide-react';
+import { LayoutDashboard, FolderGit2, Users, BarChart2, ScrollText } from 'lucide-react';
 
 const tabs = [
   { href: '/dashboard/admin',            label: 'Overview',  icon: LayoutDashboard, exact: true  },
   { href: '/dashboard/admin/projects',   label: 'Projects',  icon: FolderGit2,      exact: false },
   { href: '/dashboard/admin/users',      label: 'Users',     icon: Users,           exact: false },
   { href: '/dashboard/admin/analytics',  label: 'Analytics', icon: BarChart2,       exact: false },
+  { href: '/dashboard/admin/audit',      label: 'Audit',     icon: ScrollText,      exact: false },
 ];
 
 export default function AdminLayout({

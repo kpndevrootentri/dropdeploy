@@ -33,7 +33,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
     requireContributor(session);
     const body = await req.json();
     const { email, password } = createUserSchema.parse(body);
-    const user = await adminService.createUser(email, password);
+    const user = await adminService.createUser(email, password, session.userId);
     return NextResponse.json({ success: true, data: user }, { status: 201 });
   } catch (error) {
     return handleApiError(error);

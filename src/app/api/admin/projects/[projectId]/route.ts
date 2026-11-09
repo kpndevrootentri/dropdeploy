@@ -15,7 +15,7 @@ export async function DELETE(
     const session = await getSession(req);
     requireContributor(session);
     const { projectId } = await params;
-    await adminService.deleteProject(projectId);
+    await adminService.deleteProject(projectId, session.userId);
     return NextResponse.json({ success: true });
   } catch (error) {
     return handleApiError(error);

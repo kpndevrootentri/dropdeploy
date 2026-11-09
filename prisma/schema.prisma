@@ -39,6 +39,7 @@ model User {
 
   projects      Project[]
   auditLogs     AuditLog[]
+  adminActions  AdminAction[]
   gitProviders  GitProvider[]
   projectAccess ProjectAccess[]
 
@@ -313,6 +314,30 @@ model AuditLog {
   @@index([projectId])
   @@index([userId])
   @@map("audit_logs")
+}
+
+/// One row per admin mutation, for accountability. The actor's email and the
+/// target's label are snapshots, and the target has no foreign key, so entries
+/// outlive the user or project they describe.
+model AdminAction {
+  id String @id @default(cuid())
+
+  actorId    String? @map("actor_id")
+  actor      User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorEmail String  @map("actor_email")
+
+  action      String // USER_CREATED, USER_DELETED, PROJECT_STOPPED, ...
+  targetType  String  @map("target_type") // USER | PROJECT
+  /// Null for actions on many targets at once, such as a bulk import.
+  targetId    String? @map("target_id")
+  targetLabel String  @map("target_label")
+  /// Never holds passwords or other secrets.
+  meta        Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("admin_actions")
 }
 
 enum DeploymentStatus {
