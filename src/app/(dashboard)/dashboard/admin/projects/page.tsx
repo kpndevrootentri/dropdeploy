@@ -5,8 +5,11 @@ import { getProjectUrl } from '@/components/ui/framework-logo';
 import React from 'react';
 import {
   Square, RotateCcw, Rocket, Trash2, Loader2,
-  ChevronDown, ChevronUp, Container, Cpu, MemoryStick, Clock, Hash, Network, History,
+  ChevronDown, ChevronUp, Container, Cpu, MemoryStick, Clock, Hash, Network, History, ArrowRightLeft,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 interface Deployment {
   id: string;
@@ -26,6 +29,8 @@ interface AdminProject {
   name: string;
   slug: string;
   type: string;
+  source: string;
+  autoDeploy: boolean;
   user: ProjectOwner;
   deployments: Deployment[];
   createdAt: string;
@@ -246,11 +251,135 @@ function DeploymentHistory({ projectId }: { projectId: string }): React.ReactEle
   );
 }
 
+interface OwnerCandidate {
+  id: string;
+  email: string;
+  projectQuota: number;
+  domainQuota: number;
+  _count: { projects: number; customDomains: number };
+}
+
+function TransferDialog({
+  project,
+  onClose,
+  onDone,
+}: {
+  project: AdminProject | null;
+  onClose: () => void;
+  onDone: () => void;
+}): React.ReactElement {
+  const [users, setUsers] = useState<OwnerCandidate[] | null>(null);
+  const [newOwnerId, setNewOwnerId] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!project) return;
+    setNewOwnerId('');
+    setError(null);
+    setUsers(null);
+    fetch('/api/admin/users')
+      .then((r) => r.json())
+      .then((body) => {
+        if (!body.success) throw new Error(body?.error?.message ?? body?.error ?? 'Failed to load users');
+        setUsers(body.data);
+      })
+      .catch((err: Error) => setError(err.message || 'Failed to load users'));
+  }, [project]);
+
+  const candidates = (users ?? []).filter((u) => u.id !== project?.user.id);
+  const chosen = candidates.find((u) => u.id === newOwnerId);
+  const isGit = project?.source === 'GITHUB' || project?.source === 'GITLAB';
+
+  const submit = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    if (!project || !newOwnerId) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/projects/${project.id}/transfer`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newOwnerId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(body?.error?.message ?? body?.error ?? 'Transfer failed');
+        return;
+      }
+      onDone();
+    } catch {
+      setError('Network error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={!!project} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Transfer project</DialogTitle>
+        </DialogHeader>
+        <form id="transfer-form" onSubmit={submit} className="space-y-4 text-sm">
+          <p className="text-muted-foreground">
+            Move <span className="font-semibold text-foreground">{project?.name}</span> from{' '}
+            <span className="font-semibold text-foreground">{project?.user.email}</span> to another user.
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="transfer-owner">New owner</Label>
+            <select
+              id="transfer-owner"
+              value={newOwnerId}
+              onChange={(e) => setNewOwnerId(e.target.value)}
+              required
+              disabled={!users}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+            >
+              <option value="">{users ? 'Choose a user…' : 'Loading users…'}</option>
+              {candidates.map((u) => (
+                <option key={u.id} value={u.id}>{u.email}</option>
+              ))}
+            </select>
+          </div>
+          {chosen && (
+            <p className="text-xs text-muted-foreground">
+              {chosen.email} has {chosen._count.projects} of {chosen.projectQuota} projects and{' '}
+              {chosen._count.customDomains} of {chosen.domainQuota} custom domains.
+              {chosen._count.projects >= chosen.projectQuota && (
+                <span className="block mt-1 text-amber-600 dark:text-amber-400">
+                  This puts them over their project quota. Transfers are not blocked by quota; raise it if needed.
+                </span>
+              )}
+            </p>
+          )}
+          {isGit && (
+            <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              Redeploys clone with the owner&apos;s connected {project?.source === 'GITHUB' ? 'GitHub' : 'GitLab'} account.
+              If the repository is private and the new owner has not connected an account with access to it,
+              the next redeploy will fail.
+              {project?.autoDeploy && ' The push webhook stays registered under the previous owner’s account.'}
+            </p>
+          )}
+          {error && <p className="text-destructive" role="alert">{error}</p>}
+        </form>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button type="submit" form="transfer-form" disabled={saving || !newOwnerId}>
+            {saving ? 'Transferring…' : 'Transfer'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function AdminProjectsPage(): React.ReactElement {
   const [projects, setProjects] = useState<AdminProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [transferTarget, setTransferTarget] = useState<AdminProject | null>(null);
 
   const TRANSITIONAL = ['QUEUED', 'BUILDING'];
 
@@ -417,6 +546,16 @@ export default function AdminProjectsPage(): React.ReactElement {
                           <span className="text-[10px] leading-none font-medium">Redeploy</span>
                         </button>
 
+                        <button
+                          title="Transfer — Give this project to another user"
+                          disabled={!!isActing}
+                          onClick={() => setTransferTarget(p)}
+                          className="inline-flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-md border border-transparent text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <ArrowRightLeft className="w-4 h-4" />
+                          <span className="text-[10px] leading-none font-medium">Transfer</span>
+                        </button>
+
                         <div className="w-px h-8 bg-border" />
 
                         <button
@@ -470,6 +609,12 @@ export default function AdminProjectsPage(): React.ReactElement {
           </tbody>
         </table>
       </div>
+
+      <TransferDialog
+        project={transferTarget}
+        onClose={() => setTransferTarget(null)}
+        onDone={() => { setTransferTarget(null); void load(); }}
+      />
     </div>
   );
 }
