@@ -77,6 +77,7 @@ function harness(opts: {
 
   const domainRepo: jest.Mocked<IDomainRepository> = {
     findById: jest.fn(async (id) => store.get(id) ?? null),
+    listAll: jest.fn(async () => []),
     findByHostname: jest.fn(
       async (h) => [...store.values()].find((d) => d.hostname === h) ?? null,
     ),
