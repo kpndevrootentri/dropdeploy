@@ -8,6 +8,7 @@ import {
   ChevronDown, ChevronUp, Container, Cpu, MemoryStick, Clock, Hash, Network, Info,
 } from 'lucide-react';
 import { ProjectDetailsDrawer } from '@/components/admin/project-details-drawer';
+import { ProjectBulkBar, SelectAllCheckbox, RowCheckbox } from '@/components/admin/bulk-actions';
 
 interface Deployment {
   id: string;
@@ -153,6 +154,7 @@ export default function AdminProjectsPage(): React.ReactElement {
   const [acting, setActing] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [detailsFor, setDetailsFor] = useState<AdminProject | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const TRANSITIONAL = ['QUEUED', 'BUILDING'];
 
@@ -208,10 +210,19 @@ export default function AdminProjectsPage(): React.ReactElement {
 
   return (
     <div className="space-y-4">
+      <ProjectBulkBar
+        selected={[...selected]}
+        names={new Map(projects.map((p) => [p.id, p.name]))}
+        onClear={() => setSelected(new Set())}
+        onDone={() => void load()}
+      />
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="border-b text-left text-muted-foreground">
+              <th className="pb-2 pr-2 w-6">
+                <SelectAllCheckbox ids={projects.map((p) => p.id)} selected={selected} onChange={setSelected} />
+              </th>
               <th className="pb-2 w-6" />
               <th className="pb-2 pr-4">Name</th>
               <th className="pb-2 pr-4">Owner</th>
@@ -235,6 +246,9 @@ export default function AdminProjectsPage(): React.ReactElement {
               return (
                 <React.Fragment key={p.id}>
                   <tr className={`border-b ${isOpen ? 'bg-muted/30' : ''}`}>
+                    <td className="py-3 pr-2">
+                      <RowCheckbox id={p.id} label={p.name} selected={selected} onChange={setSelected} />
+                    </td>
                     {/* Expand toggle */}
                     <td className="py-3 pr-2">
                       <button
@@ -348,6 +362,7 @@ export default function AdminProjectsPage(): React.ReactElement {
                   {isOpen && (
                     <tr className="border-b bg-muted/20">
                       <td />
+                      <td />
                       <td colSpan={6} className="px-3 pb-3 pt-1">
                         <div className="flex items-center gap-2 mb-2">
                           <Container className="w-3.5 h-3.5 text-muted-foreground" />
@@ -364,7 +379,7 @@ export default function AdminProjectsPage(): React.ReactElement {
             })}
             {projects.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="py-8 text-center text-muted-foreground">
                   No projects found.
                 </td>
               </tr>

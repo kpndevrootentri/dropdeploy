@@ -13,6 +13,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Eye, EyeOff, KeyRound, Gauge, ShieldCheck, ShieldOff, Trash2, Loader2 } from 'lucide-react';
+import { UserBulkQuotaBar, SelectAllCheckbox, RowCheckbox } from '@/components/admin/bulk-actions';
 
 interface BulkResult {
   created: string[];
@@ -39,6 +40,7 @@ export default function AdminUsersPage(): React.ReactElement {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Create user modal
   const [open, setOpen] = useState(false);
@@ -281,6 +283,13 @@ export default function AdminUsersPage(): React.ReactElement {
         </div>
       </div>
 
+      <UserBulkQuotaBar
+        selected={[...selected]}
+        emails={new Map(users.map((u) => [u.id, u.email]))}
+        onClear={() => setSelected(new Set())}
+        onDone={load}
+      />
+
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
@@ -288,6 +297,9 @@ export default function AdminUsersPage(): React.ReactElement {
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b text-left text-muted-foreground">
+                <th className="pb-2 pr-2 w-6">
+                  <SelectAllCheckbox ids={users.map((u) => u.id)} selected={selected} onChange={setSelected} />
+                </th>
                 <th className="pb-2 pr-4">Email</th>
                 <th className="pb-2 pr-4">Role</th>
                 <th className="pb-2 pr-4">Projects</th>
@@ -304,6 +316,9 @@ export default function AdminUsersPage(): React.ReactElement {
                 const isContributor = u.role === 'CONTRIBUTOR';
                 return (
                   <tr key={u.id} className="border-b">
+                    <td className="py-3 pr-2">
+                      <RowCheckbox id={u.id} label={u.email} selected={selected} onChange={setSelected} />
+                    </td>
                     <td className="py-3 pr-4 font-medium">{u.email}</td>
                     <td className="py-3 pr-4">
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
@@ -388,7 +403,7 @@ export default function AdminUsersPage(): React.ReactElement {
               })}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="py-8 text-center text-muted-foreground">
                     No users found.
                   </td>
                 </tr>
