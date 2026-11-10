@@ -453,6 +453,8 @@ stateDiagram-v2
     DEPLOYED --> [*]
 ```
 
+A successful deploy clears `buildStep`; a failed one keeps the step it stopped at (the progress UI only renders while `BUILDING`, and admin analytics groups failures by it). A retry resets it.
+
 **Frontend indicators:**
 - Completed steps: checkmark
 - Active step: spinner

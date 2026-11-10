@@ -503,9 +503,9 @@ export class DeploymentService {
       if (createdTag) {
         await this.docker.removeImage(createdTag);
       }
+      // buildStep is kept: it records where the build stopped (admin analytics groups failures by it).
       await this.deploymentRepo.update(deploymentId, {
         status: 'FAILED',
-        buildStep: null,
         buildLog: logLines.join(''),
         completedAt: new Date(),
         ...(createdTag ? { imageTag: null } : {}),
