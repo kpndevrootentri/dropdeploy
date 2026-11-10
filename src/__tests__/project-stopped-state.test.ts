@@ -23,6 +23,7 @@ Object.assign(process.env, {
 const { AdminService } = require('@/services/admin/admin.service');
 const { DeploymentRepository } = require('@/repositories/deployment.repository');
 const { prisma } = require('@/lib/prisma');
+const { DockerService } = require('@/services/docker/docker.service');
 /* eslint-enable @typescript-eslint/no-require-imports */
 import type { IUserRepository } from '@/repositories/user.repository';
 import type { IProjectRepository } from '@/repositories/project.repository';
@@ -111,5 +112,22 @@ describe('Project.stoppedAt', () => {
     await new DeploymentRepository().activate('d2', 'p1', 'shop', { containerPort: 3005 });
     const ops = (prisma.$transaction as jest.Mock).mock.calls[0][0] as unknown[];
     expect(ops).toContainEqual({ projectUpdate: { where: { id: 'p1' }, data: { stoppedAt: null } } });
+  });
+});
+
+describe('DockerService.getContainerInfo', () => {
+  function withInspectError(err: object) {
+    const svc = new DockerService({ socketPath: '/nonexistent.sock' });
+    svc.docker = { getContainer: () => ({ inspect: async () => { throw err; } }) };
+    return svc;
+  }
+
+  it('returns null for a missing container', async () => {
+    await expect(withInspectError({ statusCode: 404 }).getContainerInfo('dropdeploy-shop')).resolves.toBeNull();
+  });
+
+  it('rethrows other Docker errors, e.g. a down daemon', async () => {
+    const down = Object.assign(new Error('connect ENOENT /var/run/docker.sock'), { code: 'ENOENT' });
+    await expect(withInspectError(down).getContainerInfo('dropdeploy-shop')).rejects.toBe(down);
   });
 });

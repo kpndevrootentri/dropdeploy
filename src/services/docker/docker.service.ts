@@ -457,6 +457,7 @@ export class DockerService {
 
   /**
    * Returns key container details for a given container name, or null if not found.
+   * Any other Docker error is thrown.
    */
   async getContainerInfo(containerName: string): Promise<{
     id: string;
@@ -492,8 +493,10 @@ export class DockerService {
         memoryLimitBytes: info.HostConfig?.Memory ?? 0,
         restartCount: info.RestartCount ?? 0,
       };
-    } catch {
-      return null;
+    } catch (err) {
+      // Only a missing container is "no container"; a down daemon must surface.
+      if (isMissingOrUnchanged(err)) return null;
+      throw err;
     }
   }
 
