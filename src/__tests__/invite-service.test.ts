@@ -12,6 +12,7 @@ function setup() {
       rows.splice(0, rows.length, ...rows.filter((r) => r.userId !== data.userId || r.usedAt));
       rows.push({ ...data, usedAt: null });
     },
+    isLive: async (tokenHash, now) => rows.some((r) => r.tokenHash === tokenHash && !r.usedAt && r.expiresAt > now),
     consume: async (tokenHash, now) => {
       const row = rows.find((r) => r.tokenHash === tokenHash && !r.usedAt && r.expiresAt > now);
       if (!row) return null;
@@ -75,6 +76,24 @@ describe('InviteService', () => {
       ),
     );
     expect(new Set(messages)).toEqual(new Set([INVALID_INVITE_MESSAGE]));
+  });
+
+  it('checks the link before hashing, so a junk token costs no bcrypt round', async () => {
+    const { service } = setup();
+    // The raw module, not an `import * as` namespace: the service reads `hash` through to it, and only it can be spied on.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const hash = jest.spyOn(require('bcryptjs') as { hash: () => Promise<string> }, 'hash');
+    await expect(service.accept('not-a-real-token-at-all', 'chosen-password')).rejects.toThrow(INVALID_INVITE_MESSAGE);
+    expect(hash).not.toHaveBeenCalled();
+    hash.mockRestore();
+  });
+
+  it('lets only one of two simultaneous accepts through', async () => {
+    const { service, users } = setup();
+    const token = await service.issue('u1');
+    const outcomes = await Promise.allSettled([service.accept(token, 'first-password'), service.accept(token, 'second-password')]);
+    expect(outcomes.map((o) => o.status).sort()).toEqual(['fulfilled', 'rejected']);
+    expect(users.setPassword).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a short password without spending the link', async () => {

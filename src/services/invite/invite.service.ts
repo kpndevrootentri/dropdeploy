@@ -47,10 +47,14 @@ export class InviteService {
    */
   async accept(token: string, password: string): Promise<void> {
     if (password.length < 8) throw new ValidationError('Password must be at least 8 characters');
-    // Hash first: once the token is consumed, only the password write is left to fail.
+    const tokenHash = hashInviteToken(token);
+    // A cheap lookup before the costly hash, so a junk token costs one query, not a bcrypt round.
+    if (!(await this.invites.isLive(tokenHash, new Date()))) throw new ValidationError(INVALID_INVITE_MESSAGE);
+    // Hash before consuming: once the token is spent, only the password write is left to fail.
     // ponytail: consume + setPassword are not one transaction; if the write fails the link is spent and the admin must send a new one.
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-    const userId = await this.invites.consume(hashInviteToken(token), new Date());
+    // consume, not isLive, enforces single use: of two simultaneous accepts only one gets a user back.
+    const userId = await this.invites.consume(tokenHash, new Date());
     if (!userId) throw new ValidationError(INVALID_INVITE_MESSAGE);
     await this.users.setPassword(userId, passwordHash, false);
   }
