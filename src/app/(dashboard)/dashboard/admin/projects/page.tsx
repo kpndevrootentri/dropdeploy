@@ -5,11 +5,14 @@ import { getProjectUrl } from '@/components/ui/framework-logo';
 import React from 'react';
 import {
   Square, RotateCcw, Rocket, Trash2, Loader2,
-  ChevronDown, ChevronUp, Container, Cpu, MemoryStick, Clock, Hash, Network, History, ArrowRightLeft,
+  ChevronDown, ChevronUp, Container, Cpu, MemoryStick, Clock, Hash, Network, History, ArrowRightLeft, ScrollText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
+import { cn, formatBytes } from '@/lib/utils';
 
 interface Deployment {
   id: string;
@@ -46,12 +49,6 @@ interface ContainerInfo {
   cpuLimit: number;
   memoryLimitBytes: number;
   restartCount: number;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '—';
-  const mb = bytes / (1024 * 1024);
-  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
 }
 
 function formatUptime(startedAt: string): string {
@@ -174,6 +171,15 @@ function formatDuration(startedAt: string | null, completedAt: string | null): s
   return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
 }
 
+/** Dark, scrollable pane for build and container logs. */
+function LogText({ className, children }: { className?: string; children: React.ReactNode }): React.ReactElement {
+  return (
+    <pre className={cn('mt-2 max-h-72 overflow-auto rounded-md border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs leading-relaxed text-zinc-300 whitespace-pre-wrap break-all', className)}>
+      {children}
+    </pre>
+  );
+}
+
 /** `latestStatus` is the table's polled status; a change means this list is out of date. */
 function DeploymentHistory({ projectId, latestStatus }: { projectId: string; latestStatus?: string }): React.ReactElement {
   const [deployments, setDeployments] = useState<DeploymentSummary[] | null>(null);
@@ -241,14 +247,61 @@ function DeploymentHistory({ projectId, latestStatus }: { projectId: string; lat
               {openLogId === d.id ? 'Hide log' : 'View log'}
             </button>
           </div>
-          {openLogId === d.id && (
-            <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs leading-relaxed text-zinc-300 whitespace-pre-wrap break-all">
-              {logs[d.id] ?? 'Loading…'}
-            </pre>
-          )}
+          {openLogId === d.id && <LogText>{logs[d.id] ?? 'Loading…'}</LogText>}
         </li>
       ))}
     </ul>
+  );
+}
+
+const LOG_TAILS = [100, 200, 500];
+
+function ContainerLogsDialog({ project, onClose }: { project: AdminProject | null; onClose: () => void }): React.ReactElement {
+  const [tail, setTail] = useState(200);
+  const [logs, setLogs] = useState<string | null>(null);
+  const [refreshes, setRefreshes] = useState(0);
+
+  useEffect(() => {
+    if (!project) return;
+    // A response for an earlier project or tail must not overwrite the current one.
+    let current = true;
+    setLogs(null);
+    fetch(`/api/admin/projects/${project.id}/container/logs?tail=${tail}`)
+      .then((r) => r.json())
+      .then((body) => {
+        if (!body.success) throw new Error(body?.error?.message ?? body?.error ?? 'Failed to load the logs');
+        if (current) setLogs(body.data.logs === null ? 'No container found for this project.' : body.data.logs || '(no output)');
+      })
+      .catch((err: Error) => { if (current) setLogs(err.message || 'Failed to load the logs'); });
+    return () => { current = false; };
+  }, [project, tail, refreshes]);
+
+  return (
+    <Dialog open={!!project} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>Container logs — dropdeploy-{project?.slug}</DialogTitle>
+          <DialogDescription>
+            Newest at the bottom. Logs can contain the owner&apos;s secrets; each view is recorded in the audit log.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex items-center gap-2 text-sm">
+          <Label htmlFor="container-log-tail">Last</Label>
+          <select
+            id="container-log-tail"
+            value={tail}
+            onChange={(e) => setTail(Number(e.target.value))}
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+          >
+            {LOG_TAILS.map((n) => <option key={n} value={n}>{n} lines</option>)}
+          </select>
+          <Button variant="outline" size="sm" className="ml-auto" disabled={logs === null} onClick={() => setRefreshes((n) => n + 1)}>
+            {logs === null ? <Loader2 className="animate-spin" /> : <RotateCcw />} Refresh
+          </Button>
+        </div>
+        <LogText className="max-h-[60vh]">{logs ?? 'Loading…'}</LogText>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -383,6 +436,7 @@ export default function AdminProjectsPage(): React.ReactElement {
   const [acting, setActing] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [transferTarget, setTransferTarget] = useState<AdminProject | null>(null);
+  const [logsTarget, setLogsTarget] = useState<AdminProject | null>(null);
 
   const TRANSITIONAL = ['QUEUED', 'BUILDING'];
 
@@ -582,6 +636,9 @@ export default function AdminProjectsPage(): React.ReactElement {
                           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                             Container Details — dropdeploy-{p.slug}
                           </span>
+                          <Button variant="outline" size="sm" className="ml-auto h-7 px-2 text-xs" onClick={() => setLogsTarget(p)}>
+                            <ScrollText /> Container logs
+                          </Button>
                         </div>
                         <ContainerDetails projectId={p.id} />
                         <div className="flex items-center gap-2 mt-3 mb-1">
@@ -613,6 +670,7 @@ export default function AdminProjectsPage(): React.ReactElement {
         onClose={() => setTransferTarget(null)}
         onDone={() => { setTransferTarget(null); void load(); }}
       />
+      <ContainerLogsDialog project={logsTarget} onClose={() => setLogsTarget(null)} />
     </div>
   );
 }

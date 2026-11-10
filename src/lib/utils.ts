@@ -21,6 +21,15 @@ export function slugify(value: string): string {
 }
 
 /**
+ * Formats a byte count as MB, or GB from 1024 MB up; 0 reads as "—".
+ */
+export function formatBytes(bytes: number): string {
+  if (bytes === 0) return '—';
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
+}
+
+/**
  * Sleep for a given number of milliseconds.
  */
 export function sleep(ms: number): Promise<void> {
