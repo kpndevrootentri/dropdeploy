@@ -12,7 +12,8 @@
 import type { Job } from 'bullmq';
 import { AppError } from '@/lib/errors';
 import { createLogger } from '@/lib/logger';
-import type { DockerOpRequest, DockerOpResult } from '@/lib/docker-ops';
+import { containerNameFor, type DockerOpRequest, type DockerOpResult } from '@/lib/docker-ops';
+import { PLATFORM_RESOURCE_SLUGS } from '@/lib/reserved-slugs';
 import { dockerService } from '@/services/docker';
 import { dockerTerminalService } from '@/services/docker/docker-terminal.service';
 import { removeProjectResources } from '@/services/project/project-cleanup';
@@ -22,6 +23,8 @@ const log = createLogger('docker-ops');
 /** Same alphabet project slugs are generated from (see project.repository). */
 const SLUG = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const CONTAINER_NAME = /^dropdeploy-[a-z0-9][a-z0-9-]{0,62}$/;
+/** Platform names that also match CONTAINER_NAME; a project created before they were reserved could own one. */
+const PLATFORM_NAMES = new Set(PLATFORM_RESOURCE_SLUGS.map(containerNameFor));
 
 class RejectedRequestError extends AppError {
   constructor(message: string) {
@@ -32,6 +35,9 @@ class RejectedRequestError extends AppError {
 function assertContainerName(name: unknown): string {
   if (typeof name !== 'string' || !CONTAINER_NAME.test(name)) {
     throw new RejectedRequestError('Not a project container');
+  }
+  if (PLATFORM_NAMES.has(name)) {
+    throw new RejectedRequestError(`${name} is a platform resource, not a project container`);
   }
   return name;
 }
@@ -59,6 +65,8 @@ async function run(request: DockerOpRequest): Promise<unknown> {
       if (typeof request.slug !== 'string' || !SLUG.test(request.slug)) {
         throw new RejectedRequestError('Invalid project slug');
       }
+      // Cleanup removes `dropdeploy-<slug>`, so a platform slug would take down the platform's container.
+      assertContainerName(containerNameFor(request.slug));
       await removeProjectResources(request.slug, dockerService);
       return null;
     default:

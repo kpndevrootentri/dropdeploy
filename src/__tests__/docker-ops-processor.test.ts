@@ -4,9 +4,11 @@ import type { DockerOpRequest } from '@/lib/docker-ops';
 const stopContainer = jest.fn(async () => undefined);
 const executeCommand = jest.fn(async () => ({ stdout: 'ok', stderr: '', exitCode: 0 }));
 const removeProjectResources = jest.fn(async () => undefined);
+const restartContainer = jest.fn(async () => undefined);
+const getContainerInfo = jest.fn(async () => null);
 
 jest.mock('@/services/docker', () => ({
-  dockerService: { stopContainer, restartContainer: jest.fn(), getContainerInfo: jest.fn() },
+  dockerService: { stopContainer, restartContainer, getContainerInfo },
 }));
 jest.mock('@/services/docker/docker-terminal.service', () => ({
   dockerTerminalService: { executeCommand, executeSlashCommand: jest.fn() },
@@ -35,6 +37,31 @@ describe('processDockerOp', () => {
       expect(stopContainer).not.toHaveBeenCalled();
     },
   );
+
+  // A project created before `caddy` was reserved owns the name of the edge container.
+  it.each([
+    { op: 'terminal', containerName: 'dropdeploy-caddy', command: 'ls' },
+    { op: 'containerInfo', containerName: 'dropdeploy-caddy' },
+    { op: 'stopContainer', containerName: 'dropdeploy-caddy' },
+    { op: 'restartContainer', containerName: 'dropdeploy-caddy' },
+    { op: 'stopContainer', containerName: 'dropdeploy-tenants' },
+    { op: 'removeProjectResources', slug: 'caddy' },
+    { op: 'removeProjectResources', slug: 'tenants' },
+  ])('refuses $op on a platform resource ($containerName$slug)', async (request) => {
+    await expect(processDockerOp(job(request)))
+      .resolves.toMatchObject({ ok: false, code: 'INVALID_DOCKER_OPERATION', status: 400 });
+    expect(stopContainer).not.toHaveBeenCalled();
+    expect(restartContainer).not.toHaveBeenCalled();
+    expect(getContainerInfo).not.toHaveBeenCalled();
+    expect(executeCommand).not.toHaveBeenCalled();
+    expect(removeProjectResources).not.toHaveBeenCalled();
+  });
+
+  it('still cleans up a normal project', async () => {
+    await expect(processDockerOp(job({ op: 'removeProjectResources', slug: 'shop' })))
+      .resolves.toEqual({ ok: true, value: null });
+    expect(removeProjectResources).toHaveBeenCalledWith('shop', expect.anything());
+  });
 
   it('refuses unknown operations', async () => {
     await expect(processDockerOp(job({ op: 'createContainer', image: 'alpine', privileged: true })))
