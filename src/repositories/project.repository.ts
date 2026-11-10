@@ -17,7 +17,7 @@ export interface IProjectRepository {
   setWebhookConfig(id: string, data: { githubHookId: string; webhookSecretEnc: string; webhookSecretIv: string; webhookSecretTag: string }): Promise<Project>;
   /** Disable auto-deploy and clear all webhook fields. */
   clearWebhookConfig(id: string): Promise<Project>;
-  /** All auto-deploy-enabled GitHub projects on a given branch (webhook fan-out). */
+  /** All auto-deploy-enabled GitHub projects on a given branch whose owner is not suspended (webhook fan-out). */
   findAutoDeployByBranch(branch: string): Promise<Project[]>;
 }
 
@@ -116,7 +116,8 @@ export class ProjectRepository implements IProjectRepository {
 
   async findAutoDeployByBranch(branch: string): Promise<Project[]> {
     return prisma.project.findMany({
-      where: { autoDeploy: true, source: 'GITHUB', branch },
+      // A suspended owner must not be able to rebuild their site with a git push.
+      where: { autoDeploy: true, source: 'GITHUB', branch, user: { suspendedAt: null } },
     });
   }
 
