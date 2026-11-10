@@ -44,6 +44,7 @@ describe('AdminToolsService cleanup', () => {
       docker as unknown as IDockerOps,
       proxyHits,
       { get: async () => ({ ...DEFAULT_PLATFORM_SETTINGS, proxyHitRetentionDays: opts.retention ?? 30 }) },
+      { create: jest.fn() },
     );
     return { service, docker, proxyHits };
   };

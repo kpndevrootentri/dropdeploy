@@ -15,7 +15,7 @@ export async function DELETE(
     const session = await getSession(req);
     requireContributor(session);
     const { projectId, accessId } = await params;
-    await adminToolsService.revokeAccess(projectId, accessId);
+    await adminToolsService.revokeAccess(projectId, accessId, session.userId);
     return NextResponse.json({ success: true });
   } catch (error) {
     return handleApiError(error);

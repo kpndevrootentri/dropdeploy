@@ -9,12 +9,16 @@ import {
 import { domainRepository, type IDomainRepository } from '@/repositories/domain.repository';
 import { projectAccessService, type ProjectAccessService } from '@/services/project-access/project-access.service';
 import { proxyHitRepository, type IProxyHitRepository } from '@/repositories/proxy-hit.repository';
+import { auditLogRepository, type IAuditLogRepository } from '@/repositories/audit-log.repository';
 import { platformSettingsService, type PlatformSettingsService } from '@/services/platform-settings/platform-settings.service';
 import { dockerOps, containerNameFor, type IDockerOps, type LabelledContainer, type DanglingImage } from '@/lib/docker-ops';
 import type { ContainerUsage } from '@/lib/container-usage';
 import { findOrphanContainers } from '@/lib/orphan-containers';
 import { MIN_PROXY_HIT_RETENTION_DAYS } from '@/validators/platform-settings.validator';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('admin-tools-service');
 
 /** What the admin project drawer shows. Env var values never leave the server. */
 export interface AdminProjectDetails {
@@ -69,6 +73,7 @@ export class AdminToolsService {
     private readonly docker: IDockerOps,
     private readonly proxyHits: IProxyHitRepository,
     private readonly settings: Pick<PlatformSettingsService, 'get'>,
+    private readonly auditLog: Pick<IAuditLogRepository, 'create'>,
   ) {}
 
   async getProjectDetails(projectId: string): Promise<AdminProjectDetails> {
@@ -94,11 +99,15 @@ export class AdminToolsService {
     };
   }
 
-  /** Revokes a collaborator through the owner's own path, acting as the owner. */
-  async revokeAccess(projectId: string, accessId: string): Promise<void> {
+  /** Revokes a collaborator through the owner's own path, acting as the owner, and records the admin who did it. */
+  async revokeAccess(projectId: string, accessId: string, actorId: string): Promise<void> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
     await this.accessService.revoke(projectId, project.userId, accessId);
+    // Same rule as env var audits: a failed audit write never undoes the revoke.
+    await this.auditLog
+      .create({ action: 'ACCESS_ADMIN_REVOKED', targetKey: accessId, userId: actorId, projectId })
+      .catch((err: unknown) => log.error('Failed to write audit log', { action: 'ACCESS_ADMIN_REVOKED', error: String(err) }));
   }
 
   // ── Cleanup: every action is previewed first, and a run re-checks it ─────
@@ -171,4 +180,5 @@ export const adminToolsService = new AdminToolsService(
   dockerOps,
   proxyHitRepository,
   platformSettingsService,
+  auditLogRepository,
 );

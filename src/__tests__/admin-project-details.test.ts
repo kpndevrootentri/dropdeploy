@@ -36,6 +36,7 @@ describe('AdminToolsService.getProjectDetails', () => {
       { containerStats } as unknown as IDockerOps,
       {} as never,
       {} as never,
+      { create: jest.fn() },
     );
 
   it('returns env var names only, never values', async () => {
@@ -48,5 +49,45 @@ describe('AdminToolsService.getProjectDetails', () => {
     const details = await make(async () => { throw new Error('The deployment worker did not respond.'); }).getProjectDetails('p1');
     expect(details.usage).toBeNull();
     expect(details.usageError).toMatch('did not respond');
+  });
+});
+
+describe('AdminToolsService.revokeAccess', () => {
+  const make = (create: jest.Mock) => {
+    const revoke = jest.fn(async () => undefined);
+    const service = new AdminToolsService(
+      { findById: async () => ({ id: 'p1', slug: 'shop', userId: 'owner' }) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { revoke },
+      {} as IDockerOps,
+      {} as never,
+      {} as never,
+      { create },
+    );
+    return { service, revoke };
+  };
+
+  it('revokes as the owner and audits the acting admin', async () => {
+    const create = jest.fn(async () => ({}) as never);
+    const { service, revoke } = make(create);
+    await service.revokeAccess('p1', 'acc1', 'admin1');
+    expect(revoke).toHaveBeenCalledWith('p1', 'owner', 'acc1');
+    expect(create).toHaveBeenCalledWith({ action: 'ACCESS_ADMIN_REVOKED', targetKey: 'acc1', userId: 'admin1', projectId: 'p1' });
+  });
+
+  it('still succeeds when the audit write fails', async () => {
+    const { service, revoke } = make(jest.fn(async () => { throw new Error('db down'); }));
+    await expect(service.revokeAccess('p1', 'acc1', 'admin1')).resolves.toBeUndefined();
+    expect(revoke).toHaveBeenCalled();
+  });
+
+  it('writes no audit entry when the revoke fails', async () => {
+    const create = jest.fn();
+    const { service, revoke } = make(create);
+    revoke.mockRejectedValueOnce(new Error('Access entry not found'));
+    await expect(service.revokeAccess('p1', 'acc1', 'admin1')).rejects.toThrow('Access entry not found');
+    expect(create).not.toHaveBeenCalled();
   });
 });
