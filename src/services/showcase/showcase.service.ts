@@ -8,7 +8,7 @@ import {
   type AdminShowcaseRow,
 } from '@/repositories/showcase.repository';
 import { projectRepository, type IProjectRepository } from '@/repositories/project.repository';
-import { NotFoundError, ValidationError } from '@/lib/errors';
+import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors';
 import type { ProjectShowcase } from '@prisma/client';
 
 export const SHOWCASE_TAGS = ['api', 'dashboard', 'bot', 'data', 'utility', 'web', 'ml', 'cli', 'other'] as const;
@@ -90,12 +90,11 @@ export class ShowcaseService {
    * the owner chose not to. The owner can still edit and republish.
    */
   async adminSetFlags(projectId: string, flags: { isPublished?: boolean; featured?: boolean }): Promise<ProjectShowcase> {
-    const showcase = await this.showcaseRepo.findByProjectId(projectId);
-    if (!showcase) throw new NotFoundError('Showcase');
-    if (flags.isPublished && !showcase.isPublished && !showcase.publishedAt) {
-      throw new ValidationError('Only the owner can publish a draft');
-    }
-    return this.showcaseRepo.setFlags(projectId, flags);
+    const updated = await this.showcaseRepo.setFlags(projectId, flags);
+    if (updated) return updated;
+    // Nothing matched: the entry is gone, or it is (now) a draft.
+    if (!(await this.showcaseRepo.findByProjectId(projectId))) throw new NotFoundError('Showcase');
+    throw new ConflictError('Only the owner can publish a draft');
   }
 
   async getPublished(opts?: FindPublishedOptions): Promise<PagedShowcase> {

@@ -43,8 +43,12 @@ export interface IShowcaseRepository {
   findByProjectId(projectId: string): Promise<ProjectShowcase | null>;
   /** Every entry, published or not, for the admin panel. */
   listAll(): Promise<AdminShowcaseRow[]>;
-  /** Admin moderation: publish state and/or featured flag only. */
-  setFlags(projectId: string, flags: { isPublished?: boolean; featured?: boolean }): Promise<ProjectShowcase>;
+  /**
+   * Admin moderation: publish state and/or featured flag only. Publishing only
+   * matches an entry that was published before (`publishedAt` set); null when
+   * nothing matched.
+   */
+  setFlags(projectId: string, flags: { isPublished?: boolean; featured?: boolean }): Promise<ProjectShowcase | null>;
   findBySlug(slug: string): Promise<ShowcaseWithProject | null>;
   findPublished(opts?: FindPublishedOptions): Promise<PagedShowcase>;
   upsert(projectId: string, data: UpsertShowcaseDto): Promise<ProjectShowcase>;
@@ -72,9 +76,17 @@ export class ShowcaseRepository implements IShowcaseRepository {
     });
   }
 
-  /** Leaves `publishedAt` alone, so an admin unpublish can be undone with the original date. */
-  async setFlags(projectId: string, flags: { isPublished?: boolean; featured?: boolean }): Promise<ProjectShowcase> {
-    return prisma.projectShowcase.update({ where: { projectId }, data: flags });
+  /**
+   * Leaves `publishedAt` alone, so an admin unpublish can be undone with the
+   * original date. The draft check sits in the same statement as the write, so
+   * it cannot race an owner's unpublish (which clears `publishedAt`).
+   */
+  async setFlags(projectId: string, flags: { isPublished?: boolean; featured?: boolean }): Promise<ProjectShowcase | null> {
+    const { count } = await prisma.projectShowcase.updateMany({
+      where: { projectId, ...(flags.isPublished ? { publishedAt: { not: null } } : {}) },
+      data: flags,
+    });
+    return count ? prisma.projectShowcase.findUnique({ where: { projectId } }) : null;
   }
 
   async findBySlug(slug: string): Promise<ShowcaseWithProject | null> {
