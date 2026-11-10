@@ -3,12 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
+import type { WorkerHeartbeat } from '@/lib/worker-health';
 
 const REFRESH_MS = 20_000;
-
-type Worker =
-  | { alive: false }
-  | { alive: true; pid: number; startedAt: string; timestamp: string; secondsAgo: number };
 
 interface StuckDeployment {
   id: string;
@@ -20,7 +17,7 @@ interface StuckDeployment {
 }
 
 interface SystemStatus {
-  worker: Worker;
+  worker: WorkerHeartbeat;
   queue: Record<'waiting' | 'active' | 'delayed' | 'failed' | 'completed', number> | null;
   stuck: StuckDeployment[];
   stuckAfterMinutes: number;

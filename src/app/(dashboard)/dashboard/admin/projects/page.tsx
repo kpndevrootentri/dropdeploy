@@ -488,12 +488,7 @@ export default function AdminProjectsPage(): React.ReactElement {
                     </td>
                     <td className="py-3 pr-4">
                       {latestDeployment ? (
-                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                          latestDeployment.status === 'DEPLOYED' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
-                          latestDeployment.status === 'FAILED'   ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
-                          latestDeployment.status === 'BUILDING' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
-                          'bg-muted text-muted-foreground'
-                        }`}>
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${DEPLOY_STATUS_CLASS[latestDeployment.status] ?? 'bg-muted text-muted-foreground'}`}>
                           {latestDeployment.status}
                         </span>
                       ) : (
