@@ -38,6 +38,7 @@ export function planRedeployAll(
   for (const project of projects) {
     if (filters.type && project.type !== filters.type) continue;
     if (filters.source && project.source !== filters.source) continue;
+    // ponytail: a site an admin stopped is rebuilt and started again; skip `stoppedAt` projects once #21 adds that column.
     const reason =
       // The worker marks a deploy with no repository FAILED; an upload is redeployed by uploading again.
       project.source === 'UPLOAD' ? 'Upload — nothing to pull; the owner uploads a new version'
