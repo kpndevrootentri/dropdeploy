@@ -630,11 +630,12 @@ flowchart LR
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/admin/users` | List all users |
-| `POST` | `/api/admin/users` | Invite a user; returns a one-time invite link path (7 days, single use) |
+| `POST` | `/api/admin/users` | Invite a user; returns a one-time invite link path (7 days, single use; any password change revokes unused links) |
 | `POST` | `/api/admin/users/bulk` | Invite many users, each with their own one-time link |
 | `GET` | `/api/admin/users/:userId` | Get user details |
 | `PATCH` | `/api/admin/users/:userId/role` | Change user role |
 | `PATCH` | `/api/admin/users/:userId/reset-password` | Reset user password (`{ newPassword }`, or `{ generate: true }` to get one back once) |
+| `POST` | `/api/admin/users/:userId/invite` | New one-time invite link for a user who has not chosen a password yet; earlier unused links stop working |
 | `DELETE` | `/api/admin/users/:userId` | Delete user |
 | `POST` | `/api/admin/users/:userId/impersonate` | View the dashboard as a non-admin user: read-only, 30 minutes, recorded as a `PlatformEvent` |
 | `GET` | `/api/admin/projects` | List all projects across all users |

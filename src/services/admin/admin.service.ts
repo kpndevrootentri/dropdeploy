@@ -9,7 +9,7 @@ import { projectRepository } from '@/repositories/project.repository';
 import { dockerOps, containerNameFor, type IDockerOps, type ContainerInfo } from '@/lib/docker-ops';
 import { deploymentService } from '@/services/deployment';
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/errors';
-import { inviteService, type InviteService } from '@/services/invite';
+import { inviteService, newInviteToken, type InviteService } from '@/services/invite';
 import { getConfig } from '@/lib/config';
 import { planRedeployAll, type RedeployCandidate, type RedeployFilters } from './redeploy-plan';
 
@@ -167,13 +167,15 @@ export class AdminService {
   async inviteUser(email: string): Promise<{ user: PublicUser; inviteToken: string }> {
     const existing = await this.userRepo.findByEmail(email);
     if (existing) throw new ConflictError('Email already registered');
+    const { token, tokenHash, expiresAt } = newInviteToken();
     const user = await this.userRepo.create({
       email,
       passwordHash: await unusablePasswordHash(),
       role: 'USER',
       mustResetPassword: true,
+      invite: { tokenHash, expiresAt },
     });
-    return { user: toPublicUser(user), inviteToken: await this.invites.issue(user.id) };
+    return { user: toPublicUser(user), inviteToken: token };
   }
 
   /**
@@ -185,13 +187,26 @@ export class AdminService {
     const isEmail = (e: string): boolean => z.string().email().safeParse(e).success;
     const valid = emails.filter(isEmail);
     const invalid = emails.filter((e) => !isEmail(e));
-    const users = valid.length ? await this.userRepo.createMany(valid, await unusablePasswordHash()) : [];
-    const created = [];
-    for (const user of users) {
-      created.push({ email: user.email, inviteToken: await this.invites.issue(user.id) });
-    }
+    // Tokens for emails that turn out to be registered are simply never stored.
+    const tokens = new Map(valid.map((email) => [email, newInviteToken()]));
+    const users = valid.length
+      ? await this.userRepo.createMany([...tokens].map(([email, t]) => ({ email, tokenHash: t.tokenHash, expiresAt: t.expiresAt })), await unusablePasswordHash())
+      : [];
+    const created = users.map((u) => ({ email: u.email, inviteToken: tokens.get(u.email)!.token }));
     const createdSet = new Set(users.map((u) => u.email));
     return { created, skipped: valid.filter((e) => !createdSet.has(e)), invalid };
+  }
+
+  /**
+   * A fresh invite link for a user who has not chosen a password yet, e.g.
+   * when the first one expired or went to the wrong person. Earlier unused
+   * links stop working.
+   */
+  async reissueInvite(userId: string): Promise<string> {
+    const user = await this.userRepo.findById(userId);
+    if (!user) throw new NotFoundError('User');
+    if (!user.mustResetPassword) throw new ConflictError('This user has already chosen a password');
+    return this.invites.issue(userId);
   }
 
   async listAllProjects(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date }[] })[]> {

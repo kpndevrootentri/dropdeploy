@@ -1,7 +1,8 @@
 import { prisma } from '@/lib/prisma';
 
 export interface IInviteRepository {
-  create(data: { userId: string; tokenHash: string; expiresAt: Date }): Promise<void>;
+  /** Deletes the user's unused invites and stores this one, atomically, so only the newest link works. */
+  replaceUnused(data: { userId: string; tokenHash: string; expiresAt: Date }): Promise<void>;
   /**
    * Marks an unused, unexpired invite as used and returns its user, or null.
    * One conditional update, so two simultaneous accepts cannot both succeed.
@@ -10,8 +11,11 @@ export interface IInviteRepository {
 }
 
 export class InviteRepository implements IInviteRepository {
-  async create(data: { userId: string; tokenHash: string; expiresAt: Date }): Promise<void> {
-    await prisma.inviteToken.create({ data });
+  async replaceUnused(data: { userId: string; tokenHash: string; expiresAt: Date }): Promise<void> {
+    await prisma.$transaction([
+      prisma.inviteToken.deleteMany({ where: { userId: data.userId, usedAt: null } }),
+      prisma.inviteToken.create({ data }),
+    ]);
   }
 
   async consume(tokenHash: string, now: Date): Promise<string | null> {

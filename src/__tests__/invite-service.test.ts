@@ -8,7 +8,10 @@ interface Row { userId: string; tokenHash: string; expiresAt: Date; usedAt: Date
 function setup() {
   const rows: Row[] = [];
   const invites: IInviteRepository = {
-    create: async (data) => { rows.push({ ...data, usedAt: null }); },
+    replaceUnused: async (data) => {
+      rows.splice(0, rows.length, ...rows.filter((r) => r.userId !== data.userId || r.usedAt));
+      rows.push({ ...data, usedAt: null });
+    },
     consume: async (tokenHash, now) => {
       const row = rows.find((r) => r.tokenHash === tokenHash && !r.usedAt && r.expiresAt > now);
       if (!row) return null;
@@ -39,6 +42,15 @@ describe('InviteService', () => {
     expect(users.setPassword).toHaveBeenCalledWith('u1', expect.stringMatching(/^\$2[aby]\$/), false);
 
     await expect(service.accept(token, 'another-password')).rejects.toThrow(INVALID_INVITE_MESSAGE);
+    expect(users.setPassword).toHaveBeenCalledTimes(1);
+  });
+
+  it('a new link for the same user replaces the unused one', async () => {
+    const { service, users } = setup();
+    const first = await service.issue('u1');
+    const second = await service.issue('u1');
+    await expect(service.accept(first, 'chosen-password')).rejects.toThrow(INVALID_INVITE_MESSAGE);
+    await service.accept(second, 'chosen-password');
     expect(users.setPassword).toHaveBeenCalledTimes(1);
   });
 

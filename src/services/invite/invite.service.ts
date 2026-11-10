@@ -14,6 +14,12 @@ export function hashInviteToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+/** A fresh token: the raw value is shown to the admin once; only its hash and expiry are stored. */
+export function newInviteToken(): { token: string; tokenHash: string; expiresAt: Date } {
+  const token = randomBytes(32).toString('base64url');
+  return { token, tokenHash: hashInviteToken(token), expiresAt: new Date(Date.now() + INVITE_TTL_MS) };
+}
+
 /** The page a new user opens to choose their password. */
 export function invitePath(token: string): string {
   return `/invite/${token}`;
@@ -25,14 +31,13 @@ export class InviteService {
     private readonly users: IUserRepository,
   ) {}
 
-  /** Returns the raw token. Only its hash is stored, so it cannot be shown again. */
+  /**
+   * A new link for an existing user; any earlier unused link stops working.
+   * Returns the raw token. Only its hash is stored, so it cannot be shown again.
+   */
   async issue(userId: string): Promise<string> {
-    const token = randomBytes(32).toString('base64url');
-    await this.invites.create({
-      userId,
-      tokenHash: hashInviteToken(token),
-      expiresAt: new Date(Date.now() + INVITE_TTL_MS),
-    });
+    const { token, tokenHash, expiresAt } = newInviteToken();
+    await this.invites.replaceUnused({ userId, tokenHash, expiresAt });
     return token;
   }
 

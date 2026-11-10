@@ -1,13 +1,24 @@
 import type { User, UserRole } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
+/** An invite link's stored half: the token's hash and when it stops working. */
+export interface NewInvite {
+  tokenHash: string;
+  expiresAt: Date;
+}
+
 export interface IUserRepository {
   findById(id: string): Promise<User | null>;
   findByEmail(email: string): Promise<User | null>;
   findAll(): Promise<User[]>;
-  create(data: { email: string; passwordHash: string; role?: UserRole; mustResetPassword?: boolean }): Promise<User>;
-  /** Creates USER accounts that must reset their password; skips emails already registered. Returns the accounts created. */
-  createMany(emails: string[], passwordHash: string): Promise<{ id: string; email: string }[]>;
+  /** With `invite`, the user and their invite are written together or not at all. */
+  create(data: { email: string; passwordHash: string; role?: UserRole; mustResetPassword?: boolean; invite?: NewInvite }): Promise<User>;
+  /**
+   * Creates USER accounts that must reset their password, each with its
+   * invite, in one transaction; skips emails already registered. Returns the
+   * accounts created.
+   */
+  createMany(invited: (NewInvite & { email: string })[], passwordHash: string): Promise<{ id: string; email: string }[]>;
   updateRole(id: string, role: UserRole): Promise<User>;
   updateQuota(id: string, quota: number): Promise<User>;
   /** Custom domains the user may claim across all their projects. */
@@ -36,22 +47,31 @@ export class UserRepository implements IUserRepository {
     return prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
   }
 
-  async create(data: { email: string; passwordHash: string; role?: UserRole; mustResetPassword?: boolean }): Promise<User> {
+  async create(data: { email: string; passwordHash: string; role?: UserRole; mustResetPassword?: boolean; invite?: NewInvite }): Promise<User> {
+    // A nested create runs in one transaction.
     return prisma.user.create({
       data: {
         email: data.email.toLowerCase(),
         passwordHash: data.passwordHash,
         ...(data.role ? { role: data.role } : {}),
         ...(data.mustResetPassword !== undefined ? { mustResetPassword: data.mustResetPassword } : {}),
+        ...(data.invite ? { inviteTokens: { create: data.invite } } : {}),
       },
     });
   }
 
-  async createMany(emails: string[], passwordHash: string): Promise<{ id: string; email: string }[]> {
-    return prisma.user.createManyAndReturn({
-      data: emails.map((email) => ({ email: email.toLowerCase(), passwordHash, mustResetPassword: true })),
-      skipDuplicates: true,
-      select: { id: true, email: true },
+  async createMany(invited: (NewInvite & { email: string })[], passwordHash: string): Promise<{ id: string; email: string }[]> {
+    const invites = new Map(invited.map((i) => [i.email.toLowerCase(), i]));
+    return prisma.$transaction(async (tx) => {
+      const users = await tx.user.createManyAndReturn({
+        data: [...invites.keys()].map((email) => ({ email, passwordHash, mustResetPassword: true })),
+        skipDuplicates: true,
+        select: { id: true, email: true },
+      });
+      await tx.inviteToken.createMany({
+        data: users.map((u) => ({ userId: u.id, tokenHash: invites.get(u.email)!.tokenHash, expiresAt: invites.get(u.email)!.expiresAt })),
+      });
+      return users;
     });
   }
 

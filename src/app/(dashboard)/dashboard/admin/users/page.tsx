@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Eye, EyeOff, KeyRound, Gauge, ShieldCheck, ShieldOff, Trash2, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Gauge, ShieldCheck, ShieldOff, Trash2, Loader2, MailPlus } from 'lucide-react';
 import { CopyValue } from '@/components/features/domains-panel';
 
 interface BulkResult {
@@ -38,6 +38,8 @@ interface AdminUser {
   role: string;
   projectQuota: number;
   domainQuota: number;
+  /** True until they accept their invite (or replace a password an admin set). */
+  mustResetPassword: boolean;
   createdAt: string;
   _count: { projects: number; customDomains: number };
 }
@@ -191,6 +193,28 @@ export default function AdminUsersPage(): React.ReactElement {
         return;
       }
       load();
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setActing(null);
+    }
+  };
+
+  /** Replaces the user's invite link and shows the new one once, in the create dialog. */
+  const handleNewInviteLink = async (user: AdminUser): Promise<void> => {
+    if (!confirm(`Create a new invite link for ${user.email}? Any earlier unused link stops working.`)) return;
+    setActing(`${user.id}:invite`);
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/invite`, { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(body?.error?.message ?? body?.error ?? 'Failed to create an invite link');
+        return;
+      }
+      setInviteEmail(user.email);
+      setInviteError(null);
+      setInviteLink(inviteUrl(body.data.invitePath));
+      setOpen(true);
     } catch {
       toast.error('Network error');
     } finally {
@@ -411,6 +435,19 @@ export default function AdminUsersPage(): React.ReactElement {
                           <KeyRound className="w-4 h-4" />
                           <span className="text-[10px] leading-none font-medium">Reset PW</span>
                         </button>
+
+                        {/* New invite link: only while they have not chosen their own password */}
+                        {u.mustResetPassword && (
+                          <button
+                            title="New invite link — replaces any earlier unused link"
+                            disabled={!!isActing}
+                            onClick={() => void handleNewInviteLink(u)}
+                            className="inline-flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-md border border-transparent text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {acting === `${u.id}:invite` ? <Loader2 className="w-4 h-4 animate-spin" /> : <MailPlus className="w-4 h-4" />}
+                            <span className="text-[10px] leading-none font-medium">Invite link</span>
+                          </button>
+                        )}
 
                         {/* View as user */}
                         <button
@@ -704,13 +741,13 @@ export default function AdminUsersPage(): React.ReactElement {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Create User</DialogTitle>
+            <DialogTitle>{inviteLink ? 'Invite link' : 'Create User'}</DialogTitle>
           </DialogHeader>
           {inviteLink ? (
             <div className="space-y-2">
               <CopyValue label={`Invite link for ${inviteEmail}`} value={inviteLink} emphasis />
               <p className="text-xs text-muted-foreground">
-                Shown once, valid for 7 days, works once. Send it to them; they choose their own password.
+                Shown once, valid for 7 days, works once, and replaces any earlier link. Send it to them; they choose their own password.
               </p>
             </div>
           ) : (
