@@ -14,6 +14,10 @@ const RESERVED_SLUGS = new Set([
   'mail', 'email', 'smtp', 'imap', 'pop', 'mx', 'ftp', 'ns', 'ns1', 'ns2', 'dns',
   'cdn', 'static', 'assets', 'status', 'health', 'docs', 'help', 'support', 'blog', 'explore',
   'localhost', 'staging', 'dev', 'test',
+  // A tenant container is `dropdeploy-<slug>` (containerNameFor), so these would take the
+  // name of the platform's own Docker resources: `caddy` → the edge container
+  // `dropdeploy-caddy` (infra/caddy), `tenants` → the tenant network `dropdeploy-tenants`.
+  'caddy', 'tenants',
 ]);
 
 export function isReservedSlug(slug: string): boolean {
