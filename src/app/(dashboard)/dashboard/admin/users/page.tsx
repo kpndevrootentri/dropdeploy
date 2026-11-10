@@ -14,7 +14,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Eye, EyeOff, KeyRound, Gauge, ShieldCheck, ShieldOff, Trash2, Loader2, MailPlus } from 'lucide-react';
-import { CopyValue } from '@/components/features/domains-panel';
+import { CopyValue } from '@/components/ui/copy-value';
 
 interface BulkResult {
   created: { email: string; invitePath: string }[];
