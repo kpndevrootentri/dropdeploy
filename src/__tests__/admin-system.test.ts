@@ -11,6 +11,8 @@ jest.mock('@/lib/require-contributor', () => ({ requireContributor: () => undefi
 jest.mock('@/lib/config', () => ({ getConfig: () => ({ BULLMQ_JOB_TIMEOUT_MS: 15 * 60_000 }) }));
 const mockFindMany = jest.fn(async () => []);
 jest.mock('@/lib/prisma', () => ({ prisma: { deployment: { findMany: mockFindMany } } }));
+const mockDiskUsage = jest.fn(async (): Promise<unknown> => null);
+jest.mock('@/lib/docker-ops', () => ({ dockerOps: { diskUsage: mockDiskUsage } }));
 
 import { NextRequest } from 'next/server';
 import { getWorkerHeartbeat } from '@/lib/worker-health';
@@ -47,5 +49,20 @@ describe('system health while Redis is unreachable', () => {
         ],
       },
     }));
+  });
+});
+
+describe('Docker disk usage on the System tab', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('answers without disk usage instead of hanging when Docker is slow', async () => {
+    mockDiskUsage.mockReturnValueOnce(new Promise(() => {}));
+    const res = GET(new NextRequest('http://localhost/api/admin/system'));
+    await jest.advanceTimersByTimeAsync(5_000);
+    const body = await (await res).json();
+    expect(body.success).toBe(true);
+    expect(body.data.disk).toBeNull();
+    expect(body.data.stuck).toEqual([]);
   });
 });

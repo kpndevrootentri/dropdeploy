@@ -280,6 +280,18 @@ export class AdminService {
     return this.docker.containerInfo(containerNameFor(project.slug));
   }
 
+  /**
+   * The live container's recent output. It can hold the tenant's secrets, so
+   * every read is audited and the text itself is never logged.
+   */
+  async getProjectContainerLogs(projectId: string, tail: number, actorId: string): Promise<string | null> {
+    const project = await this.projectRepo.findById(projectId);
+    if (!project) throw new NotFoundError('Project');
+    const logs = await this.docker.containerLogs(containerNameFor(project.slug), tail);
+    await this.record(actorId, 'PROJECT_CONTAINER_LOGS_VIEWED', projectTarget(project), { slug: project.slug, tail });
+    return logs;
+  }
+
   async stopContainer(projectId: string, actorId: string): Promise<void> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
