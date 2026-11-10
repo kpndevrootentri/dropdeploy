@@ -5,6 +5,7 @@ import type { IUserRepository } from '@/repositories/user.repository';
 import { userRepository } from '@/repositories/user.repository';
 import type { IProjectRepository } from '@/repositories/project.repository';
 import { projectRepository } from '@/repositories/project.repository';
+import { deploymentRepository, type IDeploymentRepository } from '@/repositories/deployment.repository';
 import { dockerOps, containerNameFor, type IDockerOps, type ContainerInfo } from '@/lib/docker-ops';
 import { deploymentService } from '@/services/deployment';
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/errors';
@@ -50,7 +51,25 @@ export class AdminService {
     private readonly userRepo: IUserRepository,
     private readonly projectRepo: IProjectRepository,
     private readonly docker: IDockerOps,
+    private readonly deploymentRepo: IDeploymentRepository,
   ) {}
+
+  /**
+   * Deleting mid-deploy would orphan the deploy's candidate container: cleanup
+   * removes only `dropdeploy-<slug>`, and the cascade deletes the row the worker
+   * then fails to activate, so its error path never removes the candidate.
+   */
+  private async assertNoDeployInFlight(projects: Pick<Project, 'id' | 'name'>[]): Promise<void> {
+    for (const project of projects) {
+      const inFlight = (await this.deploymentRepo.findBuildingDeployment(project.id))
+        ?? (await this.deploymentRepo.findQueuedDeploymentForProject(project.id));
+      if (inFlight) {
+        throw new ConflictError(
+          `"${project.name}" has a deploy in progress. Wait for it to finish, or cancel it if it is still queued, then try again.`,
+        );
+      }
+    }
+  }
 
   /**
    * Users for the admin table, with both quotas and both usage counts.
@@ -129,7 +148,9 @@ export class AdminService {
     }
 
     // The DB cascade drops the project rows but not their containers, images or files.
-    for (const project of await this.projectRepo.findByUserId(userId)) {
+    const projects = await this.projectRepo.findByUserId(userId);
+    await this.assertNoDeployInFlight(projects);
+    for (const project of projects) {
       await this.docker.removeProjectResources(project.slug);
     }
     await this.userRepo.delete(userId);
@@ -172,6 +193,7 @@ export class AdminService {
   async deleteProject(projectId: string): Promise<void> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
+    await this.assertNoDeployInFlight([project]);
     await this.docker.removeProjectResources(project.slug);
     await this.projectRepo.delete(projectId);
   }
@@ -227,4 +249,4 @@ export class AdminService {
   }
 }
 
-export const adminService = new AdminService(userRepository, projectRepository, dockerOps);
+export const adminService = new AdminService(userRepository, projectRepository, dockerOps, deploymentRepository);
