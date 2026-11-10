@@ -36,7 +36,10 @@ describe('AdminToolsService cleanup', () => {
     const proxyHits = { countOlderThan: jest.fn(), deleteOlderThan: jest.fn(async () => 42) };
     const projects = new Set(opts.slugs ?? ['live']);
     const service = new AdminToolsService(
-      { findExistingSlugs: async (slugs: string[]) => slugs.filter((s) => projects.has(s)) } as never,
+      {
+        findExistingSlugs: async (slugs: string[]) => slugs.filter((s) => projects.has(s)),
+        findBySlug: async (slug: string) => (projects.has(slug) ? { slug } : null),
+      } as never,
       {} as never,
       {} as never,
       {} as never,
@@ -46,7 +49,7 @@ describe('AdminToolsService cleanup', () => {
       { get: async () => ({ ...DEFAULT_PLATFORM_SETTINGS, proxyHitRetentionDays: opts.retention ?? 30 }) },
       { create: jest.fn() },
     );
-    return { service, docker, proxyHits };
+    return { service, docker, proxyHits, projects };
   };
 
   it('removes only confirmed slugs that are still orphans when the run starts', async () => {
@@ -58,6 +61,14 @@ describe('AdminToolsService cleanup', () => {
       { id: 'gone', ok: true },
       { id: 'live', ok: false, error: 'No longer an orphan; skipped' },
     ]);
+  });
+
+  it('skips a slug whose project was created while earlier items were being removed', async () => {
+    const { service, docker, projects } = make({ slugs: [] });
+    docker.removeProjectResources.mockImplementationOnce(async () => { projects.add('live'); });
+    const results = await service.removeOrphanContainers(['gone', 'live']);
+    expect(docker.removeProjectResources).toHaveBeenCalledTimes(1);
+    expect(results[1]).toEqual({ id: 'live', ok: false, error: 'No longer an orphan; skipped' });
   });
 
   it('aborts, removing nothing, when the project lookup fails', async () => {

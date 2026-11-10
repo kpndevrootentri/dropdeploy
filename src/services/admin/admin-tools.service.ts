@@ -125,12 +125,13 @@ export class AdminToolsService {
    * Removes everything the confirmed orphans left (container, images, data
    * volume, files), the same cleanup a project delete runs. Only slugs that are
    * still orphans now are touched: a project created with that slug since the
-   * preview is left alone.
+   * preview, or while earlier items were being removed, is left alone.
    */
   async removeOrphanContainers(confirmed: string[]): Promise<CleanupResult[]> {
     const orphans = new Set((await this.previewOrphanContainers()).map((c) => c.slug));
     return forEachItem(confirmed, async (slug) => {
-      if (!orphans.has(slug)) throw new Error('No longer an orphan; skipped');
+      // Each removal can take a minute, so the project check is repeated right before each one.
+      if (!orphans.has(slug) || (await this.projectRepo.findBySlug(slug))) throw new Error('No longer an orphan; skipped');
       await this.docker.removeProjectResources(slug);
     });
   }
