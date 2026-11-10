@@ -4,6 +4,7 @@ import { requireContributor } from '@/lib/require-contributor';
 import { prisma } from '@/lib/prisma';
 import { getDeploymentQueue } from '@/lib/queue';
 import { getWorkerHeartbeat } from '@/lib/worker-health';
+import { withRedisTimeout } from '@/lib/redis';
 import { getConfig } from '@/lib/config';
 import { handleApiError } from '@/lib/api-error';
 import { createLogger } from '@/lib/logger';
@@ -26,8 +27,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
 
     const [worker, queue, stuck] = await Promise.all([
       getWorkerHeartbeat(),
-      getDeploymentQueue()
-        .getJobCounts('waiting', 'active', 'delayed', 'failed', 'completed')
+      withRedisTimeout(getDeploymentQueue().getJobCounts('waiting', 'active', 'delayed', 'failed', 'completed'))
         .catch((err: unknown) => {
           log.warn('Could not read deployment queue counts', { error: String(err) });
           return null;
