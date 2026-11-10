@@ -200,16 +200,20 @@ export default function AdminAnalyticsPage(): React.ReactElement {
   const [range, setRange] = useState<(typeof RANGES)[number]>(14);
 
   useEffect(() => {
+    // A slower answer for an earlier range must not overwrite the one now selected.
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
-    fetch(`/api/admin/analytics?days=${range}`)
+    fetch(`/api/admin/analytics?days=${range}`, { signal: controller.signal })
       .then((r) => r.json())
       .then((res: { success: boolean; data?: AdminAnalytics; error?: { message: string } }) => {
+        if (controller.signal.aborted) return;
         if (res.success && res.data) setData(res.data);
         else setError(res.error?.message ?? 'Failed to load');
       })
-      .catch(() => setError('Failed to load analytics'))
-      .finally(() => setLoading(false));
+      .catch(() => { if (!controller.signal.aborted) setError('Failed to load analytics'); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
   }, [range]);
 
   // Keep the last result on screen while another range loads.
