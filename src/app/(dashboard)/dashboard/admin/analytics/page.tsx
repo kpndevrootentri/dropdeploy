@@ -52,8 +52,10 @@ function showsLabel(i: number, n: number): boolean {
 
 function formatDuration(seconds: number | null): string {
   if (seconds === null) return '—';
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+  // Round once up front, or 119.6 would read "1m 60s".
+  const total = Math.round(seconds);
+  if (total < 60) return `${total}s`;
+  return `${Math.floor(total / 60)}m ${total % 60}s`;
 }
 
 // ---------------------------------------------------------------------------
