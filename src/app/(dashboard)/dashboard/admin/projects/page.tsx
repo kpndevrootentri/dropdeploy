@@ -174,7 +174,8 @@ function formatDuration(startedAt: string | null, completedAt: string | null): s
   return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
 }
 
-function DeploymentHistory({ projectId }: { projectId: string }): React.ReactElement {
+/** `latestStatus` is the table's polled status; a change means this list is out of date. */
+function DeploymentHistory({ projectId, latestStatus }: { projectId: string; latestStatus?: string }): React.ReactElement {
   const [deployments, setDeployments] = useState<DeploymentSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openLogId, setOpenLogId] = useState<string | null>(null);
@@ -189,7 +190,7 @@ function DeploymentHistory({ projectId }: { projectId: string }): React.ReactEle
         setDeployments(body.data);
       })
       .catch((err: Error) => setError(err.message || 'Failed to load deployments'));
-  }, [projectId]);
+  }, [projectId, latestStatus]);
 
   const toggleLog = (deploymentId: string): void => {
     if (openLogId === deploymentId) {
@@ -592,7 +593,7 @@ export default function AdminProjectsPage(): React.ReactElement {
                             Recent deployments
                           </span>
                         </div>
-                        <DeploymentHistory projectId={p.id} />
+                        <DeploymentHistory projectId={p.id} latestStatus={latestDeployment?.status} />
                       </td>
                     </tr>
                   )}
