@@ -4,9 +4,10 @@ import type { DockerOpRequest } from '@/lib/docker-ops';
 const stopContainer = jest.fn(async () => undefined);
 const executeCommand = jest.fn(async () => ({ stdout: 'ok', stderr: '', exitCode: 0 }));
 const removeProjectResources = jest.fn(async () => undefined);
+const getContainerLogs = jest.fn(async () => 'log');
 
 jest.mock('@/services/docker', () => ({
-  dockerService: { stopContainer, restartContainer: jest.fn(), getContainerInfo: jest.fn() },
+  dockerService: { stopContainer, restartContainer: jest.fn(), getContainerInfo: jest.fn(), getContainerLogs },
 }));
 jest.mock('@/services/docker/docker-terminal.service', () => ({
   dockerTerminalService: { executeCommand, executeSlashCommand: jest.fn() },
@@ -52,4 +53,18 @@ describe('processDockerOp', () => {
     await expect(processDockerOp(job({ op: 'terminal', containerName: 'dropdeploy-shop', command: 'ls' })))
       .rejects.toThrow('EACCES');
   });
+
+  it('refuses container logs for a non-project container', async () => {
+    await expect(processDockerOp(job({ op: 'containerLogs', containerName: 'postgres', tail: 100 })))
+      .resolves.toMatchObject({ ok: false, code: 'INVALID_DOCKER_OPERATION' });
+    expect(getContainerLogs).not.toHaveBeenCalled();
+  });
+
+  it.each([[100, 100], [0, 1], [-5, 1], [10_000, 500], [12.9, 12], ['abc', 200], [undefined, 200]])(
+    'clamps a log tail of %p to %p lines',
+    async (tail, expected) => {
+      await processDockerOp(job({ op: 'containerLogs', containerName: 'dropdeploy-shop', tail }));
+      expect(getContainerLogs).toHaveBeenCalledWith('dropdeploy-shop', expected);
+    },
+  );
 });
