@@ -7,7 +7,7 @@ jest.mock('@/lib/prisma', () => ({
       updateMany: jest.fn((args: unknown) => ({ deploymentUpdateMany: args })),
       update: jest.fn((args: unknown) => ({ deploymentUpdate: args })),
     },
-    project: { update: jest.fn((args: unknown) => ({ projectUpdate: args })) },
+    project: { updateMany: jest.fn((args: unknown) => ({ projectUpdateMany: args })) },
   },
 }));
 
@@ -111,7 +111,9 @@ describe('Project.stoppedAt', () => {
   it('a deployment going live clears stoppedAt in the same transaction', async () => {
     await new DeploymentRepository().activate('d2', 'p1', 'shop', { containerPort: 3005 });
     const ops = (prisma.$transaction as jest.Mock).mock.calls[0][0] as unknown[];
-    expect(ops).toContainEqual({ projectUpdate: { where: { id: 'p1' }, data: { stoppedAt: null } } });
+    expect(ops).toContainEqual({
+      projectUpdateMany: { where: { id: 'p1', stoppedAt: { not: null } }, data: { stoppedAt: null } },
+    });
   });
 });
 

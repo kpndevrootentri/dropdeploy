@@ -112,7 +112,8 @@ export class DeploymentRepository implements IDeploymentRepository {
         data: { ...data, status: 'DEPLOYED', buildStep: null, subdomain },
       }),
       // A deployment going live (a build, a rollback, a switch to static) is serving again.
-      prisma.project.update({ where: { id: projectId }, data: { stoppedAt: null } }),
+      // Filtered so a deploy of a running project leaves its updatedAt alone.
+      prisma.project.updateMany({ where: { id: projectId, stoppedAt: { not: null } }, data: { stoppedAt: null } }),
     ]);
     return activated;
   }
