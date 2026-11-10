@@ -6,14 +6,13 @@ import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { adminRequest } from '@/components/admin/admin-request';
+import { formatBytes } from '@/lib/utils';
+import type { CleanupResult } from '@/services/admin/admin-tools.service';
 
 type Action = 'orphans' | 'images' | 'proxy-hits';
 interface Orphan { name: string; slug: string; state: string }
 interface Image { id: string; slug: string; sizeBytes: number; createdAt: string }
 interface HitPreview { retentionDays: number; cutoff: string; count: number }
-interface Result { id: string; ok: boolean; error?: string }
-
-const mb = (bytes: number): string => `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
 
 /** One cleanup: preview first, then a confirmed run of exactly what was previewed. */
 function CleanupCard<T>({
@@ -29,7 +28,7 @@ function CleanupCard<T>({
 }): React.ReactElement {
   const [preview, setPreview] = useState<T | null>(null);
   const [busy, setBusy] = useState<'preview' | 'run' | null>(null);
-  const [results, setResults] = useState<Result[] | null>(null);
+  const [results, setResults] = useState<CleanupResult[] | null>(null);
 
   const load = async (): Promise<void> => {
     setBusy('preview');
@@ -49,7 +48,7 @@ function CleanupCard<T>({
     if (!confirm(`${summary}\n\n${warning}\n\nThis cannot be undone. Continue?`)) return;
     setBusy('run');
     try {
-      const data = await adminRequest<Result[] | { deleted: number }>(`/api/admin/maintenance/${action}`, { method: 'POST', body: runBody(preview) });
+      const data = await adminRequest<CleanupResult[] | { deleted: number }>(`/api/admin/maintenance/${action}`, { method: 'POST', body: runBody(preview) });
       if (Array.isArray(data)) {
         setResults(data);
         const failed = data.filter((r) => !r.ok).length;
@@ -122,11 +121,11 @@ export function MaintenancePanel(): React.ReactElement {
         warning="The listed images are deleted from the Docker host."
         describe={(p) => ({
           count: p.length,
-          summary: `Remove ${p.length} untagged image(s), ${mb(p.reduce((n, i) => n + i.sizeBytes, 0))} in total.`,
+          summary: `Remove ${p.length} untagged image(s), ${formatBytes(p.reduce((n, i) => n + i.sizeBytes, 0))} in total.`,
         })}
         render={(p) => (
           <ul className={listClass}>
-            {p.map((i) => <li key={i.id}>{i.slug} · {i.id.replace('sha256:', '').slice(0, 12)} · {mb(i.sizeBytes)}</li>)}
+            {p.map((i) => <li key={i.id}>{i.slug} · {i.id.replace('sha256:', '').slice(0, 12)} · {formatBytes(i.sizeBytes)}</li>)}
           </ul>
         )}
         // One run per project prunes all its untagged images; the API caps the list at 500.

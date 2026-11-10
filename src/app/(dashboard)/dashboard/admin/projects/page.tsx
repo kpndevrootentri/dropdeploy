@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { ProjectDetailsDrawer } from '@/components/admin/project-details-drawer';
 import { ProjectBulkBar, SelectAllCheckbox, RowCheckbox } from '@/components/admin/bulk-actions';
+import { formatBytes } from '@/lib/utils';
 
 interface Deployment {
   id: string;
@@ -43,12 +44,6 @@ interface ContainerInfo {
   cpuLimit: number;
   memoryLimitBytes: number;
   restartCount: number;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '—';
-  const mb = bytes / (1024 * 1024);
-  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
 }
 
 function formatUptime(startedAt: string): string {

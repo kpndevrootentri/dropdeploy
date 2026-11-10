@@ -8,11 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { adminRequest } from '@/components/admin/admin-request';
-
-interface ItemResult { id: string; ok: boolean; error?: string }
+import type { CleanupResult } from '@/services/admin/admin-tools.service';
 
 /** Summarises a bulk run; failures name the item so the admin can follow up. */
-function report(results: ItemResult[], label: (id: string) => string, verb: string): void {
+function report(results: CleanupResult[], label: (id: string) => string, verb: string): void {
   const failed = results.filter((r) => !r.ok);
   if (failed.length === 0) {
     toast.success(`${verb} ${results.length}`);
@@ -59,7 +58,7 @@ export function RowCheckbox({ id, label, selected, onChange }: { id: string; lab
 }
 
 /** Only the items that failed stay selected, so the admin can retry or follow up on them. */
-const failedIds = (results: ItemResult[]): Set<string> => new Set(results.filter((r) => !r.ok).map((r) => r.id));
+const failedIds = (results: CleanupResult[]): Set<string> => new Set(results.filter((r) => !r.ok).map((r) => r.id));
 
 const CONFIRM_WORD = 'DELETE';
 /** The server's cap for a project bulk run (each item waits on the worker). */
@@ -86,7 +85,7 @@ export function ProjectBulkBar({
   const run = async (action: 'stop' | 'redeploy' | 'delete', verb: string): Promise<void> => {
     setBusy(action);
     try {
-      const results = await adminRequest<ItemResult[]>(`/api/admin/projects/bulk/${action}`, {
+      const results = await adminRequest<CleanupResult[]>(`/api/admin/projects/bulk/${action}`, {
         method: 'POST',
         body: { projectIds: selected, ...(action === 'delete' ? { confirm: typed } : {}) },
       });
@@ -165,7 +164,7 @@ export function UserBulkQuotaBar({
     e.preventDefault();
     setSaving(true);
     try {
-      const results = await adminRequest<ItemResult[]>('/api/admin/users/bulk-quota', {
+      const results = await adminRequest<CleanupResult[]>('/api/admin/users/bulk-quota', {
         method: 'POST',
         body: {
           userIds: selected,

@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Loader2, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { adminRequest } from '@/components/admin/admin-request';
+import { formatBytes } from '@/lib/utils';
 
 interface Details {
   envKeys: { key: string; environment: string }[];
@@ -13,8 +14,6 @@ interface Details {
   usage: { cpuPercent: number; memoryUsedBytes: number; memoryLimitBytes: number } | null;
   usageError: string | null;
 }
-
-const mb = (bytes: number): string => `${Math.round(bytes / (1024 * 1024))} MB`;
 
 function Section({ title, empty, children }: { title: string; empty: boolean; children: React.ReactNode }): React.ReactElement {
   return (
@@ -92,7 +91,7 @@ export function ProjectDetailsDrawer({
                   <div>
                     <p className="text-xs text-muted-foreground">Memory</p>
                     <p className="font-semibold tabular-nums">
-                      {mb(usage.memoryUsedBytes)} / {usage.memoryLimitBytes > 0 ? mb(usage.memoryLimitBytes) : 'no limit'}
+                      {formatBytes(usage.memoryUsedBytes)} / {usage.memoryLimitBytes > 0 ? formatBytes(usage.memoryLimitBytes) : 'no limit'}
                       {memPct !== null && <span className="ml-1 text-xs font-normal text-muted-foreground">({memPct}%)</span>}
                     </p>
                   </div>
