@@ -117,8 +117,7 @@ export class AdminToolsService {
     const containers = await this.docker.listTenantContainers();
     const slugs = [...new Set(containers.map((c) => c.slug))];
     // A failed lookup throws and aborts: it must never read as "no project".
-    const found = await Promise.all(slugs.map((slug) => this.projectRepo.findBySlug(slug)));
-    const existing = new Set(found.flatMap((p) => (p ? [p.slug] : [])));
+    const existing = new Set(await this.projectRepo.findExistingSlugs(slugs));
     return findOrphanContainers(containers, existing);
   }
 

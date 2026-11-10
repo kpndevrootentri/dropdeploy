@@ -36,7 +36,7 @@ describe('AdminToolsService cleanup', () => {
     const proxyHits = { countOlderThan: jest.fn(), deleteOlderThan: jest.fn(async () => 42) };
     const projects = new Set(opts.slugs ?? ['live']);
     const service = new AdminToolsService(
-      { findBySlug: async (slug: string) => (projects.has(slug) ? { slug } : null) } as never,
+      { findExistingSlugs: async (slugs: string[]) => slugs.filter((s) => projects.has(s)) } as never,
       {} as never,
       {} as never,
       {} as never,
@@ -62,8 +62,8 @@ describe('AdminToolsService cleanup', () => {
 
   it('aborts, removing nothing, when the project lookup fails', async () => {
     const { service, docker } = make();
-    (service as unknown as { projectRepo: { findBySlug: () => Promise<never> } }).projectRepo = {
-      findBySlug: async () => { throw new Error('db down'); },
+    (service as unknown as { projectRepo: { findExistingSlugs: () => Promise<never> } }).projectRepo = {
+      findExistingSlugs: async () => { throw new Error('db down'); },
     };
     await expect(service.removeOrphanContainers(['gone'])).rejects.toThrow('db down');
     expect(docker.removeProjectResources).not.toHaveBeenCalled();
