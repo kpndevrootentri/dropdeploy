@@ -69,14 +69,20 @@ export class UserRepository implements IUserRepository {
   }
 
   /**
-   * Also revokes every outstanding session and CLI token — a stolen token must
-   * not outlive the password change meant to lock its thief out.
+   * Also revokes every outstanding session, CLI token and unused invite link —
+   * a stolen token or a mis-sent link must not outlive the password change
+   * meant to lock its holder out. Accepting an invite marks it used first, so
+   * that one is kept as a record.
    */
   async setPassword(id: string, passwordHash: string, mustResetPassword = false): Promise<User> {
-    return prisma.user.update({
-      where: { id },
-      data: { passwordHash, mustResetPassword, tokenVersion: { increment: 1 } },
-    });
+    const [user] = await prisma.$transaction([
+      prisma.user.update({
+        where: { id },
+        data: { passwordHash, mustResetPassword, tokenVersion: { increment: 1 } },
+      }),
+      prisma.inviteToken.deleteMany({ where: { userId: id, usedAt: null } }),
+    ]);
+    return user;
   }
 
   async delete(id: string): Promise<void> {
