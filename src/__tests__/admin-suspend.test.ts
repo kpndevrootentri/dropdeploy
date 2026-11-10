@@ -3,7 +3,10 @@ jest.mock('@/services/deployment', () => ({ deploymentService: {} }));
 // The real module reads env config on import; only its bcrypt cost is needed here.
 jest.mock('@/services/auth/auth.service', () => ({ SALT_ROUNDS: 4 }));
 const mockCountUsers = jest.fn();
-jest.mock('@/lib/prisma', () => ({ prisma: { user: { count: mockCountUsers } } }));
+const mockTx = { $executeRaw: jest.fn(), user: { count: mockCountUsers, findUnique: jest.fn() } };
+jest.mock('@/lib/prisma', () => ({
+  prisma: { $transaction: (fn: (tx: typeof mockTx) => unknown) => fn(mockTx) },
+}));
 
 import { AdminService } from '@/services/admin/admin.service';
 import type { IUserRepository } from '@/repositories/user.repository';
@@ -13,6 +16,7 @@ import type { IAdminActionRepository } from '@/repositories/admin-action.reposit
 
 function setup(role: 'USER' | 'CONTRIBUTOR') {
   const target = { id: 'u1', email: 'dev@entri.me', role, suspendedAt: null };
+  mockTx.user.findUnique.mockResolvedValue({ role });
   const userRepo = {
     findById: jest.fn(async (id: string) => (id === 'u1' ? target : { id, email: 'admin@entri.me' })),
     setSuspended: jest.fn(async () => ({ ...target, suspendedAt: new Date() })),
@@ -34,7 +38,7 @@ describe('AdminService.setUserSuspended', () => {
   it('suspends a user and records who did it', async () => {
     const { service, userRepo, adminActions } = setup('USER');
     await service.setUserSuspended('u1', true, 'admin');
-    expect(userRepo.setSuspended).toHaveBeenCalledWith('u1', true);
+    expect(userRepo.setSuspended).toHaveBeenCalledWith('u1', true, mockTx);
     expect(adminActions.create).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'USER_SUSPENDED', actorEmail: 'admin@entri.me', targetLabel: 'dev@entri.me' }),
     );

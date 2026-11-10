@@ -1,4 +1,4 @@
-import type { User, UserRole } from '@prisma/client';
+import type { Prisma, User, UserRole } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 export interface IUserRepository {
@@ -8,16 +8,17 @@ export interface IUserRepository {
   create(data: { email: string; passwordHash: string; role?: UserRole; mustResetPassword?: boolean }): Promise<User>;
   /** Creates USER accounts that must reset their password; skips emails already registered. Returns the emails created. */
   createMany(emails: string[], passwordHash: string): Promise<string[]>;
-  updateRole(id: string, role: UserRole): Promise<User>;
+  /** `tx`, when given, runs the write inside that transaction (see AdminService's last-admin lock). */
+  updateRole(id: string, role: UserRole, tx?: Prisma.TransactionClient): Promise<User>;
   updateQuota(id: string, quota: number): Promise<User>;
   /** Custom domains the user may claim across all their projects. */
   updateDomainQuota(id: string, quota: number): Promise<User>;
   setPassword(id: string, passwordHash: string, mustResetPassword?: boolean): Promise<User>;
   /** Suspends or reinstates the user; both revoke every outstanding session. */
-  setSuspended(id: string, suspended: boolean): Promise<User>;
+  setSuspended(id: string, suspended: boolean, tx?: Prisma.TransactionClient): Promise<User>;
   /** Signs the user out of every browser and CLI. */
   revokeSessions(id: string): Promise<void>;
-  delete(id: string): Promise<void>;
+  delete(id: string, tx?: Prisma.TransactionClient): Promise<void>;
   /** Whether the dashboard product tour has been offered and answered. */
   isTourSeen(id: string): Promise<boolean>;
   /** Declined, skipped and completed all count; replays keep the first timestamp. */
@@ -61,8 +62,8 @@ export class UserRepository implements IUserRepository {
   }
 
   /** Also revokes the user's sessions, so a demotion takes effect at once. */
-  async updateRole(id: string, role: UserRole): Promise<User> {
-    return prisma.user.update({ where: { id }, data: { role, tokenVersion: { increment: 1 } } });
+  async updateRole(id: string, role: UserRole, tx: Prisma.TransactionClient = prisma): Promise<User> {
+    return tx.user.update({ where: { id }, data: { role, tokenVersion: { increment: 1 } } });
   }
 
   async updateQuota(id: string, quota: number): Promise<User> {
@@ -84,8 +85,8 @@ export class UserRepository implements IUserRepository {
     });
   }
 
-  async setSuspended(id: string, suspended: boolean): Promise<User> {
-    return prisma.user.update({
+  async setSuspended(id: string, suspended: boolean, tx: Prisma.TransactionClient = prisma): Promise<User> {
+    return tx.user.update({
       where: { id },
       data: { suspendedAt: suspended ? new Date() : null, tokenVersion: { increment: 1 } },
     });
@@ -95,8 +96,8 @@ export class UserRepository implements IUserRepository {
     await prisma.user.update({ where: { id }, data: { tokenVersion: { increment: 1 } } });
   }
 
-  async delete(id: string): Promise<void> {
-    await prisma.user.delete({ where: { id } });
+  async delete(id: string, tx: Prisma.TransactionClient = prisma): Promise<void> {
+    await tx.user.delete({ where: { id } });
   }
 
   async isTourSeen(id: string): Promise<boolean> {

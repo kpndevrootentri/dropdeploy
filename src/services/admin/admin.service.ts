@@ -138,12 +138,11 @@ export class AdminService {
     const user = await this.userRepo.findById(userId);
     if (!user) throw new NotFoundError('User');
 
-    // If demoting a contributor, ensure at least one other contributor remains
-    if (role !== 'CONTRIBUTOR' && user.role === 'CONTRIBUTOR') {
-      await this.assertAnotherActiveContributor(userId, 'Cannot remove the last CONTRIBUTOR');
-    }
-
-    const updated = toPublicUser(await this.userRepo.updateRole(userId, role));
+    const updated = toPublicUser(await this.writeKeepingAnActiveContributor(
+      userId,
+      role !== 'CONTRIBUTOR' ? 'Cannot remove the last CONTRIBUTOR' : null,
+      (tx) => this.userRepo.updateRole(userId, role, tx),
+    ));
     await this.record(actorId, 'USER_ROLE_CHANGED', userTarget(user), { from: user.role, to: role });
     return updated;
   }
@@ -155,24 +154,40 @@ export class AdminService {
     const user = await this.userRepo.findById(userId);
     if (!user) throw new NotFoundError('User');
 
-    if (user.role === 'CONTRIBUTOR') {
-      await this.assertAnotherActiveContributor(userId, 'Cannot delete the last CONTRIBUTOR');
-    }
-
-    await this.userRepo.delete(userId);
+    await this.writeKeepingAnActiveContributor(userId, 'Cannot delete the last CONTRIBUTOR', (tx) =>
+      this.userRepo.delete(userId, tx));
     await this.record(actorId, 'USER_DELETED', userTarget(user));
   }
 
   /**
-   * Throws unless a CONTRIBUTOR other than `userId` is active. Suspended ones
-   * do not count: they cannot sign in to reinstate anyone.
+   * Runs `write` in one transaction that first takes a fixed advisory lock, so
+   * every role change, suspension and delete is serialised: two admins demoting
+   * each other at once cannot both pass the count. With a `refusal`, throws it
+   * when `userId` is a CONTRIBUTOR and no other active one exists. Suspended
+   * ones do not count: they cannot sign in to reinstate anyone. Relies on the
+   * default READ COMMITTED, so the count sees whatever the lock waited for.
    */
-  private async assertAnotherActiveContributor(userId: string, message: string): Promise<void> {
+  private async writeKeepingAnActiveContributor<T>(
+    userId: string,
+    refusal: string | null,
+    write: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
     const { prisma } = await import('@/lib/prisma');
-    const others = await prisma.user.count({
-      where: { role: 'CONTRIBUTOR', suspendedAt: null, id: { not: userId } },
+    return prisma.$transaction(async (tx) => {
+      // Released at commit or rollback. The key only has to be unique to this lock.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(724100)`;
+      if (refusal) {
+        // Read the role under the lock: a promotion may have landed since the caller looked.
+        const target = await tx.user.findUnique({ where: { id: userId }, select: { role: true } });
+        if (target?.role === 'CONTRIBUTOR') {
+          const others = await tx.user.count({
+            where: { role: 'CONTRIBUTOR', suspendedAt: null, id: { not: userId } },
+          });
+          if (others === 0) throw new ConflictError(refusal);
+        }
+      }
+      return write(tx);
     });
-    if (others === 0) throw new ConflictError(message);
   }
 
   /** Suspending blocks sign-in and revokes every session; the user's sites keep running. */
@@ -182,10 +197,11 @@ export class AdminService {
     }
     const user = await this.userRepo.findById(userId);
     if (!user) throw new NotFoundError('User');
-    if (suspended && user.role === 'CONTRIBUTOR') {
-      await this.assertAnotherActiveContributor(userId, 'Cannot suspend the last active CONTRIBUTOR');
-    }
-    const updated = toPublicUser(await this.userRepo.setSuspended(userId, suspended));
+    const updated = toPublicUser(await this.writeKeepingAnActiveContributor(
+      userId,
+      suspended ? 'Cannot suspend the last active CONTRIBUTOR' : null,
+      (tx) => this.userRepo.setSuspended(userId, suspended, tx),
+    ));
     await this.record(actorId, suspended ? 'USER_SUSPENDED' : 'USER_UNSUSPENDED', userTarget(user));
     return updated;
   }
