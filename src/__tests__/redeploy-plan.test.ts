@@ -37,6 +37,12 @@ describe('planRedeployAll', () => {
     });
   });
 
+  it('limits a confirmed run to the previewed projects, still skipping any that became busy', () => {
+    const { eligible, skipped } = planRedeployAll(projects, new Set(['busy']), { projectIds: ['ok', 'busy'] });
+    expect(eligible.map((p) => p.id)).toEqual(['ok']);
+    expect(skipped.map((s) => s.project.id)).toEqual(['busy']);
+  });
+
   it('leaves projects outside the filters out of both lists', () => {
     const { eligible, skipped } = planRedeployAll(projects, new Set(), { source: 'GITLAB', type: 'DJANGO' });
     expect(eligible.map((p) => p.id)).toEqual(['gitlab-django']);

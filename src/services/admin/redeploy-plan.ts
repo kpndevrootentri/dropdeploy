@@ -16,6 +16,8 @@ export interface RedeployCandidate {
 export interface RedeployFilters {
   type?: ProjectType;
   source?: SourceType;
+  /** The projects the admin saw in the preview; a confirmed run never reaches beyond them. */
+  projectIds?: string[];
 }
 
 export interface RedeploySkip {
@@ -38,6 +40,7 @@ export function planRedeployAll(
   for (const project of projects) {
     if (filters.type && project.type !== filters.type) continue;
     if (filters.source && project.source !== filters.source) continue;
+    if (filters.projectIds && !filters.projectIds.includes(project.id)) continue;
     // ponytail: a site an admin stopped is rebuilt and started again; skip `stoppedAt` projects once #21 adds that column.
     const reason =
       // The worker marks a deploy with no repository FAILED; an upload is redeployed by uploading again.

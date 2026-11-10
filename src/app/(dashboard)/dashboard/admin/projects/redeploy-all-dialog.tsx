@@ -53,6 +53,8 @@ export function RedeployAllDialog({
           source: source || undefined,
           dryRun,
           confirm: dryRun ? undefined : confirm,
+          // Only what the preview showed; a project that appeared since is left for the next run.
+          projectIds: dryRun ? undefined : plan?.eligible.map((p) => p.id),
         }),
       });
       const body = await res.json().catch(() => ({}));
