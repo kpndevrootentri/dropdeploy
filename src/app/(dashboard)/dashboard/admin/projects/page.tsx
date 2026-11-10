@@ -257,6 +257,7 @@ interface OwnerCandidate {
   email: string;
   projectQuota: number;
   domainQuota: number;
+  suspendedAt: string | null;
   _count: { projects: number; customDomains: number };
 }
 
@@ -288,7 +289,8 @@ function TransferDialog({
       .catch((err: Error) => setError(err.message || 'Failed to load users'));
   }, [project]);
 
-  const candidates = (users ?? []).filter((u) => u.id !== project?.user.id);
+  // A suspended user cannot sign in to manage the project.
+  const candidates = (users ?? []).filter((u) => u.id !== project?.user.id && !u.suspendedAt);
   const chosen = candidates.find((u) => u.id === newOwnerId);
   const isGit = project?.source === 'GITHUB' || project?.source === 'GITLAB';
 
