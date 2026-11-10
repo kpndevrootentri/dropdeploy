@@ -17,10 +17,7 @@ export async function GET(
     requireContributor(session);
     const { projectId } = await params;
     const deployments = await deploymentRepository.findByProjectId(projectId, 10);
-    return NextResponse.json({
-      success: true,
-      data: deployments.map(({ buildLog: _b, ...rest }) => rest),
-    });
+    return NextResponse.json({ success: true, data: deployments });
   } catch (error) {
     return handleApiError(error);
   }
