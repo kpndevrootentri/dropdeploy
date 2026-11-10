@@ -3,10 +3,11 @@ import { z } from 'zod';
 import { inviteService } from '@/services/invite';
 import { handleApiError } from '@/lib/api-error';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { passwordSchema } from '@/validators/auth.validator';
 
 const acceptSchema = z.object({
   token: z.string().min(20).max(200),
-  password: z.string().min(8),
+  password: passwordSchema,
 });
 
 /**

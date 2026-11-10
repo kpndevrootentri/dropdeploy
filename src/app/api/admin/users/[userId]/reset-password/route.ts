@@ -4,9 +4,10 @@ import { getSession } from '@/lib/get-session';
 import { requireContributor } from '@/lib/require-contributor';
 import { adminService } from '@/services/admin';
 import { handleApiError } from '@/lib/api-error';
+import { passwordSchema } from '@/validators/auth.validator';
 
 const resetSchema = z.union([
-  z.object({ newPassword: z.string().min(8) }),
+  z.object({ newPassword: passwordSchema }),
   z.object({ generate: z.literal(true) }),
 ]);
 
