@@ -43,18 +43,24 @@ export default function AdminSettingsPage(): React.ReactElement {
 
   const save = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
+    if (!settings) return;
+    const edited = {
+      defaultProjectQuota: Number(form.projectQuota),
+      defaultDomainQuota: Number(form.domainQuota),
+      proxyHitRetentionDays: Number(form.retentionDays),
+      // The server stores a blank banner as null.
+      bannerMessage: form.banner.trim() || null,
+      signupOpen: form.signupOpen,
+    };
+    // Only the fields changed here, so another admin's concurrent change to a different field survives.
+    const body = Object.fromEntries(Object.entries(edited).filter(([key, value]) => value !== settings[key as keyof typeof edited]));
+    if (Object.keys(body).length === 0) {
+      toast.info('No changes to save');
+      return;
+    }
     setSaving(true);
     try {
-      apply(await adminRequest<Settings>('/api/admin/settings', {
-        method: 'PATCH',
-        body: {
-          defaultProjectQuota: Number(form.projectQuota),
-          defaultDomainQuota: Number(form.domainQuota),
-          proxyHitRetentionDays: Number(form.retentionDays),
-          bannerMessage: form.banner,
-          signupOpen: form.signupOpen,
-        },
-      }));
+      apply(await adminRequest<Settings>('/api/admin/settings', { method: 'PATCH', body }));
       toast.success('Settings saved');
     } catch (err) {
       toast.error((err as Error).message);
