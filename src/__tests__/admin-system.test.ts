@@ -33,4 +33,19 @@ describe('system health while Redis is unreachable', () => {
     expect(body.data.worker).toEqual({ alive: false });
     expect(body.data.queue).toBeNull();
   });
+
+  it('times a build from when it started, not from when it was queued', async () => {
+    const res = GET(new NextRequest('http://localhost/api/admin/system'));
+    await jest.advanceTimersByTimeAsync(2_000);
+    await res;
+    const cutoff = expect.any(Date);
+    expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        OR: [
+          { status: 'BUILDING', startedAt: { lt: cutoff } },
+          { status: 'QUEUED', createdAt: { lt: cutoff } },
+        ],
+      },
+    }));
+  });
 });

@@ -143,7 +143,7 @@ export default function AdminSystemPage(): React.ReactElement {
                         <th className="pb-2 pr-4">Owner</th>
                         <th className="pb-2 pr-4">Status</th>
                         <th className="pb-2 pr-4">Step</th>
-                        <th className="pb-2">Waiting</th>
+                        <th className="pb-2">Stuck for</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -153,7 +153,7 @@ export default function AdminSystemPage(): React.ReactElement {
                           <td className="py-2 pr-4 text-xs text-muted-foreground">{d.project.user.email}</td>
                           <td className="py-2 pr-4 text-xs">{d.status}</td>
                           <td className="py-2 pr-4 text-xs text-muted-foreground">{d.buildStep ?? '—'}</td>
-                          <td className="py-2 text-xs tabular-nums">{minutesSince(d.createdAt)} min</td>
+                          <td className="py-2 text-xs tabular-nums">{minutesSince(d.status === 'BUILDING' && d.startedAt ? d.startedAt : d.createdAt)} min</td>
                         </tr>
                       ))}
                     </tbody>

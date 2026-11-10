@@ -33,7 +33,13 @@ export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
           return null;
         }),
       prisma.deployment.findMany({
-        where: { status: { in: ['QUEUED', 'BUILDING'] }, createdAt: { lt: cutoff } },
+        // The build timeout runs from build start, so time spent waiting in the queue does not count against a build.
+        where: {
+          OR: [
+            { status: 'BUILDING', startedAt: { lt: cutoff } },
+            { status: 'QUEUED', createdAt: { lt: cutoff } },
+          ],
+        },
         orderBy: { createdAt: 'asc' },
         take: 50,
         select: {
