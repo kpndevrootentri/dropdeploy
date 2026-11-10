@@ -5,9 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { PROJECT_TYPES } from '@/types/project.types';
 
 const CONFIRMATION = 'redeploy all';
-const TYPES = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'GO', 'RUST', 'JAVA', 'WORDPRESS'];
 const SOURCES = ['GITHUB', 'GITLAB', 'UPLOAD'];
 
 interface Plan {
@@ -93,7 +93,7 @@ export function RedeployAllDialog({
                 <Label htmlFor="redeploy-type">Type</Label>
                 <select id="redeploy-type" className={selectClass} value={type} onChange={(e) => { setType(e.target.value); reset(); }}>
                   <option value="">All types</option>
-                  {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  {PROJECT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div className="space-y-1">
