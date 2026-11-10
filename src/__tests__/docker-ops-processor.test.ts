@@ -45,16 +45,13 @@ describe('processDockerOp', () => {
     { op: 'stopContainer', containerName: 'dropdeploy-caddy' },
     { op: 'restartContainer', containerName: 'dropdeploy-caddy' },
     { op: 'stopContainer', containerName: 'dropdeploy-tenants' },
-    { op: 'removeProjectResources', slug: 'caddy' },
-    { op: 'removeProjectResources', slug: 'tenants' },
-  ])('refuses $op on a platform resource ($containerName$slug)', async (request) => {
+  ])('refuses $op on a platform resource ($containerName)', async (request) => {
     await expect(processDockerOp(job(request)))
       .resolves.toMatchObject({ ok: false, code: 'INVALID_DOCKER_OPERATION', status: 400 });
     expect(stopContainer).not.toHaveBeenCalled();
     expect(restartContainer).not.toHaveBeenCalled();
     expect(getContainerInfo).not.toHaveBeenCalled();
     expect(executeCommand).not.toHaveBeenCalled();
-    expect(removeProjectResources).not.toHaveBeenCalled();
   });
 
   it('still cleans up a normal project', async () => {

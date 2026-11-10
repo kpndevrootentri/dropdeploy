@@ -11,6 +11,7 @@ import * as tarStream from 'tar-stream';
 import type { Project } from '@prisma/client';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
+import { assertNotPlatformResource } from '@/lib/docker-ops';
 import {
   DOCKERFILE_TEMPLATES,
   CONTAINER_PORTS,
@@ -349,6 +350,7 @@ export class DockerService {
    */
   async promoteContainer(slug: string, candidateName: string, graceMs = 5_000): Promise<void> {
     const liveName = liveContainerName(slug);
+    assertNotPlatformResource(liveName);
     const old = this.docker.getContainer(liveName);
     const exists = await old.inspect().then(() => true, () => false);
     if (exists) {
@@ -495,6 +497,7 @@ export class DockerService {
    * Stops a running container by name without removing it.
    */
   async stopContainer(containerName: string): Promise<void> {
+    assertNotPlatformResource(containerName);
     try {
       const container = this.docker.getContainer(containerName);
       const info = await container.inspect();
@@ -508,6 +511,7 @@ export class DockerService {
    * Restarts a container by name.
    */
   async restartContainer(containerName: string): Promise<void> {
+    assertNotPlatformResource(containerName);
     try {
       const container = this.docker.getContainer(containerName);
       await container.restart();
@@ -520,6 +524,7 @@ export class DockerService {
    * Stops and removes a container by name. Silently ignores missing containers.
    */
   async stopAndRemoveContainer(containerName: string): Promise<void> {
+    assertNotPlatformResource(containerName);
     try {
       const container = this.docker.getContainer(containerName);
       const info = await container.inspect();
