@@ -387,7 +387,7 @@ export default function AdminProjectsPage(): React.ReactElement {
           </tbody>
         </table>
       </div>
-      <ProjectDetailsDrawer project={detailsFor} onClose={() => setDetailsFor(null)} />
+      <ProjectDetailsDrawer key={detailsFor?.id} project={detailsFor} onClose={() => setDetailsFor(null)} />
     </div>
   );
 }

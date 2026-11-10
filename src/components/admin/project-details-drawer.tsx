@@ -45,11 +45,9 @@ export function ProjectDetailsDrawer({
       .catch((e: Error) => setError(e.message));
   }, [projectId]);
 
-  useEffect(() => {
-    setDetails(null);
-    setError(null);
-    load();
-  }, [load]);
+  // The page keys this component by project id, so a new project mounts fresh
+  // state and a slower response for the previous one lands on an unmounted instance.
+  useEffect(() => { load(); }, [load]);
 
   const revoke = async (accessId: string, label: string): Promise<void> => {
     if (!projectId || !confirm(`Remove ${label}'s access to "${project?.name}"?`)) return;
