@@ -8,7 +8,7 @@ import { projectRepository } from '@/repositories/project.repository';
 import { deploymentRepository, type IDeploymentRepository } from '@/repositories/deployment.repository';
 import { dockerOps, containerNameFor, type IDockerOps, type ContainerInfo } from '@/lib/docker-ops';
 import { deploymentService } from '@/services/deployment';
-import { NotFoundError, ValidationError, ConflictError } from '@/lib/errors';
+import { AppError, NotFoundError, ValidationError, ConflictError } from '@/lib/errors';
 
 import { SALT_ROUNDS } from '@/services/auth/auth.service';
 
@@ -151,7 +151,18 @@ export class AdminService {
     const projects = await this.projectRepo.findByUserId(userId);
     await this.assertNoDeployInFlight(projects);
     for (const project of projects) {
-      await this.docker.removeProjectResources(project.slug);
+      try {
+        await this.docker.removeProjectResources(project.slug);
+      } catch (err) {
+        // Other errors stay unwrapped so handleApiError logs them.
+        if (!(err instanceof AppError)) throw err;
+        // Earlier projects may already be cleaned up; removeProjectResources is idempotent, so a retry finishes the job.
+        throw new AppError(
+          err.code,
+          `Could not remove the container and files of "${project.name}" (${err.message}). The user was not deleted, and retrying is safe.`,
+          err.statusCode,
+        );
+      }
     }
     await this.userRepo.delete(userId);
   }

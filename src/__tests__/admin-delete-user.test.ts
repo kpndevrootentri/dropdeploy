@@ -2,14 +2,14 @@ jest.mock('@/lib/docker-ops', () => ({ dockerOps: {}, containerNameFor: jest.fn(
 jest.mock('@/services/deployment', () => ({ deploymentService: {} }));
 
 import { AdminService } from '@/services/admin/admin.service';
-import { ConflictError } from '@/lib/errors';
+import { AppError, ConflictError } from '@/lib/errors';
 import type { IUserRepository } from '@/repositories/user.repository';
 import type { IProjectRepository } from '@/repositories/project.repository';
 import type { IDeploymentRepository } from '@/repositories/deployment.repository';
 import type { IDockerOps } from '@/lib/docker-ops';
 
 function setup({
-  removeProjectResources = jest.fn(async () => undefined),
+  removeProjectResources = jest.fn(async () => undefined) as jest.Mock,
   building = [] as string[],
   queued = [] as string[],
 } = {}) {
@@ -48,6 +48,17 @@ describe('AdminService.deleteUser', () => {
   it('keeps the user when a container cannot be removed, so nothing is orphaned', async () => {
     const { service, userRepo } = setup({ removeProjectResources: jest.fn(async () => { throw new Error('docker down'); }) });
     await expect(service.deleteUser('u1', 'admin')).rejects.toThrow('docker down');
+    expect(userRepo.delete).not.toHaveBeenCalled();
+  });
+
+  it('says a retry is safe when a later project fails after earlier ones were cleaned up', async () => {
+    const removeProjectResources = jest.fn(async (slug: string) => {
+      if (slug === 'site-b') throw new AppError('DOCKER_OPERATION_FAILED', 'The operation could not be completed.', 502);
+    });
+    const { service, userRepo } = setup({ removeProjectResources });
+    const err = await service.deleteUser('u1', 'admin').catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: 'DOCKER_OPERATION_FAILED', statusCode: 502 });
+    expect((err as Error).message).toMatch(/"Site B".*retrying is safe/);
     expect(userRepo.delete).not.toHaveBeenCalled();
   });
 
