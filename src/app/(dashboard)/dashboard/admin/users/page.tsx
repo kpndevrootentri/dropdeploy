@@ -284,9 +284,9 @@ export default function AdminUsersPage(): React.ReactElement {
       </div>
 
       <UserBulkQuotaBar
-        selected={[...selected]}
+        selected={users.filter((u) => selected.has(u.id)).map((u) => u.id)}
         emails={new Map(users.map((u) => [u.id, u.email]))}
-        onClear={() => setSelected(new Set())}
+        onChange={setSelected}
         onDone={load}
       />
 

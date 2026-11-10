@@ -211,9 +211,10 @@ export default function AdminProjectsPage(): React.ReactElement {
   return (
     <div className="space-y-4">
       <ProjectBulkBar
-        selected={[...selected]}
+        // Only rows still listed: a project deleted or gone since it was ticked drops out.
+        selected={projects.filter((p) => selected.has(p.id)).map((p) => p.id)}
         names={new Map(projects.map((p) => [p.id, p.name]))}
-        onClear={() => setSelected(new Set())}
+        onChange={setSelected}
         onDone={() => void load()}
       />
       <div className="overflow-x-auto">

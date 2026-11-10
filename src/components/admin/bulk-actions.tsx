@@ -58,23 +58,30 @@ export function RowCheckbox({ id, label, selected, onChange }: { id: string; lab
   );
 }
 
+/** Only the items that failed stay selected, so the admin can retry or follow up on them. */
+const failedIds = (results: ItemResult[]): Set<string> => new Set(results.filter((r) => !r.ok).map((r) => r.id));
+
 const CONFIRM_WORD = 'DELETE';
+/** The server's cap for a project bulk run (each item waits on the worker). */
+const MAX_PROJECTS = 50;
 
 export function ProjectBulkBar({
   selected,
   names,
-  onClear,
+  onChange,
   onDone,
 }: {
   selected: string[];
   names: Map<string, string>;
-  onClear: () => void;
+  onChange: SetSelected;
   onDone: () => void;
 }): React.ReactElement | null {
   const [busy, setBusy] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [typed, setTyped] = useState('');
   const label = (id: string): string => names.get(id) ?? id;
+  const tooMany = selected.length > MAX_PROJECTS;
+  const tooManyTitle = tooMany ? `At most ${MAX_PROJECTS} at a time` : undefined;
 
   const run = async (action: 'stop' | 'redeploy' | 'delete', verb: string): Promise<void> => {
     setBusy(action);
@@ -85,7 +92,7 @@ export function ProjectBulkBar({
       });
       report(results, label, verb);
       setDeleteOpen(false);
-      onClear();
+      onChange(failedIds(results));
       onDone();
     } catch (e) {
       toast.error((e as Error).message);
@@ -96,17 +103,16 @@ export function ProjectBulkBar({
 
   return (
     <>
-      <Bar count={selected.length} onClear={onClear}>
-        <Button type="button" variant="outline" size="sm" disabled={busy !== null}
+      <Bar count={selected.length} onClear={() => onChange(new Set())}>
+        <Button type="button" variant="outline" size="sm" disabled={busy !== null || tooMany} title={tooManyTitle}
           onClick={() => { if (confirm(`Stop ${selected.length} project container(s)?`)) void run('stop', 'Stopped'); }}>
           {busy === 'stop' && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}Stop
         </Button>
-        <Button type="button" variant="outline" size="sm" disabled={busy !== null}
+        <Button type="button" variant="outline" size="sm" disabled={busy !== null || tooMany} title={tooManyTitle}
           onClick={() => { if (confirm(`Rebuild and redeploy ${selected.length} project(s)? Builds queue one after another.`)) void run('redeploy', 'Queued'); }}>
           {busy === 'redeploy' && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}Redeploy
         </Button>
-        <Button type="button" variant="destructive" size="sm" disabled={busy !== null || selected.length > 50}
-          title={selected.length > 50 ? 'Delete at most 50 at a time' : undefined}
+        <Button type="button" variant="destructive" size="sm" disabled={busy !== null || tooMany} title={tooManyTitle}
           onClick={() => { setTyped(''); setDeleteOpen(true); }}>
           Delete
         </Button>
@@ -142,12 +148,12 @@ export function ProjectBulkBar({
 export function UserBulkQuotaBar({
   selected,
   emails,
-  onClear,
+  onChange,
   onDone,
 }: {
   selected: string[];
   emails: Map<string, string>;
-  onClear: () => void;
+  onChange: SetSelected;
   onDone: () => void;
 }): React.ReactElement | null {
   const [open, setOpen] = useState(false);
@@ -169,7 +175,7 @@ export function UserBulkQuotaBar({
       });
       report(results, (id) => emails.get(id) ?? id, 'Updated');
       setOpen(false);
-      onClear();
+      onChange(failedIds(results));
       onDone();
     } catch (err) {
       toast.error((err as Error).message);
@@ -180,7 +186,7 @@ export function UserBulkQuotaBar({
 
   return (
     <>
-      <Bar count={selected.length} onClear={onClear}>
+      <Bar count={selected.length} onClear={() => onChange(new Set())}>
         <Button type="button" variant="outline" size="sm" onClick={() => { setProjects(''); setDomains(''); setOpen(true); }}>
           Set quota
         </Button>
