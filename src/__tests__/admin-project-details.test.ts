@@ -53,12 +53,13 @@ describe('AdminToolsService.getProjectDetails', () => {
 });
 
 describe('AdminToolsService.revokeAccess', () => {
-  const make = (create: jest.Mock) => {
+  const collaborator = { id: 'acc1', kind: 'USER', userId: 'u2', domain: null, email: 'dev@example.com' };
+  const make = (create: jest.Mock, entries: unknown[] = [collaborator]) => {
     const revoke = jest.fn(async () => undefined);
     const service = new AdminToolsService(
       { findById: async () => ({ id: 'p1', slug: 'shop', userId: 'owner' }) } as never,
       {} as never,
-      {} as never,
+      { listByProject: async () => entries } as never,
       {} as never,
       { revoke },
       {} as IDockerOps,
@@ -69,12 +70,22 @@ describe('AdminToolsService.revokeAccess', () => {
     return { service, revoke };
   };
 
-  it('revokes as the owner and audits the acting admin', async () => {
+  it('revokes as the owner and audits the acting admin and the removed email', async () => {
     const create = jest.fn(async () => ({}) as never);
     const { service, revoke } = make(create);
     await service.revokeAccess('p1', 'acc1', 'admin1');
     expect(revoke).toHaveBeenCalledWith('p1', 'owner', 'acc1');
-    expect(create).toHaveBeenCalledWith({ action: 'ACCESS_ADMIN_REVOKED', targetKey: 'acc1', userId: 'admin1', projectId: 'p1' });
+    expect(create).toHaveBeenCalledWith({ action: 'ACCESS_ADMIN_REVOKED', targetKey: 'dev@example.com', userId: 'admin1', projectId: 'p1' });
+  });
+
+  it('records a domain grant by its domain and falls back to the entry id', async () => {
+    const domainCreate = jest.fn(async () => ({}) as never);
+    await make(domainCreate, [{ ...collaborator, kind: 'DOMAIN', userId: null, email: null, domain: 'example.com' }]).service.revokeAccess('p1', 'acc1', 'admin1');
+    expect(domainCreate).toHaveBeenCalledWith(expect.objectContaining({ targetKey: 'example.com' }));
+
+    const unknownCreate = jest.fn(async () => ({}) as never);
+    await make(unknownCreate, []).service.revokeAccess('p1', 'acc1', 'admin1');
+    expect(unknownCreate).toHaveBeenCalledWith(expect.objectContaining({ targetKey: 'acc1' }));
   });
 
   it('still succeeds when the audit write fails', async () => {

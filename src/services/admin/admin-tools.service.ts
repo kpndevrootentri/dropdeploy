@@ -103,10 +103,12 @@ export class AdminToolsService {
   async revokeAccess(projectId: string, accessId: string, actorId: string): Promise<void> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
+    // Read before revoking: once the entry is deleted the audit could no longer say who lost access.
+    const entry = (await this.accessRepo.listByProject(projectId)).find((e) => e.id === accessId);
     await this.accessService.revoke(projectId, project.userId, accessId);
     // Same rule as env var audits: a failed audit write never undoes the revoke.
     await this.auditLog
-      .create({ action: 'ACCESS_ADMIN_REVOKED', targetKey: accessId, userId: actorId, projectId })
+      .create({ action: 'ACCESS_ADMIN_REVOKED', targetKey: entry?.email ?? entry?.domain ?? accessId, userId: actorId, projectId })
       .catch((err: unknown) => log.error('Failed to write audit log', { action: 'ACCESS_ADMIN_REVOKED', error: String(err) }));
   }
 
