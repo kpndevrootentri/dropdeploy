@@ -1,5 +1,3 @@
-import { IMPERSONATION_EXIT_PATH } from '@/lib/auth-cookie';
-
 /** Closed while viewing as a user, even for GET, because they act on more than what is on screen. */
 const CLOSED_WHILE_VIEWING = [
   // No admin powers from inside someone else's session.
@@ -12,11 +10,10 @@ const CLOSED_WHILE_VIEWING = [
 
 /**
  * Why a request on a "view as user" session is refused, or null if it may go
- * ahead. Viewing is read-only: anything but GET/HEAD is refused, apart from
- * the exit route that ends the view.
+ * ahead. Viewing is read-only: anything but GET/HEAD is refused. The exit
+ * route that ends the view never calls getSession, so it needs no exception.
  */
 export function impersonationBlockReason(method: string, pathname: string): string | null {
-  if (pathname === IMPERSONATION_EXIT_PATH) return null;
   if (CLOSED_WHILE_VIEWING.some((pattern) => pattern.test(pathname))) {
     return 'Not available while viewing as another user';
   }

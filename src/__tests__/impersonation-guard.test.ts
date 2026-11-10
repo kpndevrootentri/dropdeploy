@@ -30,6 +30,10 @@ describe('getSession while an admin views as a user', () => {
     '/api/auth/github/connect',
     '/api/auth/gitlab/callback',
     '/api/git-providers/github/repos',
+    // The URL parser resolves dot segments before Next routes or getSession matches, so they cannot dodge the list;
+    // a percent-encoded static segment (git%68ub) does not route at all, and a dynamic one still matches [^/]+.
+    '/api/auth/x/%2E%2E/github/connect',
+    '/api/git-providers/git%68ub/repos',
   ])('refuses GET %s', async (path) => {
     await expect(getSession(request('GET', path))).rejects.toThrow(/Not available/);
   });
@@ -41,10 +45,6 @@ describe('getSession while an admin views as a user', () => {
 });
 
 describe('impersonationBlockReason', () => {
-  it('lets the exit route through, so the admin can always leave', () => {
-    expect(impersonationBlockReason('POST', '/api/auth/impersonation/exit')).toBeNull();
-  });
-
   it('does not mistake a lookalike path for the admin API', () => {
     expect(impersonationBlockReason('GET', '/api/administrators')).toBeNull();
   });

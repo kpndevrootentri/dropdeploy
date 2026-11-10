@@ -35,6 +35,8 @@ export async function getSession(
   }
   const session = await authService.verifySession(token);
   if (session.impersonatorId) {
+    // Only writes are refused by method. A new GET with side effects, or one that uses the user's
+    // provider token, must be added to CLOSED_WHILE_VIEWING in lib/impersonation.ts.
     const blocked = impersonationBlockReason(req.method, req.nextUrl.pathname);
     if (blocked) throw new ForbiddenError(blocked);
   }
