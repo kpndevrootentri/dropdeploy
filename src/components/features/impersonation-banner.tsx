@@ -28,7 +28,7 @@ export function ImpersonationBanner(): React.ReactElement | null {
   return (
     <div
       role="status"
-      className="sticky top-0 z-50 flex items-center justify-center gap-3 bg-amber-400 px-4 py-1.5 text-sm font-medium text-amber-950"
+      className="flex items-center justify-center gap-3 bg-amber-400 px-4 py-1.5 text-sm font-medium text-amber-950"
     >
       <Eye className="h-4 w-4 shrink-0" aria-hidden />
       <span className="truncate">
