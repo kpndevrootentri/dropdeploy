@@ -5,12 +5,13 @@ import { AdminService } from '@/services/admin/admin.service';
 import type { IUserRepository } from '@/repositories/user.repository';
 import type { IProjectRepository } from '@/repositories/project.repository';
 import type { IDockerOps } from '@/lib/docker-ops';
+import type { IDeploymentRepository } from '@/repositories/deployment.repository';
 
 function setup(registered: string[]) {
   const userRepo = {
     createMany: jest.fn(async (emails: string[]) => emails.filter((e) => !registered.includes(e))),
   };
-  const service = new AdminService(userRepo as unknown as IUserRepository, {} as IProjectRepository, {} as IDockerOps);
+  const service = new AdminService(userRepo as unknown as IUserRepository, {} as IProjectRepository, {} as IDockerOps, {} as IDeploymentRepository);
   return { service, userRepo };
 }
 

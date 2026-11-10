@@ -27,8 +27,11 @@ const { prisma } = require('@/lib/prisma');
 import type { IUserRepository } from '@/repositories/user.repository';
 import type { IProjectRepository } from '@/repositories/project.repository';
 import type { IDockerOps } from '@/lib/docker-ops';
+import type { IDeploymentRepository } from '@/repositories/deployment.repository';
 
-function setup(container: object | null = { running: true }) {
+const LIVE_CONTAINER = { running: true, ports: [{ hostPort: 4001, containerPort: 3000 }] };
+
+function setup(container: object | null = LIVE_CONTAINER, live: object | null = { containerPort: 4001 }) {
   const calls: string[] = [];
   const projectRepo = {
     findById: jest.fn(async () => ({ id: 'p1', slug: 'shop' })),
@@ -39,12 +42,18 @@ function setup(container: object | null = { running: true }) {
     stopContainer: jest.fn(async () => { calls.push('stop'); }),
     restartContainer: jest.fn(async () => { calls.push('restart'); }),
   };
+  const deploymentRepo = {
+    findBuildingDeployment: jest.fn(async () => null),
+    findQueuedDeploymentForProject: jest.fn(async () => null),
+    findLiveDeployment: jest.fn(async () => live),
+  };
   const service = new AdminService(
     {} as IUserRepository,
     projectRepo as unknown as IProjectRepository,
     docker as unknown as IDockerOps,
+    deploymentRepo as unknown as IDeploymentRepository,
   );
-  return { service, projectRepo, docker, calls };
+  return { service, projectRepo, docker, deploymentRepo, calls };
 }
 
 describe('Project.stoppedAt', () => {
@@ -69,6 +78,27 @@ describe('Project.stoppedAt', () => {
     expect(docker.stopContainer).not.toHaveBeenCalled();
     expect(projectRepo.setStoppedAt).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['the old container while a new deployment takes over', { containerPort: 4002 }],
+    ['a container left over after a switch to static hosting', { containerPort: null }],
+  ])('refuses to stop %s', async (_label, live) => {
+    const { service, projectRepo, docker } = setup(LIVE_CONTAINER, live);
+    await expect(service.stopContainer('p1')).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(docker.stopContainer).not.toHaveBeenCalled();
+    expect(projectRepo.setStoppedAt).not.toHaveBeenCalled();
+  });
+
+  it.each(['findBuildingDeployment', 'findQueuedDeploymentForProject'] as const)(
+    'refuses to stop while a deployment is in progress (%s)',
+    async (finder) => {
+      const { service, projectRepo, docker, deploymentRepo } = setup();
+      (deploymentRepo[finder] as jest.Mock).mockResolvedValueOnce({ id: 'd2' });
+      await expect(service.stopContainer('p1')).rejects.toMatchObject({ code: 'CONFLICT' });
+      expect(docker.stopContainer).not.toHaveBeenCalled();
+      expect(projectRepo.setStoppedAt).not.toHaveBeenCalled();
+    },
+  );
 
   it('restart clears stoppedAt after the container restarts', async () => {
     const { service, projectRepo, calls } = setup();

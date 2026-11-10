@@ -5,6 +5,8 @@ import type { IUserRepository } from '@/repositories/user.repository';
 import { userRepository } from '@/repositories/user.repository';
 import type { IProjectRepository } from '@/repositories/project.repository';
 import { projectRepository } from '@/repositories/project.repository';
+import type { IDeploymentRepository } from '@/repositories/deployment.repository';
+import { deploymentRepository } from '@/repositories/deployment.repository';
 import { dockerOps, containerNameFor, type IDockerOps, type ContainerInfo } from '@/lib/docker-ops';
 import { deploymentService } from '@/services/deployment';
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/errors';
@@ -50,6 +52,7 @@ export class AdminService {
     private readonly userRepo: IUserRepository,
     private readonly projectRepo: IProjectRepository,
     private readonly docker: IDockerOps,
+    private readonly deploymentRepo: IDeploymentRepository,
   ) {}
 
   /**
@@ -181,11 +184,26 @@ export class AdminService {
   async stopContainer(projectId: string): Promise<void> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
+    // A build or rollback going live would race this stop and could leave the
+    // project marked stopped while its new container serves.
+    const [building, queued] = await Promise.all([
+      this.deploymentRepo.findBuildingDeployment(projectId),
+      this.deploymentRepo.findQueuedDeploymentForProject(projectId),
+    ]);
+    if (building || queued) {
+      throw new ConflictError('A deployment is in progress. Stop the project once it finishes.');
+    }
     const name = containerNameFor(project.slug);
     // Static-hosted and never-deployed projects have nothing to stop; marking
     // them stopped would show STOPPED while the site keeps serving.
-    if (!(await this.docker.containerInfo(name))) {
-      throw new ValidationError('This project has no container to stop');
+    const info = await this.docker.containerInfo(name);
+    if (!info) throw new ValidationError('This project has no container to stop');
+    // Just after a deployment goes live, the old container keeps this name until
+    // it is retired (or removed, on a switch to static hosting). Stopping it
+    // would mark the project stopped while the new deployment serves.
+    const live = await this.deploymentRepo.findLiveDeployment(project.slug);
+    if (!live?.containerPort || info.ports[0]?.hostPort !== live.containerPort) {
+      throw new ConflictError('This container is not the one serving the site. Try again in a moment.');
     }
     await this.docker.stopContainer(name);
     await this.projectRepo.setStoppedAt(projectId, new Date());
@@ -231,4 +249,4 @@ export class AdminService {
   }
 }
 
-export const adminService = new AdminService(userRepository, projectRepository, dockerOps);
+export const adminService = new AdminService(userRepository, projectRepository, dockerOps, deploymentRepository);

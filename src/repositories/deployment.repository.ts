@@ -52,6 +52,8 @@ export interface IDeploymentRepository {
   markBuildingAsFailed(): Promise<number>;
   /** Returns true if the project has at least one DEPLOYED deployment. */
   hasDeployedStatus(projectId: string): Promise<boolean>;
+  /** The deployment the proxy serves for this subdomain (a project's slug), or null. */
+  findLiveDeployment(subdomain: string): Promise<Deployment | null>;
 }
 
 export class DeploymentRepository implements IDeploymentRepository {
@@ -202,6 +204,10 @@ export class DeploymentRepository implements IDeploymentRepository {
       where: { projectId, status: 'DEPLOYED' },
     });
     return count > 0;
+  }
+
+  async findLiveDeployment(subdomain: string): Promise<Deployment | null> {
+    return prisma.deployment.findFirst({ where: { subdomain, status: 'DEPLOYED' } });
   }
 }
 
