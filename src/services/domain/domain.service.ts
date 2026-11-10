@@ -244,7 +244,7 @@ export class DomainService implements IDomainService {
   }
 
   async adminRemove(domainId: string, actorId: string): Promise<void> {
-    await this.deleteDomain(await this.findDomain(domainId), actorId, 'domain.admin_remove');
+    await this.deleteDomain(await this.findDomain(domainId), actorId, 'DOMAIN_ADMIN_REMOVED');
   }
 
   // ── Edge integration ─────────────────────────────────────────────────────
