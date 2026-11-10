@@ -129,7 +129,8 @@ export function MaintenancePanel(): React.ReactElement {
             {p.map((i) => <li key={i.id}>{i.slug} · {i.id.replace('sha256:', '').slice(0, 12)} · {mb(i.sizeBytes)}</li>)}
           </ul>
         )}
-        runBody={(p) => ({ slugs: p.map((i) => i.slug) })}
+        // One run per project prunes all its untagged images; the API caps the list at 500.
+        runBody={(p) => ({ slugs: [...new Set(p.map((i) => i.slug))] })}
       />
       <CleanupCard<HitPreview>
         action="proxy-hits"
