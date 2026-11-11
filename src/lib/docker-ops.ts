@@ -20,6 +20,7 @@ import { Queue, QueueEvents } from 'bullmq';
 import { createRedisConnection } from '@/lib/redis';
 import { AppError } from '@/lib/errors';
 import { PLATFORM_RESOURCE_SLUGS } from '@/lib/reserved-slugs';
+import type { DiskUsage } from '@/lib/disk-usage';
 
 export const DOCKER_OPS_QUEUE = 'docker-ops';
 
@@ -28,7 +29,9 @@ export type DockerOpRequest =
   | { op: 'containerInfo'; containerName: string }
   | { op: 'stopContainer'; containerName: string }
   | { op: 'restartContainer'; containerName: string }
-  | { op: 'removeProjectResources'; slug: string };
+  | { op: 'removeProjectResources'; slug: string }
+  | { op: 'containerLogs'; containerName: string; tail: number }
+  | { op: 'diskUsage' };
 
 /**
  * What the worker returns. User-facing failures (a disallowed terminal
@@ -82,6 +85,9 @@ const TIMEOUT_MS: Record<DockerOpRequest['op'], number> = {
   stopContainer: 30_000,
   restartContainer: 30_000,
   removeProjectResources: 60_000,
+  containerLogs: 15_000,
+  // `docker system df` walks every layer and volume; the System route gives up sooner.
+  diskUsage: 30_000,
 };
 
 let queue: Queue<DockerOpRequest, DockerOpResult> | null = null;
@@ -147,6 +153,10 @@ export interface IDockerOps {
   restartContainer(containerName: string): Promise<void>;
   /** Container, images, served static files and git clone of a deleted project. */
   removeProjectResources(slug: string): Promise<void>;
+  /** Last `tail` (1–500) lines, timestamped, at most 256 KB; null if the container does not exist. */
+  containerLogs(containerName: string, tail: number): Promise<string | null>;
+  /** Totals of `docker system df`. */
+  diskUsage(): Promise<DiskUsage>;
 }
 
 export const dockerOps: IDockerOps = {
@@ -155,4 +165,6 @@ export const dockerOps: IDockerOps = {
   stopContainer: (containerName) => call({ op: 'stopContainer', containerName }),
   restartContainer: (containerName) => call({ op: 'restartContainer', containerName }),
   removeProjectResources: (slug) => call({ op: 'removeProjectResources', slug }),
+  containerLogs: (containerName, tail) => call({ op: 'containerLogs', containerName, tail }),
+  diskUsage: () => call({ op: 'diskUsage' }),
 };

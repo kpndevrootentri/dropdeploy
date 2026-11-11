@@ -30,7 +30,7 @@ export function createRedisConnection(): Redis {
 export function withRedisTimeout<T>(command: Promise<T>, ms = 2_000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`Redis did not answer within ${ms}ms`)), ms);
+    timer = setTimeout(() => reject(new Error(`No answer within ${ms}ms`)), ms);
   });
   return Promise.race([command, timeout]).finally(() => clearTimeout(timer));
 }

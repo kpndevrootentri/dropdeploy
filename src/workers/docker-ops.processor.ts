@@ -13,6 +13,7 @@ import type { Job } from 'bullmq';
 import { AppError } from '@/lib/errors';
 import { createLogger } from '@/lib/logger';
 import { assertNotPlatformResource, type DockerOpRequest, type DockerOpResult } from '@/lib/docker-ops';
+import { clampTail } from '@/lib/container-logs';
 import { dockerService } from '@/services/docker';
 import { dockerTerminalService } from '@/services/docker/docker-terminal.service';
 import { removeProjectResources } from '@/services/project/project-cleanup';
@@ -63,6 +64,11 @@ async function run(request: DockerOpRequest): Promise<unknown> {
       }
       await removeProjectResources(request.slug, dockerService);
       return null;
+    // Read-only. Logs can hold tenant secrets: returned to the caller, never logged here.
+    case 'containerLogs':
+      return dockerService.getContainerLogs(assertContainerName(request.containerName), clampTail(request.tail));
+    case 'diskUsage':
+      return dockerService.getDiskUsage();
     default:
       throw new RejectedRequestError('Unknown operation');
   }

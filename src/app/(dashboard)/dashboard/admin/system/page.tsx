@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 import type { WorkerHeartbeat } from '@/lib/worker-health';
+import type { DiskUsage } from '@/lib/disk-usage';
+import { formatBytes } from '@/lib/utils';
 
 const REFRESH_MS = 20_000;
 
@@ -19,6 +21,8 @@ interface StuckDeployment {
 interface SystemStatus {
   worker: WorkerHeartbeat;
   queue: Record<'waiting' | 'active' | 'delayed' | 'failed' | 'completed', number> | null;
+  /** Null when the worker or Docker did not answer in time. */
+  disk: DiskUsage | null;
   stuck: StuckDeployment[];
   stuckAfterMinutes: number;
 }
@@ -59,6 +63,13 @@ export default function AdminSystemPage(): React.ReactElement {
   }
 
   const worker = status?.worker;
+  const disk = status?.disk;
+  const diskRows = disk && [
+    { label: 'Images', size: disk.images.sizeBytes, detail: `${disk.images.count} images · ${formatBytes(disk.images.reclaimableBytes)} reclaimable` },
+    { label: 'Containers', size: disk.containers.sizeBytes, detail: `${disk.containers.count} containers` },
+    { label: 'Volumes', size: disk.volumes.sizeBytes, detail: `${disk.volumes.count} volumes` },
+    { label: 'Build cache', size: disk.buildCache.sizeBytes, detail: `${formatBytes(disk.buildCache.reclaimableBytes)} reclaimable` },
+  ];
 
   return (
     <div className="space-y-6">
@@ -120,6 +131,28 @@ export default function AdminSystemPage(): React.ReactElement {
               </CardContent>
             </Card>
           </div>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Docker disk usage</CardTitle>
+              <CardDescription className="text-xs">Totals from docker system df. Reclaimable space is what a prune could free.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {diskRows ? (
+                <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                  {diskRows.map(({ label, size, detail }) => (
+                    <div key={label} className="flex flex-col gap-0.5">
+                      <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+                      <dd className="text-xl font-bold tabular-nums">{formatBytes(size)}</dd>
+                      <dd className="text-xs text-muted-foreground">{detail}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : (
+                <p className="text-xs text-destructive">The worker did not report disk usage in time.</p>
+              )}
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader className="pb-3">

@@ -12,6 +12,8 @@ import type { Project } from '@prisma/client';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
 import { assertNotPlatformResource } from '@/lib/docker-ops';
+import { demuxLogs } from '@/lib/container-logs';
+import { diskUsageFromDf, type DiskUsage } from '@/lib/disk-usage';
 import {
   DOCKERFILE_TEMPLATES,
   CONTAINER_PORTS,
@@ -500,6 +502,23 @@ export class DockerService {
       if (isMissingOrUnchanged(err)) return null;
       throw err;
     }
+  }
+
+  /** Last `tail` lines of a container's output, timestamped; null if it does not exist. */
+  async getContainerLogs(containerName: string, tail: number): Promise<string | null> {
+    try {
+      const raw = await this.docker.getContainer(containerName)
+        .logs({ stdout: true, stderr: true, tail, timestamps: true, follow: false });
+      return demuxLogs(raw);
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode === 404) return null;
+      throw err;
+    }
+  }
+
+  /** Totals of `docker system df`; the per-object detail it also returns is dropped. */
+  async getDiskUsage(): Promise<DiskUsage> {
+    return diskUsageFromDf(await this.docker.df());
   }
 
   /**
