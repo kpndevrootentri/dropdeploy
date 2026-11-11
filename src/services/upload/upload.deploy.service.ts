@@ -76,7 +76,9 @@ export class UploadDeployService implements IUploadDeployService {
     if (target.subdomain) throw new ValidationError('That deployment is already live');
 
     for (const fileType of ['zip', 'html'] as const) {
-      const buffer = await fs.promises.readFile(keptFilePath(project.slug, target.id, fileType)).catch(() => null);
+      const buffer = await fs.promises
+        .readFile(/*turbopackIgnore: true*/ keptFilePath(project.slug, target.id, fileType))
+        .catch(() => null);
       if (buffer) return this.deploy(buffer, fileType, project, target.id);
     }
     throw new ValidationError(`That upload is no longer kept — only the last ${KEPT_UPLOADS} are`);
@@ -107,7 +109,9 @@ export class UploadDeployService implements IUploadDeployService {
 
 /** `<UPLOADS_DIR>/<slug>/<deploymentId>.<zip|html>`. Keyed by slug so project deletion removes it. */
 function keptFilePath(slug: string, deploymentId: string, fileType: UploadFileType): string {
-  return path.join(getConfig().UPLOADS_DIR, slug, `${deploymentId}.${fileType}`);
+  // The ignore comments stop Turbopack from tracing the whole checkout for these
+  // runtime paths; it follows symlinks there, and a broken one fails the build.
+  return path.join(/*turbopackIgnore: true*/ getConfig().UPLOADS_DIR, slug, `${deploymentId}.${fileType}`);
 }
 
 export const uploadDeployService = new UploadDeployService(deploymentRepository);

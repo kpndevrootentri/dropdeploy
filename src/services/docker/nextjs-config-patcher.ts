@@ -22,7 +22,8 @@ export async function patchNextConfig(
   const { addStaticExport = false } = options;
 
   for (const file of CONFIG_FILES) {
-    const filePath = path.join(contextPath, file);
+    // A tenant's clone: untraced, or Turbopack walks every repo in projects/.
+    const filePath = path.join(/*turbopackIgnore: true*/ contextPath, file);
     let content = await readRepoFile(filePath);
     if (content === null) continue;
     if (content.includes('dropdeploy-patch') || content.includes('ignoreDuringBuilds')) return;
@@ -64,7 +65,7 @@ export async function patchNextConfig(
   // No next.config file found — create a minimal one
   const staticExportLine = addStaticExport ? "  output: 'export',\n" : '';
   await writeRepoFile(
-    path.join(contextPath, 'next.config.js'),
+    path.join(/*turbopackIgnore: true*/ contextPath, 'next.config.js'),
     '/** @type {import("next").NextConfig} */\n// dropdeploy-patch\n' +
       'module.exports = {\n' +
       '  eslint: { ignoreDuringBuilds: true },\n' +

@@ -16,7 +16,9 @@ export async function GET(): Promise<NextResponse> {
 
   const sections = await Promise.all(
     files.map(async ({ label, path }) => {
-      const content = await readFile(path, 'utf-8');
+      // Read from the checkout at runtime. Untraced, or Turbopack traces the whole
+      // project, tenant repos in projects/ included.
+      const content = await readFile(/*turbopackIgnore: true*/ path, 'utf-8');
       return `<!-- ${label} -->\n\n${content}`;
     }),
   );
