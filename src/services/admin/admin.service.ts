@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import type { User, UserRole, Project, Prisma, AdminAction } from '@prisma/client';
@@ -15,6 +16,9 @@ import {
   type IAdminActionRepository,
 } from '@/repositories/admin-action.repository';
 import { createLogger } from '@/lib/logger';
+import { inviteService, newInviteToken, type InviteService } from '@/services/invite';
+import { getConfig } from '@/lib/config';
+import { planRedeployAll, type RedeployCandidate, type RedeployFilters } from './redeploy-plan';
 
 import { SALT_ROUNDS } from '@/services/auth/auth.service';
 import { platformSettingsService, type PlatformSettingsService } from '@/services/platform-settings/platform-settings.service';
@@ -56,11 +60,31 @@ function toPublicUser(user: User): PublicUser {
   return rest;
 }
 
-export interface BulkCreateResult {
-  created: string[];
+export interface RedeployAllResult {
+  /** Worker builds that run at once (BULLMQ_CONCURRENCY); the rest wait in the queue. */
+  concurrency: number;
+  eligible: { id: string; name: string; ownerEmail: string; type: string; source: string }[];
+  skipped: { id: string; name: string; reason: string }[];
+  /** Present only when the deploys were actually queued. */
+  results?: { id: string; name: string; outcome: 'queued' | 'failed'; error?: string }[];
+}
+
+export interface BulkInviteResult {
+  /** New accounts, each with the one-time token for its invite link. */
+  created: { email: string; inviteToken: string }[];
   /** Already registered. */
   skipped: string[];
   invalid: string[];
+}
+
+/** A hash of random bytes nobody ever sees: the account cannot sign in until its invite is accepted. */
+async function unusablePasswordHash(): Promise<string> {
+  return bcrypt.hash(randomBytes(32).toString('hex'), SALT_ROUNDS);
+}
+
+/** A password for an admin to hand over once; the user must replace it at next sign-in. */
+export function generatePassword(): string {
+  return randomBytes(12).toString('base64url');
 }
 
 export class AdminService {
@@ -71,6 +95,7 @@ export class AdminService {
     private readonly deploymentRepo: IDeploymentRepository,
     private readonly adminActions: IAdminActionRepository,
     private readonly settings: Pick<PlatformSettingsService, 'get'> = platformSettingsService,
+    private readonly invites: Pick<InviteService, 'issue'> = inviteService,
   ) {}
 
   /** Quotas for accounts created now, from the admin-editable platform settings. */
@@ -267,41 +292,69 @@ export class AdminService {
     await this.record(actorId, 'USER_SIGNED_OUT', userTarget(user));
   }
 
-  async createUser(email: string, password: string, actorId: string): Promise<PublicUser> {
+  /**
+   * Creates a USER who cannot sign in until they open their invite link and
+   * choose a password. The token is returned once and never stored in clear.
+   */
+  async inviteUser(email: string, actorId: string): Promise<{ user: PublicUser; inviteToken: string }> {
     const existing = await this.userRepo.findByEmail(email);
     if (existing) throw new ConflictError('Email already registered');
-    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+    const { token, tokenHash, expiresAt } = newInviteToken();
     const user = await this.userRepo.create({
-      email, passwordHash, role: 'USER', mustResetPassword: true, ...(await this.newUserQuotas()),
+      email,
+      passwordHash: await unusablePasswordHash(),
+      role: 'USER',
+      mustResetPassword: true,
+      ...(await this.newUserQuotas()),
+      invite: { tokenHash, expiresAt },
     });
-    await this.record(actorId, 'USER_CREATED', userTarget(user));
-    return toPublicUser(user);
+    await this.record(actorId, 'USER_CREATED', userTarget(user), { invite: true });
+    return { user: toPublicUser(user), inviteToken: token };
   }
 
   /**
-   * Creates USER accounts in bulk, all with one temporary password they must
-   * change on first login. Existing accounts are skipped, never changed.
+   * Invites many users at once, each with their own one-time link. Existing
+   * accounts are skipped, never changed.
    */
-  async bulkCreateUsers(input: string[], password: string, actorId: string): Promise<BulkCreateResult> {
-    if (password.length < 8) throw new ValidationError('Password must be at least 8 characters');
+  async bulkInviteUsers(input: string[], actorId: string): Promise<BulkInviteResult> {
     const emails = [...new Set(input.map((e) => e.trim().toLowerCase()).filter(Boolean))];
     const isEmail = (e: string): boolean => z.string().email().safeParse(e).success;
     const valid = emails.filter(isEmail);
     const invalid = emails.filter((e) => !isEmail(e));
-    const created = valid.length
-      ? await this.userRepo.createMany(valid, await bcrypt.hash(password, SALT_ROUNDS), await this.newUserQuotas())
+    // Tokens for emails that turn out to be registered are simply never stored.
+    const tokens = new Map(valid.map((email) => [email, newInviteToken()]));
+    const users = valid.length
+      ? await this.userRepo.createMany(
+          [...tokens].map(([email, t]) => ({ email, tokenHash: t.tokenHash, expiresAt: t.expiresAt })),
+          await unusablePasswordHash(),
+          await this.newUserQuotas(),
+        )
       : [];
-    const createdSet = new Set(created);
+    const created = users.map((u) => ({ email: u.email, inviteToken: tokens.get(u.email)!.token }));
+    const createdSet = new Set(users.map((u) => u.email));
     const result = { created, skipped: valid.filter((e) => !createdSet.has(e)), invalid };
     if (created.length > 0) {
+      // Emails only: the invite tokens must never reach the audit log.
       await this.record(
         actorId,
         'USERS_BULK_CREATED',
         { targetType: 'USER', targetId: null, targetLabel: `${created.length} users` },
-        { created, skipped: result.skipped.length, invalid: invalid.length },
+        { created: created.map((c) => c.email), skipped: result.skipped.length, invalid: invalid.length },
       );
     }
     return result;
+  }
+
+  /**
+   * A fresh invite link for a user who has not chosen a password yet, e.g.
+   * when the first one expired or went to the wrong person. Earlier unused
+   * links stop working.
+   */
+  async reissueInvite(userId: string): Promise<string> {
+    const user = await this.userRepo.findById(userId);
+    if (!user) throw new NotFoundError('User');
+    if (!user.mustResetPassword) throw new ConflictError('This user has already chosen a password');
+    return this.invites.issue(userId);
   }
 
   async listAllProjects(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date }[] })[]> {
@@ -416,15 +469,25 @@ export class AdminService {
     return toPublicUser(user);
   }
 
-  async resetUserPassword(userId: string, newPassword: string, actorId: string): Promise<void> {
+  /**
+   * Sets a password the admin hands over. With no password given, one is
+   * generated and returned so the admin can copy it once.
+   */
+  async resetUserPassword(
+    userId: string,
+    newPassword: string | undefined,
+    actorId: string,
+  ): Promise<{ generatedPassword?: string }> {
     const user = await this.userRepo.findById(userId);
     if (!user) throw new NotFoundError('User');
-    if (newPassword.length < 8) throw new ValidationError('Password must be at least 8 characters');
-    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    const password = newPassword ?? generatePassword();
+    if (password.length < 8) throw new ValidationError('Password must be at least 8 characters');
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
     // The admin now knows this password, so the user must replace it on next
     // sign-in; setPassword also signs them out everywhere.
     await this.userRepo.setPassword(userId, passwordHash, true);
     await this.record(actorId, 'USER_PASSWORD_RESET', userTarget(user));
+    return newPassword === undefined ? { generatedPassword: password } : {};
   }
 
   async forceRedeploy(projectId: string, actorId: string): Promise<void> {
@@ -434,6 +497,58 @@ export class AdminService {
     await deploymentService.createDeployment(projectId, project.userId);
     await this.record(actorId, 'PROJECT_REDEPLOYED', projectTarget(project), { slug: project.slug });
   }
+
+  /**
+   * Rebuilds every repository project that matches the filters, or with
+   * `dryRun` only lists what would happen. Deploys go through the normal
+   * queue, one at a time here, so the worker's concurrency caps the load on
+   * the host that also serves every site.
+   */
+  async redeployAll(filters: RedeployFilters, dryRun: boolean): Promise<RedeployAllResult> {
+    const { prisma } = await import('@/lib/prisma');
+    const [projects, active] = await Promise.all([
+      this.projectRepo.findAll(),
+      prisma.deployment.findMany({
+        where: { status: { in: ['QUEUED', 'BUILDING'] } },
+        select: { projectId: true },
+      }),
+    ]);
+    const candidates: RedeployCandidate[] = projects.map((p) => ({
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      type: p.type,
+      source: p.source,
+      githubUrl: p.githubUrl,
+      userId: p.userId,
+      ownerEmail: p.user.email,
+      lastStatus: p.deployments[0]?.status ?? null,
+    }));
+    const { eligible, skipped } = planRedeployAll(candidates, new Set(active.map((d) => d.projectId)), filters);
+
+    const result: RedeployAllResult = {
+      concurrency: getConfig().BULLMQ_CONCURRENCY,
+      eligible: eligible.map((p) => ({ id: p.id, name: p.name, ownerEmail: p.ownerEmail, type: p.type, source: p.source })),
+      skipped: skipped.map(({ project, reason }) => ({ id: project.id, name: project.name, reason })),
+    };
+    if (dryRun) return result;
+
+    result.results = [];
+    for (const project of eligible) {
+      try {
+        await deploymentService.createDeployment(project.id, project.userId);
+        result.results.push({ id: project.id, name: project.name, outcome: 'queued' });
+      } catch (err) {
+        result.results.push({
+          id: project.id,
+          name: project.name,
+          outcome: 'failed',
+          error: err instanceof Error ? err.message : 'Failed to queue',
+        });
+      }
+    }
+    return result;
+  }
 }
 
 export const adminService = new AdminService(
@@ -442,4 +557,6 @@ export const adminService = new AdminService(
   dockerOps,
   deploymentRepository,
   adminActionRepository,
+  platformSettingsService,
+  inviteService,
 );

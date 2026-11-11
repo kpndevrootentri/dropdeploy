@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import { connection } from 'next/server';
 import { DashboardNav } from '@/components/features/dashboard-nav';
+import { ImpersonationBanner } from '@/components/features/impersonation-banner';
 import { platformSettingsService } from '@/services/platform-settings/platform-settings.service';
 
 async function MaintenanceBanner(): Promise<React.ReactElement | null> {
@@ -25,14 +26,18 @@ export default function DashboardLayout({
 }): React.ReactElement {
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex h-14 items-center justify-between px-4 sm:px-6">
-          <h1 className="text-base font-semibold tracking-tight">
-            <Link href="/dashboard" className="hover:opacity-80 transition-opacity">DropDeploy</Link>
-          </h1>
-          <DashboardNav />
-        </div>
-      </header>
+      {/* One sticky block, so the view-as banner stacks above the header instead of covering it. */}
+      <div className="sticky top-0 z-40">
+        <ImpersonationBanner />
+        <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          <div className="flex h-14 items-center justify-between px-4 sm:px-6">
+            <h1 className="text-base font-semibold tracking-tight">
+              <Link href="/dashboard" className="hover:opacity-80 transition-opacity">DropDeploy</Link>
+            </h1>
+            <DashboardNav />
+          </div>
+        </header>
+      </div>
       {/* Streamed in, so the settings read never holds back the first byte of the page. */}
       <Suspense fallback={null}>
         <MaintenanceBanner />

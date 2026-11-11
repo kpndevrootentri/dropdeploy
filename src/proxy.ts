@@ -207,6 +207,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   let isAuthenticated = false;
   let userRole = 'USER';
   let mustResetPassword = false;
+  let impersonating = false;
 
   if (token) {
     const secret = process.env.JWT_SECRET;
@@ -218,6 +219,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
         isAuthenticated = true;
         userRole = (payload.role as string) ?? 'USER';
         mustResetPassword = (payload.mustResetPassword as boolean) ?? false;
+        impersonating = typeof payload.imp === 'string';
       } catch {
         // Invalid or expired token
       }
@@ -244,7 +246,8 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return withRequestId(request, NextResponse.redirect(loginUrl));
   }
 
-  if (pathname.startsWith(ADMIN_PREFIX) && isAuthenticated && userRole !== 'CONTRIBUTOR') {
+  // A "view as user" session never reaches admin pages; getSession blocks the admin API the same way.
+  if (pathname.startsWith(ADMIN_PREFIX) && isAuthenticated && (userRole !== 'CONTRIBUTOR' || impersonating)) {
     return withRequestId(request, NextResponse.redirect(new URL('/dashboard', request.url)));
   }
 

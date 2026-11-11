@@ -45,11 +45,28 @@ model User {
   adminActions  AdminAction[]
   gitProviders  GitProvider[]
   projectAccess ProjectAccess[]
+  inviteTokens  InviteToken[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("users")
+}
+
+/// A one-time link an admin hands a new user so they can choose their own
+/// password. Only the token's sha256 is stored; the token itself is shown to the
+/// admin once and never again.
+model InviteToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique @map("token_hash")
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("invite_tokens")
 }
 
 model Project {

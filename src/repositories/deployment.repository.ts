@@ -205,7 +205,7 @@ export class DeploymentRepository implements IDeploymentRepository {
   async markBuildingAsFailed(): Promise<number> {
     const result = await prisma.deployment.updateMany({
       where: { status: 'BUILDING' },
-      data: { status: 'FAILED', buildStep: null, completedAt: new Date() },
+      data: { status: 'FAILED', completedAt: new Date() },
     });
     return result.count;
   }

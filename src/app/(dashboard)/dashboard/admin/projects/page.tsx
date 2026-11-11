@@ -3,12 +3,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { getProjectUrl } from '@/components/ui/framework-logo';
+import { Button } from '@/components/ui/button';
+import { RedeployAllDialog } from './redeploy-all-dialog';
 import React from 'react';
 import {
   Square, RotateCcw, Rocket, Trash2, Loader2,
   ChevronDown, ChevronUp, Container, Cpu, MemoryStick, Clock, Hash, Network, History, ArrowRightLeft, ScrollText, Info,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -444,6 +445,7 @@ export default function AdminProjectsPage(): React.ReactElement {
   const [logsTarget, setLogsTarget] = useState<AdminProject | null>(null);
   const [detailsFor, setDetailsFor] = useState<AdminProject | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [redeployAllOpen, setRedeployAllOpen] = useState(false);
 
   const TRANSITIONAL = ['QUEUED', 'BUILDING'];
 
@@ -510,6 +512,13 @@ export default function AdminProjectsPage(): React.ReactElement {
         onChange={setSelected}
         onDone={() => void load()}
       />
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" asChild>
+          <a href="/api/admin/projects/export" download>Export CSV</a>
+        </Button>
+        <Button variant="outline" onClick={() => setRedeployAllOpen(true)}>Redeploy all…</Button>
+      </div>
+      <RedeployAllDialog open={redeployAllOpen} onOpenChange={setRedeployAllOpen} onDone={() => void load()} />
       {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">

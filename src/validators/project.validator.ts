@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { parseSafeRepoUrl, hostMatchesSource } from '@/lib/git-url';
+import { PROJECT_TYPES } from '@/types/project.types';
 
 export const uploadProjectSchema = z.object({
   name: z.string().min(3).max(50).regex(/^[a-zA-Z0-9 _-]+$/, 'Only letters, numbers, spaces, hyphens, and underscores are allowed'),
@@ -19,7 +20,7 @@ export const createProjectSchema = z
     description: z.string().max(500).optional(),
     source: z.enum(['GITHUB', 'GITLAB']),
     githubUrl: z.string(),
-    type: z.enum(['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'GO', 'RUST', 'JAVA', 'WORDPRESS']).optional(),
+    type: z.enum(PROJECT_TYPES).optional(),
     branch: branchSchema.optional(),
     useStaticHosting: z.boolean().optional(),
   })

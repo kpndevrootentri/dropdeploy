@@ -453,6 +453,8 @@ stateDiagram-v2
     DEPLOYED --> [*]
 ```
 
+A successful deploy clears `buildStep`; a failed one keeps the step it stopped at (the progress UI only renders while `BUILDING`, and admin analytics groups failures by it). A retry resets it.
+
 **Frontend indicators:**
 - Completed steps: checkmark
 - Active step: spinner
@@ -600,6 +602,8 @@ flowchart LR
 | `GET` | `/api/auth/github/callback` | GitHub OAuth callback |
 | `GET` | `/api/auth/gitlab/connect` | Start GitLab OAuth flow |
 | `GET` | `/api/auth/gitlab/callback` | GitLab OAuth callback |
+| `POST` | `/api/auth/invite/accept` | Public: set a password from an invite link (`{ token, password }`) |
+| `POST` | `/api/auth/impersonation/exit` | End "view as user" and restore the admin's own session |
 | `GET` | `/api/git-providers` | List connected providers (username + avatar) |
 | `DELETE` | `/api/git-providers/:provider` | Disconnect a provider |
 | `GET` | `/api/git-providers/:provider/repos` | Search repos (`?q=&page=&refresh=`) |
@@ -626,21 +630,36 @@ flowchart LR
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/admin/users` | List all users |
-| `POST` | `/api/admin/users` | Invite / create a user |
-| `POST` | `/api/admin/users/bulk` | Import many users with one temporary password |
+| `POST` | `/api/admin/users` | Invite a user; returns a one-time invite link path (7 days, single use; any password change revokes unused links) |
+| `POST` | `/api/admin/users/bulk` | Invite many users, each with their own one-time link |
 | `GET` | `/api/admin/users/:userId` | Get user details |
 | `PATCH` | `/api/admin/users/:userId/role` | Change user role |
-| `POST` | `/api/admin/users/:userId/reset-password` | Reset user password |
+| `PATCH` | `/api/admin/users/:userId/reset-password` | Reset user password (`{ newPassword }`, or `{ generate: true }` to get one back once) |
+| `POST` | `/api/admin/users/:userId/invite` | New one-time invite link for a user who has not chosen a password yet; earlier unused links stop working |
 | `DELETE` | `/api/admin/users/:userId` | Delete user |
+| `POST` | `/api/admin/users/:userId/impersonate` | View the dashboard as a non-admin user: read-only, 30 minutes, recorded as a `PlatformEvent` |
 | `GET` | `/api/admin/projects` | List all projects across all users |
 | `GET` | `/api/admin/projects/:projectId` | Get project details (any user) |
 | `POST` | `/api/admin/projects/:projectId/deploy` | Force-deploy any project |
+| `POST` | `/api/admin/projects/redeploy-all` | Rebuild every matching repository project (`{ type?, source?, dryRun, confirm: "redeploy all", projectIds }`; a confirmed run must send the previewed `projectIds` and queues only those); skips uploads, never-deployed projects and ones already queued or building; the worker's `BULLMQ_CONCURRENCY` caps how many build at once |
 | `POST` | `/api/admin/projects/:projectId/restart` | Restart container |
 | `POST` | `/api/admin/projects/:projectId/stop` | Stop container |
 | `GET` | `/api/admin/projects/:projectId/container` | Container status |
 | `POST` | `/api/admin/projects/:projectId/transfer` | Transfer project to another user |
-| `GET` | `/api/admin/analytics` | Platform-wide analytics (users, deployments, traffic, showcase, events) |
+| `GET` | `/api/admin/analytics` | Platform-wide analytics (users, deployments, traffic, showcase, events); `?days=7\|14\|30\|90`, default 14 |
 | `GET` | `/api/admin/stats` | User and project totals for the admin overview |
+| `GET` | `/api/admin/users/export` | All users as CSV (no password hashes or tokens) |
+| `GET` | `/api/admin/projects/export` | All projects as CSV (no env values or secrets) |
+
+### View as user
+
+An admin can open the dashboard as a non-admin user to see what they see. The session is a 30-minute JWT for the user carrying `imp` (the admin's id) and `itv` (the admin's `tokenVersion`); the admin's own token waits in the `admin-restore` cookie (httpOnly, host-only, path `/api/auth/impersonation/exit`).
+
+- **Read-only:** `getSession` — which every authenticated API route calls — refuses anything but GET/HEAD, plus `/api/admin/*`, the GitHub/GitLab OAuth routes and repo listing even for GET. The proxy keeps the session off `/dashboard/admin`.
+- **Ends early** when the admin is demoted or signed out everywhere, or the user becomes an admin (`verifySession` re-checks both users).
+- **Never** for another admin or yourself.
+- **Exit** restores the saved session only if it is a live admin session and the current view (if still valid) belongs to that admin; otherwise both cookies are cleared.
+- Start and exit are recorded as `admin.impersonate.start` / `admin.impersonate.exit` platform events.
 
 ---
 
@@ -690,14 +709,14 @@ Events are stored in `PlatformEvent` with optional `userId` and `meta` JSON. The
 
 ### Admin Analytics Dashboard
 
-`/dashboard/admin/analytics` is a contributor-only page showing platform-wide metrics sourced from `GET /api/admin/analytics`:
+`/dashboard/admin/analytics` is a contributor-only page showing platform-wide metrics sourced from `GET /api/admin/analytics`. A range picker (7 / 14 / 30 / 90 days, whitelisted server-side) sets the window for the per-day charts and the range-only stats; totals stay all-time.
 
 | Section | Metrics |
 |---------|---------|
 | **Users** | Total users, new this week, 14-day signups chart |
 | **Projects** | Total projects, new this week, framework distribution, 14-day new-projects chart |
-| **Deployments** | Total, succeeded, failed, success rate, deploys this week, 14-day frequency chart (total / success / failed per day) |
-| **Traffic** | Total proxy hits, hits this week, 14-day hits chart, device breakdown |
+| **Deployments** | Total, succeeded, failed, success rate, deploys this week, per-day frequency chart (total / success / failed), build time p50/p95 (successful builds, rollbacks and uploads excluded), failed deploys grouped by `buildStep` (there is no error-message column) |
+| **Traffic** | Total proxy hits, hits this week, per-day hits chart, device breakdown, top 10 projects by hits in the range |
 | **Showcase** | Total showcases, published count, total views, top 5 by view count |
 | **Platform Events** | Event counts by type, events this week |
 
