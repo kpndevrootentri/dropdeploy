@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 import type { CustomDomain, DomainStatus } from '@prisma/client';
-import { domainRepository, type IDomainRepository } from '@/repositories/domain.repository';
+import { domainRepository, type IDomainRepository, type AdminDomainRow } from '@/repositories/domain.repository';
 import { ISSUABLE_STATUSES, isRoutableStatus } from '@/lib/domain-status';
 import { probeEdgeTls } from '@/lib/edge-tls';
 import { projectRepository, type IProjectRepository } from '@/repositories/project.repository';
@@ -191,13 +191,7 @@ export class DomainService implements IDomainService {
   async verify(projectId: string, ownerId: string, domainId: string): Promise<DomainView> {
     this.assertFeatureEnabled();
     await this.assertOwner(projectId, ownerId);
-    const domain = await this.findOwnedDomain(projectId, domainId);
-
-    await this.runCheck(domain);
-
-    const refreshed = await this.domainRepo.findById(domainId);
-    if (!refreshed) throw new NotFoundError('Domain');
-    return this.toView(refreshed);
+    return this.recheck(await this.findOwnedDomain(projectId, domainId));
   }
 
   async update(
@@ -235,12 +229,22 @@ export class DomainService implements IDomainService {
 
   async remove(projectId: string, ownerId: string, domainId: string): Promise<void> {
     await this.assertOwner(projectId, ownerId);
-    const domain = await this.findOwnedDomain(projectId, domainId);
+    await this.deleteDomain(await this.findOwnedDomain(projectId, domainId), ownerId, 'domain.remove');
+  }
 
-    await this.domainRepo.delete(domainId);
-    await this.invalidateProject(projectId, domain.hostname);
-    await this.audit('domain.remove', domain.hostname, ownerId, projectId);
-    log.info('Custom domain removed', { hostname: domain.hostname, projectId });
+  // ── Admin (no ownership check; callers must require CONTRIBUTOR) ─────────
+
+  async adminList(): Promise<AdminDomainRow[]> {
+    return this.domainRepo.listAll();
+  }
+
+  async adminVerify(domainId: string): Promise<DomainView> {
+    this.assertFeatureEnabled();
+    return this.recheck(await this.findDomain(domainId));
+  }
+
+  async adminRemove(domainId: string, actorId: string): Promise<void> {
+    await this.deleteDomain(await this.findDomain(domainId), actorId, 'DOMAIN_ADMIN_REMOVED');
   }
 
   // ── Edge integration ─────────────────────────────────────────────────────
@@ -586,6 +590,25 @@ export class DomainService implements IDomainService {
     if (!project || project.userId !== ownerId) {
       throw new NotFoundError('Project');
     }
+  }
+
+  private async findDomain(domainId: string): Promise<CustomDomain> {
+    const domain = await this.domainRepo.findById(domainId);
+    if (!domain) throw new NotFoundError('Domain');
+    return domain;
+  }
+
+  private async recheck(domain: CustomDomain): Promise<DomainView> {
+    await this.runCheck(domain);
+    return this.toView(await this.findDomain(domain.id));
+  }
+
+  /** Deleting the row is not enough: the proxy's host cache must forget it too. */
+  private async deleteDomain(domain: CustomDomain, actorId: string, action: string): Promise<void> {
+    await this.domainRepo.delete(domain.id);
+    await this.invalidateProject(domain.projectId, domain.hostname);
+    await this.audit(action, domain.hostname, actorId, domain.projectId);
+    log.info('Custom domain removed', { hostname: domain.hostname, projectId: domain.projectId, action });
   }
 
   /** Re-checks that the domain belongs to this project before acting on it. */

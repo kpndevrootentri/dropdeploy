@@ -7,6 +7,7 @@ import type { IProjectRepository } from '@/repositories/project.repository';
 import type { IDockerOps } from '@/lib/docker-ops';
 import type { IDeploymentRepository } from '@/repositories/deployment.repository';
 import type { IAdminActionRepository } from '@/repositories/admin-action.repository';
+import { DEFAULT_PLATFORM_SETTINGS } from '@/services/platform-settings/platform-settings.service';
 
 function setup(registered: string[]) {
   const userRepo = {
@@ -14,12 +15,14 @@ function setup(registered: string[]) {
     findById: jest.fn(async () => ({ id: 'admin', email: 'admin@entri.me' })),
   };
   const adminActions = { create: jest.fn(async () => ({})) };
+  const settings = { get: async () => ({ ...DEFAULT_PLATFORM_SETTINGS, defaultProjectQuota: 3, defaultDomainQuota: 0 }) };
   const service = new AdminService(
     userRepo as unknown as IUserRepository,
     {} as IProjectRepository,
     {} as IDockerOps,
     {} as IDeploymentRepository,
     adminActions as unknown as IAdminActionRepository,
+    settings,
   );
   return { service, userRepo, adminActions };
 }
@@ -32,7 +35,10 @@ describe('AdminService.bulkCreateUsers', () => {
       'password',
       'admin',
     );
-    expect(userRepo.createMany).toHaveBeenCalledWith(['new@entri.me', 'old@entri.me'], expect.any(String));
+    expect(userRepo.createMany).toHaveBeenCalledWith(['new@entri.me', 'old@entri.me'], expect.any(String), {
+      projectQuota: 3,
+      domainQuota: 0,
+    });
     expect(result).toEqual({ created: ['new@entri.me'], skipped: ['old@entri.me'], invalid: ['not-an-email'] });
   });
 

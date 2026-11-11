@@ -21,17 +21,22 @@ import { createRedisConnection } from '@/lib/redis';
 import { AppError } from '@/lib/errors';
 import { PLATFORM_RESOURCE_SLUGS } from '@/lib/reserved-slugs';
 import type { DiskUsage } from '@/lib/disk-usage';
+import type { ContainerUsage } from '@/lib/container-usage';
 
 export const DOCKER_OPS_QUEUE = 'docker-ops';
 
 export type DockerOpRequest =
   | { op: 'terminal'; containerName: string; command: string }
   | { op: 'containerInfo'; containerName: string }
+  | { op: 'containerStats'; containerName: string }
   | { op: 'stopContainer'; containerName: string }
   | { op: 'restartContainer'; containerName: string }
   | { op: 'removeProjectResources'; slug: string }
   | { op: 'containerLogs'; containerName: string; tail: number }
-  | { op: 'diskUsage' };
+  | { op: 'diskUsage' }
+  | { op: 'listTenantContainers' }
+  | { op: 'listDanglingImages' }
+  | { op: 'removeSupersededImages'; slug: string };
 
 /**
  * What the worker returns. User-facing failures (a disallowed terminal
@@ -52,6 +57,22 @@ export interface ContainerInfo {
   cpuLimit: number;
   memoryLimitBytes: number;
   restartCount: number;
+}
+
+/** A container started from a project image; it inherits the image's `dropdeploy.slug` label. */
+export interface LabelledContainer {
+  name: string;
+  /** The label value: the slug of the project the image was built for. */
+  slug: string;
+  state: string;
+}
+
+/** An untagged project image a rebuild left behind. */
+export interface DanglingImage {
+  id: string;
+  slug: string;
+  sizeBytes: number;
+  createdAt: string;
 }
 
 export interface TerminalResult {
@@ -82,12 +103,17 @@ export function assertNotPlatformResource(name: string): void {
 const TIMEOUT_MS: Record<DockerOpRequest['op'], number> = {
   terminal: 40_000,
   containerInfo: 10_000,
+  // A non-streaming stats call waits for two samples, about two seconds.
+  containerStats: 10_000,
   stopContainer: 30_000,
   restartContainer: 30_000,
   removeProjectResources: 60_000,
   containerLogs: 15_000,
   // `docker system df` walks every layer and volume; the System route gives up sooner.
   diskUsage: 30_000,
+  listTenantContainers: 15_000,
+  listDanglingImages: 15_000,
+  removeSupersededImages: 60_000,
 };
 
 let queue: Queue<DockerOpRequest, DockerOpResult> | null = null;
@@ -149,6 +175,8 @@ async function call<T>(request: DockerOpRequest): Promise<T> {
 export interface IDockerOps {
   terminal(containerName: string, command: string): Promise<TerminalResult>;
   containerInfo(containerName: string): Promise<ContainerInfo | null>;
+  /** Null when the container is missing or stopped. */
+  containerStats(containerName: string): Promise<ContainerUsage | null>;
   stopContainer(containerName: string): Promise<void>;
   restartContainer(containerName: string): Promise<void>;
   /** Container, images, served static files and git clone of a deleted project. */
@@ -157,14 +185,24 @@ export interface IDockerOps {
   containerLogs(containerName: string, tail: number): Promise<string | null>;
   /** Totals of `docker system df`. */
   diskUsage(): Promise<DiskUsage>;
+  /** Every container carrying the project slug label, running or not. */
+  listTenantContainers(): Promise<LabelledContainer[]>;
+  /** Untagged images carrying the project slug label. */
+  listDanglingImages(): Promise<DanglingImage[]>;
+  /** Removes one project's untagged images; ones a container still uses are kept. */
+  removeSupersededImages(slug: string): Promise<void>;
 }
 
 export const dockerOps: IDockerOps = {
   terminal: (containerName, command) => call({ op: 'terminal', containerName, command }),
   containerInfo: (containerName) => call({ op: 'containerInfo', containerName }),
+  containerStats: (containerName) => call({ op: 'containerStats', containerName }),
   stopContainer: (containerName) => call({ op: 'stopContainer', containerName }),
   restartContainer: (containerName) => call({ op: 'restartContainer', containerName }),
   removeProjectResources: (slug) => call({ op: 'removeProjectResources', slug }),
   containerLogs: (containerName, tail) => call({ op: 'containerLogs', containerName, tail }),
   diskUsage: () => call({ op: 'diskUsage' }),
+  listTenantContainers: () => call({ op: 'listTenantContainers' }),
+  listDanglingImages: () => call({ op: 'listDanglingImages' }),
+  removeSupersededImages: (slug) => call({ op: 'removeSupersededImages', slug }),
 };

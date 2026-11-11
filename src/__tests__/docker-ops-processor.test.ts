@@ -7,9 +7,17 @@ const removeProjectResources = jest.fn(async () => undefined);
 const restartContainer = jest.fn(async () => undefined);
 const getContainerInfo = jest.fn(async () => null);
 const getContainerLogs = jest.fn(async () => 'log');
+const removeSupersededImages = jest.fn(async () => undefined);
 
 jest.mock('@/services/docker', () => ({
-  dockerService: { stopContainer, restartContainer, getContainerInfo, getContainerLogs },
+  dockerService: {
+    stopContainer,
+    restartContainer,
+    getContainerInfo,
+    getContainerLogs,
+    getContainerStats: jest.fn(),
+    removeSupersededImages,
+  },
 }));
 jest.mock('@/services/docker/docker-terminal.service', () => ({
   dockerTerminalService: { executeCommand, executeSlashCommand: jest.fn() },
@@ -28,6 +36,11 @@ describe('processDockerOp', () => {
     await expect(processDockerOp(job({ op: 'stopContainer', containerName: 'dropdeploy-shop' })))
       .resolves.toEqual({ ok: true, value: null });
     expect(stopContainer).toHaveBeenCalledWith('dropdeploy-shop');
+  });
+
+  it('refuses container stats for a non-project container', async () => {
+    await expect(processDockerOp(job({ op: 'containerStats', containerName: 'postgres' })))
+      .resolves.toMatchObject({ ok: false, code: 'INVALID_DOCKER_OPERATION' });
   });
 
   it.each(['caddy', 'postgres', 'dropdeploy-', 'dropdeploy-../x', 'dropdeploy-a;b'])(
@@ -70,6 +83,12 @@ describe('processDockerOp', () => {
     await expect(processDockerOp(job({ op: 'removeProjectResources', slug: '../../etc' })))
       .resolves.toMatchObject({ ok: false });
     expect(removeProjectResources).not.toHaveBeenCalled();
+  });
+
+  it('refuses an invalid slug for image pruning', async () => {
+    await expect(processDockerOp(job({ op: 'removeSupersededImages', slug: 'a b' })))
+      .resolves.toMatchObject({ ok: false });
+    expect(removeSupersededImages).not.toHaveBeenCalled();
   });
 
   it('fails the job, rather than returning details, on an internal error', async () => {

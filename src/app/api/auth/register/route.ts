@@ -6,10 +6,11 @@ import { ForbiddenError } from '@/lib/errors';
 import { checkRegisterRateLimit, getClientIp } from '@/lib/rate-limit';
 import { setAuthCookie, parseExpiresInToSeconds } from '@/lib/auth-cookie';
 import { getConfig } from '@/lib/config';
+import { platformSettingsService } from '@/services/platform-settings/platform-settings.service';
 
 export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
   try {
-    if (!getConfig().ALLOW_PUBLIC_REGISTRATION) {
+    if (!(await platformSettingsService.isSignupOpen())) {
       throw new ForbiddenError('Registration is closed. Ask an administrator for an account.');
     }
     const limited = checkRegisterRateLimit(getClientIp(req));

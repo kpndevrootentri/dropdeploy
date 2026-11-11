@@ -8,6 +8,8 @@ export interface IProjectRepository {
   findByIdWithDeployments(id: string): Promise<Project | null>;
   findByUserId(userId: string): Promise<Project[]>;
   findBySlug(slug: string): Promise<Project | null>;
+  /** Which of the given slugs belong to a project, in one query. */
+  findExistingSlugs(slugs: string[]): Promise<string[]>;
   findAll(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date; containerPort: number | null }[] })[]>;
   create(userId: string, data: CreateProjectDto): Promise<Project>;
   update(id: string, data: UpdateProjectDto): Promise<Project>;
@@ -48,6 +50,11 @@ export class ProjectRepository implements IProjectRepository {
 
   async findBySlug(slug: string): Promise<Project | null> {
     return prisma.project.findUnique({ where: { slug } });
+  }
+
+  async findExistingSlugs(slugs: string[]): Promise<string[]> {
+    const rows = await prisma.project.findMany({ where: { slug: { in: slugs } }, select: { slug: true } });
+    return rows.map((r) => r.slug);
   }
 
   async findAll(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date; containerPort: number | null }[] })[]> {

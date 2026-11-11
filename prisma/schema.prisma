@@ -186,6 +186,8 @@ model ProjectShowcase {
   isPublished      Boolean   @default(false) @map("is_published")
   publishedAt      DateTime? @map("published_at")
   viewCount        Int       @default(0) @map("view_count")
+  /// Set by an admin; featured entries sort first on the Explore page.
+  featured         Boolean   @default(false)
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -356,6 +358,24 @@ enum DeploymentStatus {
   DEPLOYED
   FAILED
   CANCELLED
+}
+
+/// Platform-wide settings edited in the admin panel: one row, id 1. A
+/// missing row means every default below, so nothing needs seeding.
+model PlatformSetting {
+  id                    Int      @id @default(1)
+  /// Quotas given to accounts created from now on; existing users keep theirs.
+  defaultProjectQuota   Int      @default(5) @map("default_project_quota")
+  defaultDomainQuota    Int      @default(1) @map("default_domain_quota")
+  /// Can only close self-registration: ALLOW_PUBLIC_REGISTRATION must be on too.
+  signupOpen            Boolean  @default(true) @map("signup_open")
+  /// Shown to every signed-in user above the dashboard when set.
+  bannerMessage         String?  @map("banner_message") @db.Text
+  /// Age past which the admin cleanup deletes proxy hits. At least 7.
+  proxyHitRetentionDays Int      @default(90) @map("proxy_hit_retention_days")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_settings")
 }
 
 model ProxyHit {
