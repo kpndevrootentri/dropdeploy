@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createInterface } from 'node:readline';
 import { cwd as processCwd } from 'node:process';
-import { readCredentials, clearCredentials, login } from './auth.js';
+import { readCredentials, clearCredentials, login, PRODUCTION_URL } from './auth.js';
 import { DropDeployApi, type Project } from './api.js';
 import { getGitInfo, validateLocal } from './detector.js';
 
@@ -234,7 +234,6 @@ async function pickProject(
 // ── Commands ─────────────────────────────────────────────────────────────────
 
 async function cmdAuthLogin(flags: Record<string, string>): Promise<void> {
-  const PRODUCTION_URL = 'https://app.en3.wtf';
   const apiUrl = flags['api-url'] ?? PRODUCTION_URL;
   console.log(`Connecting to ${c.cyan(apiUrl)}`);
   const email = flags['email'] ?? (await prompt('Email: '));
@@ -499,7 +498,7 @@ ${c.bold('COMMANDS')}
 
   ${c.cyan('projects')}                     List all your projects and their status
 
-  ${c.cyan('auth login')}                   Log in to your DropDeploy instance  ${c.dim('(default: app.en3.wtf)')}
+  ${c.cyan('auth login')}                   Log in to your DropDeploy instance  ${c.dim('(default: entrify.site)')}
     ${c.dim('--api-url <url>')}             Override the default URL (e.g. for local dev)
     ${c.dim('--email <email>')}             Your email
     ${c.dim('(password is always prompted interactively)')}

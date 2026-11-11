@@ -1,0 +1,44 @@
+# Old platform domain → new one, for the length of a domain move.
+#
+# Enable: copy this file into infra/caddy/sites/ (mounted at /etc/caddy/sites/)
+# and set LEGACY_BASE_DOMAIN, LEGACY_WILDCARD_CERT and LEGACY_WILDCARD_KEY in
+# caddy/.env, e.g. app.en3.wtf and its certbot wildcard.
+# Retire: delete the copy once nothing calls the old host, or before its
+# certificate lapses, since an expired certificate fails every request anyway.
+# See docs/domain-migration.md.
+
+# The old dashboard host. Pages redirect, but the API is proxied in place:
+# GitHub does not follow redirects on webhook deliveries, and fetch drops the
+# CLI's Authorization header when a redirect crosses origins. Both keep working
+# until the hooks are re-pointed and the CLI is updated.
+{$LEGACY_BASE_DOMAIN} {
+	tls {$LEGACY_WILDCARD_CERT} {$LEGACY_WILDCARD_KEY}
+
+	handle /api/* {
+		# Same exclusions as the main block: the edge-only endpoint, and the
+		# tenant proxy route, which must never run on a dashboard host.
+		@blocked path /api/internal/* /api/proxy /api/proxy/*
+		respond @blocked 404
+
+		reverse_proxy {$APP_UPSTREAM} {
+			# The app only recognises the new hostnames.
+			header_up Host {$BASE_DOMAIN}
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			flush_interval -1
+		}
+	}
+
+	handle {
+		redir https://{$BASE_DOMAIN}{uri} 308
+	}
+}
+
+# Old tenant hosts: <slug>.<old> → <slug>.<new>, path and query kept. A site
+# wildcard matches exactly one label, so the first label is the slug.
+*.{$LEGACY_BASE_DOMAIN} {
+	tls {$LEGACY_WILDCARD_CERT} {$LEGACY_WILDCARD_KEY}
+
+	@tenant header_regexp tenant Host ^([^.]+)\.
+	redir @tenant https://{re.tenant.1}.{$BASE_DOMAIN}{uri} 308
+}

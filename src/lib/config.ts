@@ -85,7 +85,7 @@ const envSchema = z.object({
   // Where the worker reaches the TLS edge to trigger certificate issuance.
   // Caddy runs with host networking, so loopback.
   EDGE_TLS_ADDRESS: z.string().default('127.0.0.1:443'),
-  // CNAME target shown to users for sub-domains, e.g. "ingress.en3.wtf".
+  // CNAME target shown to users for sub-domains, e.g. "ingress.entrify.site".
   CUSTOM_DOMAIN_CNAME_TARGET: z.string().optional(),
   // Shared secret the edge sends to /api/internal/tls-check. When set, the
   // endpoint requires it; the edge is the only party that should hold it.

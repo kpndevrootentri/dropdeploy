@@ -17,6 +17,9 @@ services:
     network_mode: host
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Optional extra site blocks (see the import in the Caddyfile). Empty
+      # unless a domain move is in progress: copy legacy-domain.caddy in here.
+      - ./sites:/etc/caddy/sites:ro
       # The existing certbot wildcard. Read-only: certbot owns these files,
       # Caddy only reads them. /etc/letsencrypt/live/* are symlinks into
       # ../archive/, so the whole directory has to be mounted, not just live/.
@@ -35,8 +38,12 @@ services:
       # "Caddy won't start" with no obvious cause. Fail here instead, with a
       # message that says what to do.
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in caddy/.env — an empty value is a Caddyfile parse error}
-      WILDCARD_CERT: ${WILDCARD_CERT:-/etc/letsencrypt/live/app.en3.wtf/fullchain.pem}
-      WILDCARD_KEY: ${WILDCARD_KEY:-/etc/letsencrypt/live/app.en3.wtf/privkey.pem}
+      WILDCARD_CERT: ${WILDCARD_CERT:-/etc/letsencrypt/live/entrify.site/fullchain.pem}
+      WILDCARD_KEY: ${WILDCARD_KEY:-/etc/letsencrypt/live/entrify.site/privkey.pem}
+      # Only read when sites/legacy-domain.caddy is present.
+      LEGACY_BASE_DOMAIN: ${LEGACY_BASE_DOMAIN:-}
+      LEGACY_WILDCARD_CERT: ${LEGACY_WILDCARD_CERT:-}
+      LEGACY_WILDCARD_KEY: ${LEGACY_WILDCARD_KEY:-}
 
 volumes:
   caddy_data:

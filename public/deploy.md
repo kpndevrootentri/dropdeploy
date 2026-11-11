@@ -110,7 +110,7 @@ Use the **exit code** as the source of truth, not string matching:
 
 **Exit code 0 → success.**
 Tell the user the deployment succeeded and relay the Live URL printed in the CLI output. Example:
-> "Deployed! Live at: https://my-app.en3.wtf"
+> "Deployed! Live at: https://my-app.entrify.site"
 
 **Exit code 1 → failure.**
 Check what the output contains:

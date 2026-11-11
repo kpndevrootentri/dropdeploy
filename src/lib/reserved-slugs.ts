@@ -13,6 +13,7 @@ const RESERVED_SLUGS = new Set([
   'security', 'secure', 'internal', 'root', 'system', 'platform', 'dropdeploy', 'deploy',
   'mail', 'email', 'smtp', 'imap', 'pop', 'mx', 'ftp', 'ns', 'ns1', 'ns2', 'dns',
   'cdn', 'static', 'assets', 'status', 'health', 'docs', 'help', 'support', 'blog', 'explore',
+  'ingress', // custom domains CNAME to ingress.<BASE_DOMAIN>
   'localhost', 'staging', 'dev', 'test',
 ]);
 

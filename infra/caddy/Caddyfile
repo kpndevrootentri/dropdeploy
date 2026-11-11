@@ -7,7 +7,7 @@
 # tenant hostname straight to a container port would silently bypass both.
 #
 # Placeholders to substitute before use:
-#   {$BASE_DOMAIN}          e.g. app.en3.wtf
+#   {$BASE_DOMAIN}          e.g. entrify.site (the dashboard; tenants are <slug>.entrify.site)
 #   {$APP_UPSTREAM}         e.g. 127.0.0.1:3000   ← check the real port
 #   {$INTERNAL_EDGE_TOKEN}  the shared secret from the app's env
 #   {$ACME_EMAIL}           contact address for Let's Encrypt
@@ -108,8 +108,19 @@
 	}
 	respond @dashboard_proxy 404
 
+	# With the dashboard on the apex, people type www. `www` is a reserved slug,
+	# so no tenant can own it; send it to the dashboard.
+	@www host www.{$BASE_DOMAIN}
+	redir @www https://{$BASE_DOMAIN}{uri} 308
+
 	import app_upstream
 }
+
+# ── Optional site blocks ──────────────────────────────────────────────────────
+# Files mounted into /etc/caddy/sites/, e.g. legacy-domain.caddy while moving to a
+# new BASE_DOMAIN. Named hosts win over the :443 catch-all whatever the order. A
+# glob that matches no file is a warning, not an error, so an empty directory is fine.
+import /etc/caddy/sites/*.caddy
 
 # ── Follow-up: let Caddy own the wildcard via DNS-01 ──────────────────────────
 # Replace the block above with this once a Route 53 credential exists and the

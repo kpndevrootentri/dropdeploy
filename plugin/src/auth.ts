@@ -2,6 +2,15 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readFile, writeFile, rename, mkdir, unlink } from 'node:fs/promises';
 
+/** Where `dropdeploy auth login` connects unless --api-url says otherwise. */
+export const PRODUCTION_URL = 'https://entrify.site';
+// ponytail: the platform moved from app.en3.wtf; drop this once that domain is retired.
+const LEGACY_PRODUCTION_URL = 'https://app.en3.wtf';
+
+/** Saved logins keep working after the move: same server, same token, new host. */
+const currentUrl = (url: string): string =>
+  url.replace(/\/$/, '') === LEGACY_PRODUCTION_URL ? PRODUCTION_URL : url;
+
 export interface Credentials {
   token: string;
   email: string;
@@ -31,12 +40,13 @@ export async function readCredentials(): Promise<Credentials | null> {
     return {
       token: process.env.DROPDEPLOY_TOKEN,
       email: process.env.DROPDEPLOY_EMAIL ?? 'env',
-      apiUrl: process.env.DROPDEPLOY_URL,
+      apiUrl: currentUrl(process.env.DROPDEPLOY_URL),
     };
   }
   try {
     const raw = await readFile(credsPath(), 'utf8');
-    return JSON.parse(raw) as Credentials;
+    const creds = JSON.parse(raw) as Credentials;
+    return { ...creds, apiUrl: currentUrl(creds.apiUrl) };
   } catch {
     return null;
   }

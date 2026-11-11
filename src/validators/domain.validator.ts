@@ -113,7 +113,7 @@ export function isUnderDomain(host: string, base: string): boolean {
 
 /**
  * Policy check that needs runtime config. Rejects the platform's own domains —
- * claiming `app.en3.wtf` or any `*.app.en3.wtf` would let a tenant shadow the
+ * claiming `entrify.site` or any `*.entrify.site` would let a tenant shadow the
  * dashboard or another tenant's subdomain — plus the operator denylist.
  */
 export function assertHostnameAllowed(
