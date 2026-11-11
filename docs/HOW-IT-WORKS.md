@@ -640,6 +640,7 @@ flowchart LR
 | `GET` | `/api/admin/projects/:projectId/container` | Container status |
 | `POST` | `/api/admin/projects/:projectId/transfer` | Transfer project to another user |
 | `GET` | `/api/admin/analytics` | Platform-wide analytics (users, deployments, traffic, showcase, events) |
+| `GET` | `/api/admin/stats` | User and project totals for the admin overview |
 
 ---
 

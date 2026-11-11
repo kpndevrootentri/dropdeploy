@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import { getProjectUrl } from '@/components/ui/framework-logo';
 import React from 'react';
 import {
@@ -149,6 +150,7 @@ function ContainerDetails({ projectId }: { projectId: string }): React.ReactElem
 export default function AdminProjectsPage(): React.ReactElement {
   const [projects, setProjects] = useState<AdminProject[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -158,8 +160,12 @@ export default function AdminProjectsPage(): React.ReactElement {
     if (!silent) setLoading(true);
     return fetch('/api/admin/projects')
       .then((r) => r.json())
-      .then((res) => { setProjects(res.data ?? []); return res.data ?? []; })
-      .catch(() => [])
+      .then((res) => {
+        // On failure keep the last good list, so a failed poll doesn't empty the table.
+        if (res.success) { setProjects(res.data ?? []); setError(null); }
+        else setError(res.error?.message ?? 'Failed to load projects');
+      })
+      .catch(() => setError('Failed to load projects'))
       .finally(() => { if (!silent) setLoading(false); });
   }, []);
 
@@ -191,12 +197,12 @@ export default function AdminProjectsPage(): React.ReactElement {
       const res = await fetch(url, { method });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        alert(body?.error ?? 'Action failed');
+        toast.error(body?.error?.message ?? body?.error ?? 'Action failed');
         return;
       }
       void load();
     } catch {
-      alert('Network error');
+      toast.error('Network error');
     } finally {
       setActing(null);
     }
@@ -206,6 +212,7 @@ export default function AdminProjectsPage(): React.ReactElement {
 
   return (
     <div className="space-y-4">
+      {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
@@ -351,7 +358,7 @@ export default function AdminProjectsPage(): React.ReactElement {
                 </React.Fragment>
               );
             })}
-            {projects.length === 0 && (
+            {projects.length === 0 && !error && (
               <tr>
                 <td colSpan={7} className="py-8 text-center text-muted-foreground">
                   No projects found.

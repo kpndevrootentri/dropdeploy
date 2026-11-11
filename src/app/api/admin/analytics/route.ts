@@ -33,6 +33,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const hitDays = bucketByDay(now, []);
 
     const [
       totalUsers,
@@ -74,7 +75,13 @@ export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
       }),
       prisma.proxyHit.count(),
       prisma.proxyHit.count({ where: { createdAt: { gte: weekAgo } } }),
-      prisma.proxyHit.findMany({ where: { createdAt: { gte: fourteenDaysAgo } }, select: { createdAt: true } }),
+      // Grouped in SQL: hits grow with tenant traffic, so loading each row would not scale.
+      // created_at is a UTC timestamp without time zone, so to_char yields the UTC day.
+      // The cutoff is a day string cast to timestamp: Prisma binds a JS Date as timestamptz,
+      // which would shift the comparison by the DB session's TimeZone.
+      prisma.$queryRaw<{ date: string; count: number }[]>`
+        SELECT to_char(created_at, 'YYYY-MM-DD') AS date, COUNT(*)::int AS count
+        FROM proxy_hits WHERE created_at >= ${hitDays[0].date}::timestamp GROUP BY 1`,
       prisma.proxyHit.groupBy({ by: ['device'], _count: { id: true } }),
       prisma.projectShowcase.aggregate({ _count: { _all: true }, _sum: { viewCount: true } }),
       prisma.projectShowcase.count({ where: { isPublished: true } }),
@@ -144,7 +151,10 @@ export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
         traffic: {
           totalHits,
           hitsThisWeek,
-          byDay: bucketByDay(now, recentHits.map((h) => h.createdAt)),
+          byDay: hitDays.map((d) => ({
+            ...d,
+            count: recentHits.find((h) => h.date === d.date)?.count ?? 0,
+          })),
           deviceBreakdown,
         },
         showcase: {

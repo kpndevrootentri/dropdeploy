@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -38,6 +39,7 @@ interface AdminUser {
 export default function AdminUsersPage(): React.ReactElement {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
 
   // Create user modal
@@ -78,8 +80,11 @@ export default function AdminUsersPage(): React.ReactElement {
     setLoading(true);
     fetch('/api/admin/users')
       .then((r) => r.json())
-      .then((res) => setUsers(res.data ?? []))
-      .catch(() => {})
+      .then((res) => {
+        if (res.success) { setUsers(res.data ?? []); setError(null); }
+        else setError(res.error?.message ?? 'Failed to load users');
+      })
+      .catch(() => setError('Failed to load users'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -137,12 +142,12 @@ export default function AdminUsersPage(): React.ReactElement {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        alert(body?.error ?? 'Failed to change role');
+        toast.error(body?.error?.message ?? body?.error ?? 'Failed to change role');
         return;
       }
       load();
     } catch {
-      alert('Network error');
+      toast.error('Network error');
     } finally {
       setActing(null);
     }
@@ -155,12 +160,12 @@ export default function AdminUsersPage(): React.ReactElement {
       const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        alert(body?.error ?? 'Failed to delete user');
+        toast.error(body?.error?.message ?? body?.error ?? 'Failed to delete user');
         return;
       }
       load();
     } catch {
-      alert('Network error');
+      toast.error('Network error');
     } finally {
       setActing(null);
     }
@@ -285,6 +290,7 @@ export default function AdminUsersPage(): React.ReactElement {
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
         <div className="overflow-x-auto">
+          {error && <p className="mb-4 text-sm text-destructive" role="alert">{error}</p>}
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b text-left text-muted-foreground">
@@ -386,7 +392,7 @@ export default function AdminUsersPage(): React.ReactElement {
                   </tr>
                 );
               })}
-              {users.length === 0 && (
+              {users.length === 0 && !error && (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-muted-foreground">
                     No users found.
