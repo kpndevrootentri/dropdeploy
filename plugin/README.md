@@ -1,10 +1,12 @@
 # dropdeploy-cli
 
-Official CLI for [DropDeploy](https://dropdeploy.app) — deploy any project from the terminal in seconds.
+Official CLI for [Entrify](https://entrify.site): deploy any project from the terminal in seconds.
 
 ```bash
 npm install -g dropdeploy-cli
 ```
+
+This installs the `entrify` command. The older `dropdeploy` command is installed too and does the same thing, so existing scripts keep working.
 
 ---
 
@@ -12,54 +14,57 @@ npm install -g dropdeploy-cli
 
 ```bash
 # Log in (one time)
-dropdeploy auth login
+entrify auth login
 
 # Deploy from any git repo
-dropdeploy deploy
+entrify deploy
 ```
 
 ---
 
 ## Commands
 
-### `dropdeploy auth login`
-Log in to your DropDeploy account.
+### `entrify auth login`
+Log in to your Entrify account.
 
 ```bash
-dropdeploy auth login                          # interactive login
-dropdeploy auth login --email you@example.com  # pre-fill email
+entrify auth login                          # interactive login
+entrify auth login --email you@example.com  # pre-fill email
 ```
 
-Password is always entered interactively — it is never passed as a flag.
+Password is always entered interactively; it is never passed as a flag. Logins last 7 days. After that, any command tells you to log in again.
 
-### `dropdeploy auth status`
+### `entrify auth status`
 Show the currently logged-in account.
 
-### `dropdeploy auth logout`
+### `entrify auth logout`
 Clear saved credentials.
 
 ---
 
-### `dropdeploy deploy`
+### `entrify deploy`
 Trigger a deployment for the current repository.
 
 ```bash
-dropdeploy deploy                          # auto-match project by git remote
-dropdeploy deploy --project-id my-app     # deploy to a specific project
-dropdeploy deploy --dir /path/to/repo     # use a different directory
+entrify deploy                          # auto-match project by git remote
+entrify deploy --project-id my-app      # deploy to a specific project
+entrify deploy --project-id=my-app      # same
+entrify deploy --dir /path/to/repo      # use a different directory
 ```
 
-DropDeploy deploys from your **git remote**, not local files. Push your changes before deploying.
+Entrify deploys from your **git remote**, not local files. Push your changes before deploying.
+
+The project is matched by your `origin` remote, whether it's an HTTPS or SSH URL. If several projects use the same repo, the one on your current branch wins. The server always builds the **project's** branch; the CLI warns you when that isn't the branch you have checked out.
 
 During the build, the CLI streams live output:
 
 ```
-▶ DropDeploy
+▶ Entrify
 
   Checking repository… ✓
   Validating project… ✓
   Detecting framework… ✓  NEXTJS (next.config.js)
-  Resolving project… ✓  my-app (my-app-1)
+  Resolving project… ✓  my-app (my-app)
   Triggering deployment… ✓
 
   ›  Cloning repository
@@ -68,30 +73,30 @@ During the build, the CLI streams live output:
 
 ✓ Deployed successfully
 
-  Live URL  →  https://my-app.dropdeploy.app
+  Live URL  →  https://my-app.entrify.site
 ```
 
 On failure, the last 20 lines of the build log and a probable cause are printed.
 
 ---
 
-### `dropdeploy projects`
+### `entrify projects`
 List all your projects and their current status.
 
 ```
 Your projects:
   my-app        My App         DEPLOYED
-  → https://my-app.dropdeploy.app
+    → https://my-app.entrify.site
 
   api-server    API Server     FAILED
 ```
 
 ---
 
-### `dropdeploy help`
+### `entrify help`
 Print the full command reference.
 
-### `dropdeploy --version`
+### `entrify --version`
 Print the installed version.
 
 ---
@@ -101,17 +106,19 @@ Print the installed version.
 Skip interactive login by setting environment variables:
 
 ```bash
-export DROPDEPLOY_TOKEN=your-jwt-token
-export DROPDEPLOY_URL=https://dropdeploy.app
+export ENTRIFY_TOKEN=your-jwt-token
+export ENTRIFY_URL=https://entrify.site
 
-dropdeploy deploy --project-id my-app
+entrify deploy --project-id my-app
 ```
+
+`DROPDEPLOY_TOKEN`, `DROPDEPLOY_URL` and `DROPDEPLOY_EMAIL` still work. Without a terminal, the CLI never prompts. If it can't match the repository to a project, it exits with an error asking for `--project-id`.
 
 ---
 
 ## Supported frameworks
 
-DropDeploy auto-detects your framework from the repository contents:
+Entrify auto-detects your framework from the repository contents:
 
 | Framework | Detection |
 |-----------|-----------|
@@ -132,7 +139,7 @@ DropDeploy auto-detects your framework from the repository contents:
 
 ## Installation
 
-Always install globally so the `dropdeploy` command is available system-wide:
+Always install globally so the `entrify` command is available system-wide:
 
 ```bash
 npm install -g dropdeploy-cli
@@ -141,7 +148,7 @@ npm install -g dropdeploy-cli
 Verify the installation:
 
 ```bash
-dropdeploy --version
+entrify --version
 ```
 
 ---

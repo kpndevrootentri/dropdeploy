@@ -1,4 +1,5 @@
 import type { Credentials } from './auth.js';
+import { apiErrorMessage, cliName } from './util.js';
 
 export interface Project {
   id: string;
@@ -6,6 +7,8 @@ export interface Project {
   slug: string;
   type: string;
   githubUrl: string | null;
+  /** The branch the server builds, whatever is checked out locally. */
+  branch?: string;
   deployments?: Array<{
     id: string;
     status: string;
@@ -44,7 +47,7 @@ function isSseEvent(x: unknown): x is SseEvent {
   return t === 'line' || t === 'existing' || t === 'done';
 }
 
-export class DropDeployApi {
+export class EntrifyApi {
   private base: string;
   private token: string;
 
@@ -70,9 +73,13 @@ export class DropDeployApi {
         body: body !== undefined ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
+      if (res.status === 401) {
+        // CLI logins are JWTs that expire (7 days by default).
+        throw new Error(`Your login has expired or is no longer valid. Run: ${cliName()} auth login`);
+      }
       if (!res.ok) {
-        const err = (await res.json().catch(() => ({}))) as { message?: string };
-        throw new Error(err.message ?? `API ${res.status} on ${method} ${path}`);
+        const body: unknown = await res.json().catch(() => null);
+        throw new Error(apiErrorMessage(body, `API ${res.status} on ${method} ${path}`));
       }
       const payload = (await res.json()) as { data: T };
       return payload.data;

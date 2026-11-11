@@ -55,16 +55,17 @@ export async function validateLocal(
 
   if (info.unpushedCommits) {
     warnings.push(
-      'You have unpushed commits. DropDeploy deploys from the remote — push first to include latest changes.',
+      'You have unpushed commits. Entrify deploys from the remote — push first to include latest changes.',
     );
   }
 
-  // For JS projects, check that a build script exists
+  // JS projects need something to run: a "build" (Next.js, Vite) or a "start" (Node.js,
+  // where the server's build step is --if-present).
   try {
     const raw = await readFile(join(cwd, 'package.json'), 'utf8');
     const pkg = JSON.parse(raw) as { scripts?: Record<string, string> };
-    if (!pkg.scripts?.build) {
-      errors.push('No "build" script found in package.json.');
+    if (!pkg.scripts?.build && !pkg.scripts?.start) {
+      errors.push('package.json has neither a "build" nor a "start" script.');
     }
   } catch {
     // Not a JS project — skip

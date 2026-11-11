@@ -2,8 +2,12 @@
 import { createInterface } from 'node:readline';
 import { cwd as processCwd } from 'node:process';
 import { readCredentials, clearCredentials, login, PRODUCTION_URL } from './auth.js';
-import { DropDeployApi, type Project } from './api.js';
+import { EntrifyApi, type Project } from './api.js';
 import { getGitInfo, validateLocal } from './detector.js';
+import { buildDeployUrl, cliName, normaliseRepoUrl, parseArgs } from './util.js';
+
+/** `entrify` or `dropdeploy`, whichever was typed. */
+const BIN = cliName();
 
 // ── ANSI colours (no external dep) ──────────────────────────────────────────
 const c = {
@@ -114,19 +118,6 @@ function clearProgress(): void {
   process.stdout.write('\r' + ' '.repeat(72) + '\r');
 }
 
-// ── Build URL from credentials + subdomain ───────────────────────────────────
-function buildDeployUrl(apiUrl: string, subdomain: string): string {
-  try {
-    const u = new URL(apiUrl);
-    if (u.hostname === 'localhost' || u.hostname.startsWith('127.')) {
-      return `${u.origin}/preview/${subdomain}`;
-    }
-    return `${u.protocol}//${subdomain}.${u.hostname}`;
-  } catch {
-    return `${apiUrl}/preview/${subdomain}`;
-  }
-}
-
 // ── Error diagnosis from build log tail ─────────────────────────────────────
 const ERROR_PATTERNS: Array<{ re: RegExp; cause: string; fix: string }> = [
   {
@@ -142,7 +133,7 @@ const ERROR_PATTERNS: Array<{ re: RegExp; cause: string; fix: string }> = [
   {
     re: /Authentication failed|could not read Username/i,
     cause: 'Git authentication failed',
-    fix: 'Reconnect your Git provider in DropDeploy → Settings',
+    fix: 'Reconnect your Git provider in Entrify → Settings',
   },
   {
     re: /Blocked package/i,
@@ -175,13 +166,10 @@ function diagnose(log: string): { cause: string; fix: string } | null {
 }
 
 // ── Project selection ────────────────────────────────────────────────────────
-function normaliseUrl(u: string): string {
-  return u.replace(/\.git$/, '').replace(/^https?:\/\//, '').toLowerCase();
-}
-
 async function pickProject(
-  api: DropDeployApi,
+  api: EntrifyApi,
   remoteUrl: string | null,
+  localBranch: string,
   flagProjectId: string | null,
 ): Promise<Project> {
   const projects = await api.listProjects();
@@ -194,18 +182,25 @@ async function pickProject(
     return p;
   }
 
-  // Auto-match by git remote URL
+  // Auto-match by git remote URL (HTTPS or SSH); with several projects on one repo, prefer this branch's
   if (remoteUrl) {
-    const needle = normaliseUrl(remoteUrl);
-    const matched = projects.find(
-      (p) => p.githubUrl && normaliseUrl(p.githubUrl) === needle,
+    const needle = normaliseRepoUrl(remoteUrl);
+    const matches = projects.filter(
+      (p) => p.githubUrl && normaliseRepoUrl(p.githubUrl) === needle,
     );
-    if (matched) return matched;
+    if (matches.length > 0) return matches.find((p) => p.branch === localBranch) ?? matches[0];
   }
 
   if (projects.length === 0) {
     throw new Error(
-      'No projects found on DropDeploy. Create one from the dashboard first.',
+      'No projects found on Entrify. Create one from the dashboard first.',
+    );
+  }
+
+  // Without a terminal (CI) the prompt below would wait forever.
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      `No project matches this repository. Pass --project-id <id|slug> (list them with: ${BIN} projects).`,
     );
   }
 
@@ -248,7 +243,7 @@ async function cmdAuthLogin(flags: Record<string, string>): Promise<void> {
 async function cmdAuthStatus(): Promise<void> {
   const creds = await readCredentials();
   if (!creds) {
-    console.log(`${c.yellow('Not logged in.')} Run: dropdeploy auth login`);
+    console.log(`${c.yellow('Not logged in.')} Run: ${BIN} auth login`);
     process.exit(1);
   }
   console.log(`${c.green('✓')} Logged in as ${c.bold(creds.email)}`);
@@ -263,10 +258,10 @@ async function cmdAuthLogout(): Promise<void> {
 async function cmdProjects(): Promise<void> {
   const creds = await readCredentials();
   if (!creds) {
-    console.error(c.red('Not logged in.') + ' Run: dropdeploy auth login');
+    console.error(c.red('Not logged in.') + ` Run: ${BIN} auth login`);
     process.exit(1);
   }
-  const api = new DropDeployApi(creds);
+  const api = new EntrifyApi(creds);
   const projects = await api.listProjects();
 
   if (projects.length === 0) {
@@ -299,13 +294,13 @@ async function cmdDeploy(flags: Record<string, string>): Promise<void> {
   const creds = await readCredentials();
   if (!creds) {
     console.error(
-      c.red('Not logged in.') + ' Run: dropdeploy auth login',
+      c.red('Not logged in.') + ` Run: ${BIN} auth login`,
     );
     process.exit(1);
   }
-  const api = new DropDeployApi(creds);
+  const api = new EntrifyApi(creds);
 
-  console.log(`\n${c.bold('▶ DropDeploy')}\n`);
+  console.log(`\n${c.bold('▶ Entrify')}\n`);
 
   // ── 2. Git info ───────────────────────────────────────────────────────────
   process.stdout.write('  Checking repository… ');
@@ -349,11 +344,18 @@ async function cmdDeploy(flags: Record<string, string>): Promise<void> {
   const project = await pickProject(
     api,
     gitInfo.remoteUrl,
+    gitInfo.branch,
     flags['project-id'] ?? null,
   );
   console.log(
     `${c.green('✓')}  ${c.bold(project.name)} ${c.dim(`(${project.slug})`)}`,
   );
+  // The server builds the project's branch, not whatever is checked out here.
+  if (project.branch && gitInfo.branch !== 'HEAD' && gitInfo.branch !== project.branch) {
+    console.log(
+      `  ${c.yellow('⚠')}  This project deploys branch ${c.bold(project.branch)}; you are on ${c.bold(gitInfo.branch)}.`,
+    );
+  }
 
   // ── 6. Trigger deployment ──────────────────────────────────────────────────
   process.stdout.write('  Triggering deployment… ');
@@ -478,7 +480,7 @@ async function cmdDeploy(flags: Record<string, string>): Promise<void> {
   // Timed out
   console.log(`${c.yellow('⚠')}  Timed out waiting for deployment to finish.`);
   console.log(
-    `   Check status at: ${c.cyan(`${creds.apiUrl}/projects/${project.slug}`)}`,
+    `   Check status at: ${c.cyan(`${creds.apiUrl}/projects/${project.id}`)}`,
   );
   process.exit(1);
 }
@@ -486,10 +488,10 @@ async function cmdDeploy(flags: Record<string, string>): Promise<void> {
 // ── Help ─────────────────────────────────────────────────────────────────────
 function cmdHelp(): void {
   console.log(`
-${c.bold('dropdeploy')} — Deploy projects to DropDeploy from the CLI
+${c.bold(BIN)} — Deploy projects to Entrify from the terminal
 
 ${c.bold('USAGE')}
-  dropdeploy <command> [flags]
+  ${BIN} <command> [flags]
 
 ${c.bold('COMMANDS')}
   ${c.cyan('deploy')}                       Deploy the current project  ${c.dim('(default)')}
@@ -498,7 +500,7 @@ ${c.bold('COMMANDS')}
 
   ${c.cyan('projects')}                     List all your projects and their status
 
-  ${c.cyan('auth login')}                   Log in to your DropDeploy instance  ${c.dim('(default: entrify.site)')}
+  ${c.cyan('auth login')}                   Log in to Entrify  ${c.dim('(default: entrify.site)')}
     ${c.dim('--api-url <url>')}             Override the default URL (e.g. for local dev)
     ${c.dim('--email <email>')}             Your email
     ${c.dim('(password is always prompted interactively)')}
@@ -508,42 +510,17 @@ ${c.bold('COMMANDS')}
   ${c.cyan('help')}                         Show this help message
   ${c.cyan('--version')}                    Print the CLI version
 
-${c.bold('ENVIRONMENT')}
-  ${c.dim('DROPDEPLOY_TOKEN')}              Bearer token  ${c.dim('(skips auth login in CI)')}
-  ${c.dim('DROPDEPLOY_URL')}               DropDeploy instance URL
-  ${c.dim('DROPDEPLOY_EMAIL')}             Email  ${c.dim('(optional, cosmetic)')}
+${c.bold('ENVIRONMENT')}  ${c.dim('(the DROPDEPLOY_* names still work)')}
+  ${c.dim('ENTRIFY_TOKEN')}                 Bearer token  ${c.dim('(skips auth login in CI)')}
+  ${c.dim('ENTRIFY_URL')}                   Entrify URL, e.g. https://entrify.site
+  ${c.dim('ENTRIFY_EMAIL')}                 Email  ${c.dim('(optional, cosmetic)')}
 
 ${c.bold('EXAMPLES')}
-  ${c.dim('$')} dropdeploy auth login
-  ${c.dim('$')} dropdeploy deploy
-  ${c.dim('$')} dropdeploy deploy --project-id my-app
-  ${c.dim('$')} dropdeploy projects
+  ${c.dim('$')} ${BIN} auth login
+  ${c.dim('$')} ${BIN} deploy
+  ${c.dim('$')} ${BIN} deploy --project-id my-app
+  ${c.dim('$')} ${BIN} projects
 `);
-}
-
-// ── Argument parser ──────────────────────────────────────────────────────────
-function parseArgs(argv: string[]): {
-  command: string[];
-  flags: Record<string, string>;
-} {
-  const command: string[] = [];
-  const flags: Record<string, string> = {};
-  let i = 0;
-  while (i < argv.length) {
-    if (argv[i].startsWith('--')) {
-      const key = argv[i].slice(2);
-      const nextIsValue = argv[i + 1] && !argv[i + 1].startsWith('-');
-      flags[key] = nextIsValue ? argv[++i] : 'true';
-    } else if (argv[i] === '-v') {
-      flags['version'] = 'true';
-    } else if (argv[i] === '-h') {
-      flags['help'] = 'true';
-    } else {
-      command.push(argv[i]);
-    }
-    i++;
-  }
-  return { command, flags };
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -580,7 +557,7 @@ async function main(): Promise<void> {
   if (cmd === 'help' || cmd === '--help' || cmd === '-h') return cmdHelp();
 
   console.error(`Unknown command: ${cmd}`);
-  console.error('Run dropdeploy help for usage.');
+  console.error(`Run ${BIN} help for usage.`);
   process.exit(1);
 }
 
