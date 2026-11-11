@@ -19,6 +19,7 @@
 import { Queue, QueueEvents } from 'bullmq';
 import { createRedisConnection } from '@/lib/redis';
 import { AppError } from '@/lib/errors';
+import { PLATFORM_RESOURCE_SLUGS } from '@/lib/reserved-slugs';
 
 export const DOCKER_OPS_QUEUE = 'docker-ops';
 
@@ -58,6 +59,21 @@ export interface TerminalResult {
 
 /** Container and image names are derived from the slug the same way everywhere. */
 export const containerNameFor = (slug: string): string => `dropdeploy-${slug}`;
+
+const PLATFORM_CONTAINER_NAMES = new Set(PLATFORM_RESOURCE_SLUGS.map(containerNameFor));
+
+/**
+ * A project created before PLATFORM_RESOURCE_SLUGS were reserved owns the
+ * name of a platform resource (e.g. the edge `dropdeploy-caddy`). DockerService
+ * calls this before it stops, removes or renames a container by name, so no
+ * path — deploy, cleanup or admin op — can touch one; the docker-ops worker
+ * also calls it for terminal and containerInfo.
+ */
+export function assertNotPlatformResource(name: string): void {
+  if (PLATFORM_CONTAINER_NAMES.has(name)) {
+    throw new AppError('INVALID_DOCKER_OPERATION', `${name} is a platform resource, not a project container`, 400);
+  }
+}
 
 /** Time the web side waits per operation; a terminal command runs up to 30s. */
 const TIMEOUT_MS: Record<DockerOpRequest['op'], number> = {

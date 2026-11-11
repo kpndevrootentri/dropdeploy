@@ -12,7 +12,7 @@
 import type { Job } from 'bullmq';
 import { AppError } from '@/lib/errors';
 import { createLogger } from '@/lib/logger';
-import type { DockerOpRequest, DockerOpResult } from '@/lib/docker-ops';
+import { assertNotPlatformResource, type DockerOpRequest, type DockerOpResult } from '@/lib/docker-ops';
 import { dockerService } from '@/services/docker';
 import { dockerTerminalService } from '@/services/docker/docker-terminal.service';
 import { removeProjectResources } from '@/services/project/project-cleanup';
@@ -33,6 +33,8 @@ function assertContainerName(name: unknown): string {
   if (typeof name !== 'string' || !CONTAINER_NAME.test(name)) {
     throw new RejectedRequestError('Not a project container');
   }
+  // Stop, restart and cleanup are also refused inside DockerService; terminal and containerInfo are not.
+  assertNotPlatformResource(name);
   return name;
 }
 
