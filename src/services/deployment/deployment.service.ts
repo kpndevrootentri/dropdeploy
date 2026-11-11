@@ -586,7 +586,8 @@ export class DeploymentService {
     const filesToClean = ['Dockerfile', '.dockerignore', WORDPRESS_CONFIG_FILE];
     for (const file of filesToClean) {
       try {
-        await fs.promises.unlink(path.join(workDir, file));
+        // A tenant's clone: untraced, or Turbopack walks every repo in projects/.
+        await fs.promises.unlink(path.join(/*turbopackIgnore: true*/ workDir, file));
       } catch {
         // File may not exist — that's fine
       }
