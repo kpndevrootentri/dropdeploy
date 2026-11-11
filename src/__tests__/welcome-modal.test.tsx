@@ -57,18 +57,18 @@ const welcomeSaves = (): number =>
 
 it('greets a new account, and a choice carries straight on into that route', async () => {
   render(<DashboardPage />);
-  const welcome = await screen.findByRole('dialog', { name: 'Welcome to DropDeploy, new.person' });
+  const welcome = await screen.findByRole('dialog', { name: 'Welcome to Entrify, new.person' });
 
   fireEvent.click(within(welcome).getByRole('button', { name: /Paste a GitHub URL/ }));
   await screen.findByRole('dialog', { name: 'Create project' });
-  expect(screen.queryByRole('dialog', { name: /Welcome to DropDeploy/ })).toBeNull();
+  expect(screen.queryByRole('dialog', { name: /Welcome to Entrify/ })).toBeNull();
   await waitFor(() => expect(document.activeElement).toBe(screen.getByPlaceholderText('https://github.com/username/repo')));
   expect(welcomeSaves()).toBe(1);
 });
 
 it('closes on "I\'ll look around first", saves that, and leaves the dashboard card', async () => {
   render(<DashboardPage />);
-  await screen.findByRole('dialog', { name: /Welcome to DropDeploy/ });
+  await screen.findByRole('dialog', { name: /Welcome to Entrify/ });
   fireEvent.click(screen.getByRole('button', { name: "I'll look around first" }));
 
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -95,7 +95,7 @@ it('stays shut when the user picked a route on the card before the check came ba
 
   await act(async () => finishWelcome());
   await act(async () => {});
-  expect(screen.queryByRole('dialog', { name: /Welcome to DropDeploy/ })).toBeNull();
+  expect(screen.queryByRole('dialog', { name: /Welcome to Entrify/ })).toBeNull();
   // Not greeted, so not saved either: it may still greet them on a later visit.
   expect(welcomeSaves()).toBe(0);
 });

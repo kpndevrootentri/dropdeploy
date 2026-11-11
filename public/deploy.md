@@ -1,6 +1,6 @@
-# Deploy to DropDeploy
+# Deploy to Entrify
 
-Deploy the current project to DropDeploy using the git-based deployment pipeline.
+Deploy the current project to Entrify using the git-based deployment pipeline.
 
 ## Arguments
 - `--project-id <id|slug>` — skip project selection and deploy to a specific project
@@ -101,7 +101,7 @@ The CLI handles:
 - Build log streaming
 
 If the output contains "unpushed commits", pause and warn the user:
-> "You have unpushed commits. DropDeploy deploys from the remote — run `git push` first, then redeploy."
+> "You have unpushed commits. Entrify deploys from the remote — run `git push` first, then redeploy."
 Then ask if they want to push and retry.
 
 ### 4. Interpret the result
@@ -118,6 +118,6 @@ Check what the output contains:
 - If no build was triggered (validation error): relay the specific error and tell the user what to do.
 
 ## Notes
-- DropDeploy deploys from the git remote, not local files. Ensure changes are pushed before deploying.
+- Entrify deploys from the git remote, not local files. Ensure changes are pushed before deploying.
 - If no project matches the git remote automatically, the CLI will prompt the user to pick one interactively.
 - Use `dropdeploy projects` to list available projects and their current status.

@@ -122,7 +122,7 @@ export function assertHostnameAllowed(
 ): void {
   if (isUnderDomain(host, opts.baseDomain)) {
     throw new HostnameError(
-      `${host} is already served by DropDeploy — custom domains are for domains you own elsewhere`,
+      `${host} is already served by Entrify — custom domains are for domains you own elsewhere`,
     );
   }
 

@@ -18,7 +18,7 @@ const RESERVED_SLUGS = new Set([
   'www', 'app', 'api', 'admin', 'administrator', 'dashboard', 'console', 'panel',
   'login', 'logout', 'signin', 'signup', 'register', 'auth', 'oauth', 'sso', 'account', 'accounts',
   'password', 'reset', 'verify', 'billing', 'payments', 'pay',
-  'security', 'secure', 'internal', 'root', 'system', 'platform', 'dropdeploy', 'deploy',
+  'security', 'secure', 'internal', 'root', 'system', 'platform', 'dropdeploy', 'entrify', 'deploy',
   'mail', 'email', 'smtp', 'imap', 'pop', 'mx', 'ftp', 'ns', 'ns1', 'ns2', 'dns',
   'cdn', 'static', 'assets', 'status', 'health', 'docs', 'help', 'support', 'blog', 'explore',
   'ingress', // custom domains CNAME to ingress.<BASE_DOMAIN>

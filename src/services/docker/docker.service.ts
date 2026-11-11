@@ -440,7 +440,7 @@ export class DockerService {
    */
   private async writeDockerignore(contextPath: string): Promise<void> {
     const ignorePath = path.join(contextPath, '.dockerignore');
-    const platformRules = '\n# DropDeploy: keep secrets and git history out of the image\n.env*\n.git\n';
+    const platformRules = '\n# Entrify: keep secrets and git history out of the image\n.env*\n.git\n';
     const existing = await readRepoFile(ignorePath);
     await writeRepoFile(ignorePath, existing === null ? platformRules.trimStart() : existing + platformRules);
   }

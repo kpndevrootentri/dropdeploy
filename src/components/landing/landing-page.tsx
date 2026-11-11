@@ -138,7 +138,7 @@ const HOW_IT_WORKS = [
     step: '02',
     icon: Rocket,
     title: 'Click Deploy',
-    desc: "One button. DropDeploy picks up your project immediately and starts working on it.",
+    desc: "One button. Entrify picks up your project immediately and starts working on it.",
     detail: 'You can deploy multiple projects at the same time',
   },
   {
@@ -242,9 +242,9 @@ export function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-8">
-              <Link href="/" className="flex items-center gap-2" aria-label="DropDeploy home">
+              <Link href="/" className="flex items-center gap-2" aria-label="Entrify home">
                 <Rocket className="h-5 w-5 text-blue-500" aria-hidden="true" />
-                <span className="font-bold text-lg tracking-tight">DropDeploy</span>
+                <span className="font-bold text-lg tracking-tight">Entrify</span>
               </Link>
               <div className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
                 <a href="#features" className="hover:text-foreground transition-colors">Features</a>
@@ -317,7 +317,7 @@ export function LandingPage() {
 
           <p className="text-xl text-muted-foreground max-w-xl mx-auto mb-10 leading-relaxed">
             Connect GitHub or GitLab, pick any repo — public or private — click Deploy.
-            DropDeploy builds and hosts your app — share it with anyone in seconds.
+            Entrify builds and hosts your app — share it with anyone in seconds.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-5">
@@ -358,7 +358,7 @@ export function LandingPage() {
           <div
             className="relative max-w-sm mx-auto rounded-xl border border-border bg-card shadow-2xl overflow-hidden text-left"
             role="img"
-            aria-label="DropDeploy dashboard showing a project going live"
+            aria-label="Entrify dashboard showing a project going live"
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/40">
               <div className="flex items-center gap-2">
@@ -443,7 +443,7 @@ export function LandingPage() {
           {/* Bridge */}
           <AnimatedSection className="flex items-center gap-4 mb-14">
             <div className="flex-1 h-px bg-border" aria-hidden="true" />
-            <span className="text-sm font-medium text-blue-500 px-3 whitespace-nowrap">DropDeploy fixes this in four steps</span>
+            <span className="text-sm font-medium text-blue-500 px-3 whitespace-nowrap">Entrify fixes this in four steps</span>
             <div className="flex-1 h-px bg-border" aria-hidden="true" />
           </AnimatedSection>
 
@@ -608,7 +608,7 @@ export function LandingPage() {
               Built for every kind of builder.
             </h2>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Whether you&apos;re shipping your first project or managing a team, DropDeploy gets out of your way.
+              Whether you&apos;re shipping your first project or managing a team, Entrify gets out of your way.
             </p>
           </AnimatedSection>
 
@@ -683,7 +683,7 @@ export function LandingPage() {
                     <p className="text-zinc-400">  › Building Docker image</p>
                     <p className="text-zinc-400">  › Starting container</p>
                     <p className="text-green-400 pt-1 font-semibold">✓ Deployed successfully</p>
-                    <p className="text-zinc-400">  Live URL → <span className="text-blue-400">https://my-app.dropdeploy.app</span></p>
+                    <p className="text-zinc-400">  Live URL → <span className="text-blue-400">https://my-app.entrify.site</span></p>
                   </div>
                 </div>
               </div>
@@ -949,7 +949,7 @@ export function LandingPage() {
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <Rocket className="h-4 w-4 text-blue-500" aria-hidden="true" />
-              <span className="font-semibold">DropDeploy</span>
+              <span className="font-semibold">Entrify</span>
             </div>
             <p className="text-sm text-muted-foreground">Your project, live on the internet. No setup required.</p>
             <div className="flex items-center gap-5 text-sm text-muted-foreground">

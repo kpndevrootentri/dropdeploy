@@ -2,7 +2,7 @@ import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { NextResponse } from 'next/server';
 
-// Serves /llms-full.txt — all DropDeploy documentation merged into one file
+// Serves /llms-full.txt — all Entrify documentation merged into one file
 // for LLMs that can consume larger context windows (llmstxt.org spec).
 export async function GET(): Promise<NextResponse> {
   const docsDir = join(process.cwd(), 'docs');

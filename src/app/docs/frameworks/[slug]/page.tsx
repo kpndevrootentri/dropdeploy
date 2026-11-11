@@ -66,7 +66,7 @@ const FRAMEWORK_DOCS: Record<string, FrameworkDoc> = {
 </head>
 <body>
   <div class="card">
-    <h1>Hello from DropDeploy!</h1>
+    <h1>Hello from Entrify!</h1>
     <p>Your static site is live.</p>
   </div>
 </body>
@@ -87,7 +87,7 @@ const FRAMEWORK_DOCS: Record<string, FrameworkDoc> = {
     subtitle: 'Any Node.js server — Express, Fastify, Koa, or the built-in http module.',
     port: 3000,
     requires: [
-      { label: 'package.json with a "start" script', detail: 'DropDeploy runs npm start to launch your server.' },
+      { label: 'package.json with a "start" script', detail: 'Entrify runs npm start to launch your server.' },
       { label: 'App must listen on port 3000', detail: 'Hard-code 3000 or read process.env.PORT.' },
     ],
     demoApp: {
@@ -115,7 +115,7 @@ const server = http.createServer((req, res) => {
       <body style="font-family:system-ui;display:flex;justify-content:center;
                    align-items:center;min-height:100vh;margin:0;background:#0f172a;color:#f1f5f9">
         <div style="text-align:center">
-          <h1 style="color:#3b82f6">Hello from DropDeploy!</h1>
+          <h1 style="color:#3b82f6">Hello from Entrify!</h1>
           <p style="color:#94a3b8">Node.js server running on port \${PORT}</p>
         </div>
       </body>
@@ -139,7 +139,7 @@ npm start`,
     gotchas: [
       { title: 'Missing "start" script', fix: 'Add "start": "node index.js" to the scripts block in package.json.' },
       { title: 'App binds to 127.0.0.1', fix: 'Call server.listen(3000, "0.0.0.0"). Binding to localhost rejects connections from outside the container.' },
-      { title: 'devDependencies at runtime', fix: 'DropDeploy runs npm install --omit=dev. Move any runtime-required package from devDependencies to dependencies.' },
+      { title: 'devDependencies at runtime', fix: 'Entrify runs npm install --omit=dev. Move any runtime-required package from devDependencies to dependencies.' },
     ],
   },
 
@@ -148,7 +148,7 @@ npm start`,
     subtitle: 'Next.js App Router or Pages Router, with optional Prisma integration.',
     port: 3000,
     requires: [
-      { label: 'next.config.js / .ts / .mjs in the root', detail: 'This file is how DropDeploy identifies your project as Next.js.' },
+      { label: 'next.config.js / .ts / .mjs in the root', detail: 'This file is how Entrify identifies your project as Next.js.' },
       { label: '"build" and "start" scripts in package.json', detail: '"build": "next build" and "start": "next start" must both be present.' },
     ],
     demoApp: {
@@ -187,7 +187,7 @@ module.exports = nextConfig;`,
       background: '#0f172a', color: '#f1f5f9',
     }}>
       <div style={{ textAlign: 'center' }}>
-        <h1 style={{ color: '#3b82f6' }}>Hello from DropDeploy!</h1>
+        <h1 style={{ color: '#3b82f6' }}>Hello from Entrify!</h1>
         <p style={{ color: '#94a3b8' }}>Next.js app is live.</p>
       </div>
     </main>
@@ -216,12 +216,12 @@ npm start`,
       { name: 'DATABASE_URL', required: false, desc: 'Runtime database connection string. Required if your app queries a DB.' },
       { name: 'NEXT_PUBLIC_*', required: false, desc: 'Baked into the client bundle at build time. Add them in the dashboard before deploying.' },
       { name: 'NEXTAUTH_SECRET', required: false, desc: 'Required if using NextAuth.' },
-      { name: 'NEXTAUTH_URL', required: false, desc: 'Set to your full DropDeploy subdomain URL.' },
+      { name: 'NEXTAUTH_URL', required: false, desc: 'Set to your full Entrify subdomain URL.' },
     ],
     gotchas: [
       { title: 'NEXT_PUBLIC_ vars are empty', fix: 'These are baked in at build time. Add them to the dashboard env vars before you click Deploy.' },
       { title: 'Prisma "PrismaClient did not initialize"', fix: 'Set DATABASE_URL as a runtime env var. The placeholder value used during the build is not a real connection.' },
-      { title: 'output: "export" is not supported', fix: 'DropDeploy runs next start which requires a server. Remove output: "export" from next.config, or use the React framework type for fully static output.' },
+      { title: 'output: "export" is not supported', fix: 'Entrify runs next start which requires a server. Remove output: "export" from next.config, or use the React framework type for fully static output.' },
     ],
   },
 
@@ -230,7 +230,7 @@ npm start`,
     subtitle: 'React apps built with Vite, served as static files by Nginx.',
     port: 80,
     requires: [
-      { label: 'package.json with a "build" script', detail: '"build": "vite build". DropDeploy runs this and copies dist/ into Nginx.' },
+      { label: 'package.json with a "build" script', detail: '"build": "vite build". Entrify runs this and copies dist/ into Nginx.' },
       { label: 'Output goes to dist/', detail: 'Do not change the Vite output directory in vite.config.' },
     ],
     demoApp: {
@@ -246,7 +246,7 @@ npm start`,
       background: '#0f172a', color: '#f1f5f9',
     }}>
       <div style={{ textAlign: 'center' }}>
-        <h1 style={{ color: '#3b82f6' }}>Hello from DropDeploy!</h1>
+        <h1 style={{ color: '#3b82f6' }}>Hello from Entrify!</h1>
         <p style={{ color: '#94a3b8' }}>React + Vite app is live.</p>
       </div>
     </div>
@@ -291,7 +291,7 @@ npm run build
     ],
     gotchas: [
       { title: 'Routes 404 on refresh', fix: 'Nginx is configured with try_files to serve index.html — React Router history mode works correctly.' },
-      { title: 'Assets load with wrong paths', fix: 'DropDeploy passes --base=/ for absolute paths. Do not set a custom base in vite.config.' },
+      { title: 'Assets load with wrong paths', fix: 'Entrify passes --base=/ for absolute paths. Do not set a custom base in vite.config.' },
     ],
   },
 
@@ -310,7 +310,7 @@ npm run build
           path: 'src/App.vue',
           content: `<template>
   <div class="container">
-    <h1>Hello from DropDeploy!</h1>
+    <h1>Hello from Entrify!</h1>
     <p>Vue 3 + Vite app is live.</p>
   </div>
 </template>
@@ -369,7 +369,7 @@ npm run build
         {
           path: 'src/App.svelte',
           content: `<script>
-  const message = 'Hello from DropDeploy!';
+  const message = 'Hello from Entrify!';
 </script>
 
 <main>
@@ -421,8 +421,8 @@ npm run build
     subtitle: 'Django projects using the development server. Suitable for demos and internal tools.',
     port: 8000,
     requires: [
-      { label: 'requirements.txt in the repo root with django', detail: 'DropDeploy runs pip install -r requirements.txt.' },
-      { label: 'manage.py in the repo root', detail: 'DropDeploy identifies Django projects by manage.py and starts with it.' },
+      { label: 'requirements.txt in the repo root with django', detail: 'Entrify runs pip install -r requirements.txt.' },
+      { label: 'manage.py in the repo root', detail: 'Entrify identifies Django projects by manage.py and starts with it.' },
     ],
     demoApp: {
       quickstart: 'pip install django && django-admin startproject myproject . && python manage.py startapp hello',
@@ -441,7 +441,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-only-secret-change-in-production'
 
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-# Read allowed hosts from env var — include your DropDeploy subdomain
+# Read allowed hosts from env var — include your Entrify subdomain
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 INSTALLED_APPS = [
@@ -472,7 +472,7 @@ def index(request):
                    align-items:center;min-height:100vh;margin:0;
                    background:#0f172a;color:#f1f5f9">
         <div style="text-align:center">
-          <h1 style="color:#16a34a">Hello from DropDeploy!</h1>
+          <h1 style="color:#16a34a">Hello from Entrify!</h1>
           <p style="color:#94a3b8">Django app is live.</p>
         </div>
       </body>
@@ -488,11 +488,11 @@ python manage.py runserver 0.0.0.0:8000`,
     envVars: [
       { name: 'SECRET_KEY', required: true, desc: 'Django requires a secret key. Never commit it — add via dashboard.' },
       { name: 'DEBUG', required: false, desc: 'Set to False in production.' },
-      { name: 'ALLOWED_HOSTS', required: true, desc: 'Add your DropDeploy subdomain or Django returns 400 on every request.' },
+      { name: 'ALLOWED_HOSTS', required: true, desc: 'Add your Entrify subdomain or Django returns 400 on every request.' },
       { name: 'DATABASE_URL', required: false, desc: 'Use dj-database-url to read this in settings.py.' },
     ],
     gotchas: [
-      { title: 'DisallowedHost — 400 on every request', fix: 'Add your DropDeploy subdomain to ALLOWED_HOSTS, or read it from an env var as shown in the demo app.' },
+      { title: 'DisallowedHost — 400 on every request', fix: 'Add your Entrify subdomain to ALLOWED_HOSTS, or read it from an env var as shown in the demo app.' },
       { title: 'Static files not loading', fix: 'The dev server does not serve staticfiles/ in production. Set DEBUG=True for demos, or add WhiteNoise.' },
     ],
   },
@@ -502,8 +502,8 @@ python manage.py runserver 0.0.0.0:8000`,
     subtitle: 'FastAPI applications served by Uvicorn.',
     port: 8000,
     requires: [
-      { label: 'requirements.txt with fastapi and uvicorn', detail: 'DropDeploy runs pip install -r requirements.txt then starts uvicorn.' },
-      { label: 'main.py in the repo root with app = FastAPI()', detail: 'DropDeploy runs uvicorn main:app. Module = main, instance = app.' },
+      { label: 'requirements.txt with fastapi and uvicorn', detail: 'Entrify runs pip install -r requirements.txt then starts uvicorn.' },
+      { label: 'main.py in the repo root with app = FastAPI()', detail: 'Entrify runs uvicorn main:app. Module = main, instance = app.' },
     ],
     demoApp: {
       files: [
@@ -527,7 +527,7 @@ def root():
                    align-items:center;min-height:100vh;margin:0;
                    background:#0f172a;color:#f1f5f9">
         <div style="text-align:center">
-          <h1 style="color:#0d9488">Hello from DropDeploy!</h1>
+          <h1 style="color:#0d9488">Hello from Entrify!</h1>
           <p style="color:#94a3b8">FastAPI app is live.</p>
         </div>
       </body>
@@ -558,7 +558,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000`,
     subtitle: 'Flask applications served by Gunicorn.',
     port: 5000,
     requires: [
-      { label: 'requirements.txt with flask', detail: 'DropDeploy also installs gunicorn automatically alongside your requirements.' },
+      { label: 'requirements.txt with flask', detail: 'Entrify also installs gunicorn automatically alongside your requirements.' },
       { label: 'app.py in the repo root with app = Flask(__name__)', detail: 'Gunicorn starts with app:app — module is app.py, instance is app.' },
     ],
     demoApp: {
@@ -581,7 +581,7 @@ def hello():
                    align-items:center;min-height:100vh;margin:0;
                    background:#0f172a;color:#f1f5f9">
         <div style="text-align:center">
-          <h1 style="color:#a3a3a3">Hello from DropDeploy!</h1>
+          <h1 style="color:#a3a3a3">Hello from Entrify!</h1>
           <p style="color:#94a3b8">Flask app is live.</p>
         </div>
       </body>
@@ -593,7 +593,7 @@ def health():
     return {'status': 'ok'}`,
         },
       ],
-      note: 'Two files — requirements.txt and app.py. Gunicorn is installed automatically by DropDeploy.',
+      note: 'Two files — requirements.txt and app.py. Gunicorn is installed automatically by Entrify.',
     },
     buildCmd: `pip install -r requirements.txt gunicorn
 gunicorn app:app --bind 0.0.0.0:5000 --workers 2`,
@@ -612,7 +612,7 @@ gunicorn app:app --bind 0.0.0.0:5000 --workers 2`,
     subtitle: 'Go applications compiled to a static binary and served from Alpine Linux.',
     port: 8080,
     requires: [
-      { label: 'go.mod in the repo root', detail: 'DropDeploy runs go build from the root of your repo.' },
+      { label: 'go.mod in the repo root', detail: 'Entrify runs go build from the root of your repo.' },
       { label: 'go.sum committed to the repo', detail: 'Required for go mod download to reproduce the dependency tree.' },
       { label: 'App listens on port 8080', detail: 'Hard-code :8080 or read os.Getenv("PORT").' },
       { label: 'Main package in the repo root', detail: 'go build -o /app/server . compiles the root package.' },
@@ -645,7 +645,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
                align-items:center;min-height:100vh;margin:0;
                background:#0f172a;color:#f1f5f9">
     <div style="text-align:center">
-      <h1 style="color:#06b6d4">Hello from DropDeploy!</h1>
+      <h1 style="color:#06b6d4">Hello from Entrify!</h1>
       <p style="color:#94a3b8">Go server is live.</p>
     </div>
   </body>
@@ -687,7 +687,7 @@ CGO_ENABLED=0 GOOS=linux go build -o server .
     subtitle: 'Rust applications compiled in release mode and served from Debian Slim.',
     port: 8080,
     requires: [
-      { label: 'Cargo.toml in the repo root', detail: 'DropDeploy runs cargo build --release.' },
+      { label: 'Cargo.toml in the repo root', detail: 'Entrify runs cargo build --release.' },
       { label: 'Cargo.lock committed to the repo', detail: 'For reproducible builds.' },
       { label: 'App listens on port 8080', detail: 'Bind to 0.0.0.0:8080.' },
     ],
@@ -717,7 +717,7 @@ async fn hello() -> impl Responder {
                align-items:center;min-height:100vh;margin:0;
                background:#0f172a;color:#f1f5f9">
     <div style="text-align:center">
-      <h1 style="color:#f97316">Hello from DropDeploy!</h1>
+      <h1 style="color:#f97316">Hello from Entrify!</h1>
       <p style="color:#94a3b8">Rust + Actix-Web server is live.</p>
     </div>
   </body>
@@ -758,7 +758,7 @@ async fn main() -> std::io::Result<()> {
     ],
     gotchas: [
       { title: 'Build takes 5–15 minutes', fix: 'Rust compilation is slow on first build. Docker layer caching makes later deploys faster. This is normal.' },
-      { title: 'Multiple binaries in the workspace', fix: 'DropDeploy picks the first executable in target/release/. Make sure your server binary is the only one, or it is the first alphabetically.' },
+      { title: 'Multiple binaries in the workspace', fix: 'Entrify picks the first executable in target/release/. Make sure your server binary is the only one, or it is the first alphabetically.' },
     ],
   },
 
@@ -767,7 +767,7 @@ async fn main() -> std::io::Result<()> {
     subtitle: 'Spring Boot applications built with Maven and run on Eclipse Temurin JRE 21.',
     port: 8080,
     requires: [
-      { label: 'pom.xml in the repo root', detail: 'DropDeploy uses Maven (mvn package) to build. Gradle is not yet supported.' },
+      { label: 'pom.xml in the repo root', detail: 'Entrify uses Maven (mvn package) to build. Gradle is not yet supported.' },
       { label: 'Spring Boot with embedded Tomcat', detail: 'The JAR must be self-executable. Standard Spring Boot starters include this.' },
       { label: 'App listens on port 8080', detail: 'Spring Boot defaults to 8080. Do not change server.port unless you also update the Dockerfile.' },
     ],
@@ -847,7 +847,7 @@ public class HelloController {
                            align-items:center;min-height:100vh;margin:0;
                            background:#0f172a;color:#f1f5f9">
                 <div style="text-align:center">
-                  <h1 style="color:#ef4444">Hello from DropDeploy!</h1>
+                  <h1 style="color:#ef4444">Hello from Entrify!</h1>
                   <p style="color:#94a3b8">Spring Boot app is live.</p>
                 </div>
               </body>
@@ -876,7 +876,7 @@ java -jar target/*.jar`,
     gotchas: [
       { title: 'Build takes 5–10 minutes on first deploy', fix: 'mvn dependency:go-offline downloads all deps. Docker caching makes future deploys faster.' },
       { title: 'Multiple JARs in target/', fix: 'Maven outputs both the main JAR and original-*.jar. COPY target/*.jar fails if multiple exist. The spring-boot-maven-plugin should produce just one executable JAR by default.' },
-      { title: 'Tests failing during build', fix: 'DropDeploy passes -DskipTests so tests do not run. Run tests locally before deploying.' },
+      { title: 'Tests failing during build', fix: 'Entrify passes -DskipTests so tests do not run. Run tests locally before deploying.' },
     ],
   },
   wordpress: {
@@ -895,10 +895,10 @@ java -jar target/*.jar`,
           path: 'wp-content/mu-plugins/hello.php',
           content: `<?php
 /**
- * Plugin Name: Hello from DropDeploy
+ * Plugin Name: Hello from Entrify
  */
 add_action('wp_footer', function () {
-    echo '<p style="text-align:center">Hello from DropDeploy!</p>';
+    echo '<p style="text-align:center">Hello from Entrify!</p>';
 });`,
         },
       ],
@@ -949,8 +949,8 @@ interface PageProps {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const doc = FRAMEWORK_DOCS[slug];
-  if (!doc) return { title: 'Framework Docs — DropDeploy' };
-  return { title: `${doc.title} — DropDeploy Docs` };
+  if (!doc) return { title: 'Framework Docs — Entrify' };
+  return { title: `${doc.title} — Entrify Docs` };
 }
 
 export function generateStaticParams() {
@@ -1037,7 +1037,7 @@ export default async function FrameworkPage({ params }: PageProps): Promise<Reac
       <section className="space-y-3">
         <h2 className="text-xl font-semibold">Build &amp; start commands</h2>
         <p className="text-sm text-muted-foreground">
-          DropDeploy runs these steps inside the container when you click Deploy.
+          Entrify runs these steps inside the container when you click Deploy.
         </p>
         <Pre>{doc.buildCmd}</Pre>
       </section>

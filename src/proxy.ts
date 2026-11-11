@@ -150,7 +150,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     // until renewal, because it only consults the ask endpoint to *obtain* a
     // certificate, never to serve one it already has. This gate is what
     // actually stops us serving a domain we decided to stop serving.
-    return new NextResponse('This domain is not configured on DropDeploy.', {
+    return new NextResponse('This domain is not configured on Entrify.', {
       status: 404,
       headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     });

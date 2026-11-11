@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, ArrowLeft, Info } from 'lucide-react';
 
-export const metadata: Metadata = { title: 'Local Development — DropDeploy Docs' };
+export const metadata: Metadata = { title: 'Local Development — Entrify Docs' };
 
 function Code({ children }: { children: React.ReactNode }): React.ReactElement {
   return <code className="rounded bg-muted px-1.5 py-0.5 text-sm font-mono">{children}</code>;
@@ -49,7 +49,7 @@ export default function LocalDevPage(): React.ReactElement {
         <h1 className="text-3xl font-bold tracking-tight mb-3">Local Development</h1>
         <p className="text-muted-foreground leading-relaxed">
           The best way to catch build errors before deploying is to run the same Docker build locally.
-          DropDeploy generates a Dockerfile for your project — you can test it yourself with two commands.
+          Entrify generates a Dockerfile for your project — you can test it yourself with two commands.
         </p>
       </div>
 
@@ -74,13 +74,13 @@ export default function LocalDevPage(): React.ReactElement {
       <section className="space-y-3">
         <h2 className="text-xl font-semibold">2. Get the Dockerfile</h2>
         <p className="text-sm text-muted-foreground">
-          DropDeploy generates the Dockerfile automatically — you do not need one in your repo.
+          Entrify generates the Dockerfile automatically — you do not need one in your repo.
           But to test locally, find your framework in the{' '}
           <Link href="/docs/frameworks/nextjs" className="text-blue-500 hover:underline">Frameworks</Link>{' '}
           section, copy the Dockerfile shown there, and save it as <Code>Dockerfile</Code> in your project root.
         </p>
         <Callout>
-          Delete the local <Code>Dockerfile</Code> after testing. DropDeploy generates its own at deploy time and
+          Delete the local <Code>Dockerfile</Code> after testing. Entrify generates its own at deploy time and
           ignores any Dockerfile in your repo.
         </Callout>
       </section>
