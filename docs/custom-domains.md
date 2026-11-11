@@ -1,7 +1,7 @@
 # Custom domains
 
 Lets a project be served from a domain its owner controls (`myapp.com`) instead of
-only its DropDeploy subdomain (`my-project.app.en3.wtf`), with an HTTPS
+only its DropDeploy subdomain (`my-project.entrify.site`), with an HTTPS
 certificate issued and renewed automatically.
 
 ---
@@ -96,7 +96,7 @@ over DNS-01 (the only challenge that can issue a wildcard). Then publish the two
 targets users will point at:
 
 - `PLATFORM_INGRESS_IP` — the ingress A record, for apex domains.
-- `CUSTOM_DOMAIN_CNAME_TARGET` — e.g. `ingress.en3.wtf`, an A record pointing at
+- `CUSTOM_DOMAIN_CNAME_TARGET` — e.g. `ingress.entrify.site`, an A record pointing at
   the same IP. Prefer this for sub-domains: it lets you renumber the platform
   without every tenant editing their DNS.
 
@@ -106,11 +106,11 @@ targets users will point at:
 CUSTOM_DOMAINS_ENABLED="true"
 TLS_CHECK_ENABLED="true"
 PLATFORM_INGRESS_IP="203.0.113.10"
-CUSTOM_DOMAIN_CNAME_TARGET="ingress.en3.wtf"
+CUSTOM_DOMAIN_CNAME_TARGET="ingress.entrify.site"
 INTERNAL_EDGE_TOKEN="$(openssl rand -hex 32)"
 # Any other named host this app answers on, comma-separated. Sub-domains of
 # each entry are covered. Omitting a host that receives traffic means it 404s.
-PLATFORM_EXTRA_HOSTS="status.en3.wtf,internal-lb.example"
+PLATFORM_EXTRA_HOSTS="status.entrify.site,internal-lb.example"
 ```
 
 ### 3. Edge

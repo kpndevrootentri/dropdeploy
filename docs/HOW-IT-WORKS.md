@@ -810,7 +810,7 @@ Skip interactive login by setting environment variables:
 
 ```bash
 export DROPDEPLOY_TOKEN=your-jwt-token
-export DROPDEPLOY_URL=https://app.en3.wtf
+export DROPDEPLOY_URL=https://entrify.site
 
 dropdeploy deploy --project-id my-app
 ```

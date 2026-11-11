@@ -31,6 +31,10 @@ import {
   Bot,
 } from 'lucide-react';
 
+// Inlined at build time, so the copy follows whichever domain this build serves.
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://entrify.site';
+const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'entrify.site';
+
 function useInView(threshold = 0.12) {
   const ref = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(false);
@@ -829,7 +833,7 @@ export function LandingPage() {
                   type="button"
                   onClick={() => {
                     navigator.clipboard.writeText(
-                      'mkdir -p ~/.claude/commands && curl -o ~/.claude/commands/deploy.md https://app.en3.wtf/deploy.md'
+                      `mkdir -p ~/.claude/commands && curl -o ~/.claude/commands/deploy.md ${APP_URL}/deploy.md`
                     ).then(() => {
                       setClaudeCmdCopied(true);
                       setTimeout(() => setClaudeCmdCopied(false), 2000);
@@ -880,7 +884,7 @@ export function LandingPage() {
                         <p className="text-zinc-500">  › Starting container</p>
                       </div>
                       <p className="text-green-400 font-semibold pt-1">✓ Deployed successfully</p>
-                      <p className="text-zinc-400">Live at → <span className="text-violet-400">https://my-app.en3.wtf</span></p>
+                      <p className="text-zinc-400">Live at → <span className="text-violet-400">https://my-app.{BASE_DOMAIN}</span></p>
                     </div>
                   </div>
                 </div>
@@ -891,7 +895,7 @@ export function LandingPage() {
                 <p className="text-muted-foreground/60"># one-time setup</p>
                 <p>mkdir -p ~/.claude/commands</p>
                 <p>curl -o ~/.claude/commands/deploy.md \</p>
-                <p className="pl-4">https://app.en3.wtf/deploy.md</p>
+                <p className="pl-4">{APP_URL}/deploy.md</p>
                 <p className="text-muted-foreground/60 pt-1"># then in Claude Code:</p>
                 <p className="text-violet-400">/deploy</p>
               </div>

@@ -8,16 +8,16 @@ Two processes run side by side: the Next.js web app (API + UI) and a BullMQ work
 
 ## Documentation
 
-- [Getting Started](https://app.en3.wtf/docs/getting-started): Create a project, connect a git repository, and trigger your first deployment from the dashboard.
-- [Git Setup](https://app.en3.wtf/docs/git-setup): Connect GitHub and GitLab OAuth apps for private repository access. Tokens are stored encrypted and auto-refreshed for GitLab.
-- [Local Dev](https://app.en3.wtf/docs/local-dev): Run the Next.js dev server and BullMQ worker locally. Covers environment variables, Prisma setup, and Docker requirements.
-- [Next.js](https://app.en3.wtf/docs/frameworks/nextjs): Multi-stage Docker build (builder + runner stages). The config patcher adjusts `next.config.js` for standalone output automatically.
-- [React / Vue / Svelte](https://app.en3.wtf/docs/frameworks/static): Compiled to static files and served via Nginx.
-- [Node.js](https://app.en3.wtf/docs/frameworks/nodejs): `npm install --omit=dev` + `npm start`. Requires a `start` script in `package.json`.
-- [Django](https://app.en3.wtf/docs/frameworks/django): `pip install -r requirements.txt` + `manage.py runserver 0.0.0.0:8000`.
-- [FastAPI / Flask](https://app.en3.wtf/docs/frameworks/fastapi): Python ASGI/WSGI apps with pip-based installs.
-- [CLI Reference](https://app.en3.wtf/docs/local-dev): Install `dropdeploy-cli` (`npm install -g dropdeploy-cli`) and use `dropdeploy deploy` from any git repo.
-- [Claude Code Integration](https://app.en3.wtf/docs/claude-code): Use the `/deploy` Claude Code skill to deploy the current project without leaving your editor.
+- [Getting Started](https://entrify.site/docs/getting-started): Create a project, connect a git repository, and trigger your first deployment from the dashboard.
+- [Git Setup](https://entrify.site/docs/git-setup): Connect GitHub and GitLab OAuth apps for private repository access. Tokens are stored encrypted and auto-refreshed for GitLab.
+- [Local Dev](https://entrify.site/docs/local-dev): Run the Next.js dev server and BullMQ worker locally. Covers environment variables, Prisma setup, and Docker requirements.
+- [Next.js](https://entrify.site/docs/frameworks/nextjs): Multi-stage Docker build (builder + runner stages). The config patcher adjusts `next.config.js` for standalone output automatically.
+- [React / Vue / Svelte](https://entrify.site/docs/frameworks/static): Compiled to static files and served via Nginx.
+- [Node.js](https://entrify.site/docs/frameworks/nodejs): `npm install --omit=dev` + `npm start`. Requires a `start` script in `package.json`.
+- [Django](https://entrify.site/docs/frameworks/django): `pip install -r requirements.txt` + `manage.py runserver 0.0.0.0:8000`.
+- [FastAPI / Flask](https://entrify.site/docs/frameworks/fastapi): Python ASGI/WSGI apps with pip-based installs.
+- [CLI Reference](https://entrify.site/docs/local-dev): Install `dropdeploy-cli` (`npm install -g dropdeploy-cli`) and use `dropdeploy deploy` from any git repo.
+- [Claude Code Integration](https://entrify.site/docs/claude-code): Use the `/deploy` Claude Code skill to deploy the current project without leaving your editor.
 
 ## API
 
@@ -47,6 +47,6 @@ All authenticated routes require a valid JWT. Browser clients use an httpOnly se
 
 ## Optional
 
-- [Explore](https://app.en3.wtf/explore): Public showcase of deployed projects with SEO metadata and JSON-LD structured data.
+- [Explore](https://entrify.site/explore): Public showcase of deployed projects with SEO metadata and JSON-LD structured data.
 - [dropdeploy-cli on npm](https://www.npmjs.com/package/dropdeploy-cli): CLI package — `dropdeploy deploy`, `dropdeploy projects`, `dropdeploy auth login`. Supports `DROPDEPLOY_TOKEN` env var for CI use.
-- [Claude Code /deploy skill](https://app.en3.wtf/deploy.md): Raw markdown file consumed by the Claude Code `/deploy` skill — handles CLI install, auth check, deploy trigger, and result interpretation.
+- [Claude Code /deploy skill](https://entrify.site/deploy.md): Raw markdown file consumed by the Claude Code `/deploy` skill — handles CLI install, auth check, deploy trigger, and result interpretation.
