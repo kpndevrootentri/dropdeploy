@@ -1,9 +1,10 @@
 {
   "name": "dropdeploy-cli",
-  "version": "1.0.4",
-  "description": "Claude Code plugin — deploy to DropDeploy with /deploy",
+  "version": "1.1.0",
+  "description": "Deploy to Entrify from the terminal or with the Claude Code /deploy skill",
   "type": "module",
   "bin": {
+    "entrify": "dist/cli.js",
     "dropdeploy": "dist/cli.js"
   },
   "files": [
@@ -16,10 +17,8 @@
     "build": "tsc && chmod +x dist/cli.js",
     "dev": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1"
+    "prepublishOnly": "npm run build",
+    "test": "node --import tsx --test src/*.test.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
