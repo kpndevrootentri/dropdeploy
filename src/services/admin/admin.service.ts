@@ -218,13 +218,36 @@ export class AdminService {
   async stopContainer(projectId: string): Promise<void> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
-    await this.docker.stopContainer(containerNameFor(project.slug));
+    // A build or rollback going live would race this stop and could leave the
+    // project marked stopped while its new container serves.
+    const [building, queued] = await Promise.all([
+      this.deploymentRepo.findBuildingDeployment(projectId),
+      this.deploymentRepo.findQueuedDeploymentForProject(projectId),
+    ]);
+    if (building || queued) {
+      throw new ConflictError('A deployment is in progress. Stop the project once it finishes.');
+    }
+    const name = containerNameFor(project.slug);
+    // Static-hosted and never-deployed projects have nothing to stop; marking
+    // them stopped would show STOPPED while the site keeps serving.
+    const info = await this.docker.containerInfo(name);
+    if (!info) throw new ValidationError('This project has no container to stop');
+    // Just after a deployment goes live, the old container keeps this name until
+    // it is retired (or removed, on a switch to static hosting). Stopping it
+    // would mark the project stopped while the new deployment serves.
+    const live = await this.deploymentRepo.findLiveDeployment(project.slug);
+    if (!live?.containerPort || info.ports[0]?.hostPort !== live.containerPort) {
+      throw new ConflictError('This container is not the one serving the site. Try again in a moment.');
+    }
+    await this.docker.stopContainer(name);
+    await this.projectRepo.setStoppedAt(projectId, new Date());
   }
 
   async restartContainer(projectId: string): Promise<void> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
     await this.docker.restartContainer(containerNameFor(project.slug));
+    await this.projectRepo.setStoppedAt(projectId, null);
   }
 
   async updateUserQuota(userId: string, quota: number): Promise<PublicUser> {

@@ -67,6 +67,11 @@ model Project {
   webhookSecretIv  String? @map("webhook_secret_iv")
   webhookSecretTag String? @map("webhook_secret_tag")
 
+  // Set when an admin stops the live container; cleared when it is restarted or
+  // a deployment goes live. The live deployment stays DEPLOYED either way,
+  // because the proxy and rollback key off that status.
+  stoppedAt DateTime? @map("stopped_at")
+
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 

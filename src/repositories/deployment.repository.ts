@@ -52,6 +52,8 @@ export interface IDeploymentRepository {
   markBuildingAsFailed(): Promise<number>;
   /** Returns true if the project has at least one DEPLOYED deployment. */
   hasDeployedStatus(projectId: string): Promise<boolean>;
+  /** The deployment the proxy serves for this subdomain (a project's slug), or null. */
+  findLiveDeployment(subdomain: string): Promise<Deployment | null>;
 }
 
 export class DeploymentRepository implements IDeploymentRepository {
@@ -109,6 +111,9 @@ export class DeploymentRepository implements IDeploymentRepository {
         where: { id: deploymentId },
         data: { ...data, status: 'DEPLOYED', buildStep: null, subdomain },
       }),
+      // A deployment going live (a build, a rollback, a switch to static) is serving again.
+      // Filtered so a deploy of a running project leaves its updatedAt alone.
+      prisma.project.updateMany({ where: { id: projectId, stoppedAt: { not: null } }, data: { stoppedAt: null } }),
     ]);
     return activated;
   }
@@ -200,6 +205,10 @@ export class DeploymentRepository implements IDeploymentRepository {
       where: { projectId, status: 'DEPLOYED' },
     });
     return count > 0;
+  }
+
+  async findLiveDeployment(subdomain: string): Promise<Deployment | null> {
+    return prisma.deployment.findFirst({ where: { subdomain, status: 'DEPLOYED' } });
   }
 }
 
