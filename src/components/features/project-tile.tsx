@@ -21,6 +21,7 @@ export interface ProjectItem {
   type: string;
   githubUrl: string | null;
   createdAt: string;
+  stoppedAt?: string | null;
   deployments?: Array<{
     id: string;
     status: string;
@@ -178,9 +179,15 @@ export function ProjectTile({
             </div>
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <FrameworkLogo framework={framework} size={16} showLabel />
-              <Badge variant="secondary" className="text-xs font-normal">
-                Deployed
-              </Badge>
+              {project.stoppedAt ? (
+                <Badge variant="outline" className="text-xs font-normal" title="Stopped by an admin. Redeploy to start it again.">
+                  Stopped
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="text-xs font-normal">
+                  Deployed
+                </Badge>
+              )}
             </div>
           </div>
         )}

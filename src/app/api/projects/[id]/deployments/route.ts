@@ -33,10 +33,7 @@ export async function GET(
       deploymentRepository.countByProjectId(id),
     ]);
 
-    // Strip buildLog to keep response small; the per-deployment log endpoint serves it on demand
-    const deploymentSummaries = deployments.map(({ buildLog: _b, ...rest }) => rest);
-
-    return NextResponse.json({ success: true, data: { deployments: deploymentSummaries, total } });
+    return NextResponse.json({ success: true, data: { deployments, total } });
   } catch (error) {
     return handleApiError(error);
   }

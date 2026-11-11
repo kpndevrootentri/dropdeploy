@@ -15,7 +15,7 @@ export async function POST(
     const session = await getSession(req);
     requireContributor(session);
     const { projectId } = await params;
-    await adminService.restartContainer(projectId);
+    await adminService.restartContainer(projectId, session.userId);
     return NextResponse.json({ success: true });
   } catch (error) {
     return handleApiError(error);

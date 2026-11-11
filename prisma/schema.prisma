@@ -24,6 +24,9 @@ model User {
   // Embedded in every JWT and checked on every authenticated request. Bumping
   // it revokes all of the user's outstanding sessions and CLI tokens.
   tokenVersion      Int      @default(0) @map("token_version")
+  // Set by an admin. A suspended user cannot sign in and every session is
+  // rejected; their deployed sites keep running.
+  suspendedAt       DateTime? @map("suspended_at")
 
   projectQuota Int @default(5) @map("project_quota")
   // Custom domains the user may claim across all their projects.
@@ -39,13 +42,31 @@ model User {
 
   projects      Project[]
   auditLogs     AuditLog[]
+  adminActions  AdminAction[]
   gitProviders  GitProvider[]
   projectAccess ProjectAccess[]
+  inviteTokens  InviteToken[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("users")
+}
+
+/// A one-time link an admin hands a new user so they can choose their own
+/// password. Only the token's sha256 is stored; the token itself is shown to the
+/// admin once and never again.
+model InviteToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique @map("token_hash")
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("invite_tokens")
 }
 
 model Project {
@@ -66,6 +87,11 @@ model Project {
   webhookSecretEnc String? @map("webhook_secret_enc") @db.Text // AES-256-GCM triplet (matches GitProvider)
   webhookSecretIv  String? @map("webhook_secret_iv")
   webhookSecretTag String? @map("webhook_secret_tag")
+
+  // Set when an admin stops the live container; cleared when it is restarted or
+  // a deployment goes live. The live deployment stays DEPLOYED either way,
+  // because the proxy and rollback key off that status.
+  stoppedAt DateTime? @map("stopped_at")
 
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -177,6 +203,8 @@ model ProjectShowcase {
   isPublished      Boolean   @default(false) @map("is_published")
   publishedAt      DateTime? @map("published_at")
   viewCount        Int       @default(0) @map("view_count")
+  /// Set by an admin; featured entries sort first on the Explore page.
+  featured         Boolean   @default(false)
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -302,8 +330,10 @@ model AuditLog {
   action    String // ENV_CREATED, ENV_UPDATED, ENV_DELETED
   targetKey String @map("target_key")
 
-  userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id])
+  // Null once the user is deleted. SetNull, not Cascade: the project keeps its history
+  // even when its author is gone, e.g. after the project was transferred away from them.
+  userId String? @map("user_id")
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   projectId String  @map("project_id")
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -315,12 +345,54 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+/// One row per admin mutation, for accountability. The actor's email and the
+/// target's label are snapshots, and the target has no foreign key, so entries
+/// outlive the user or project they describe.
+model AdminAction {
+  id String @id @default(cuid())
+
+  actorId    String? @map("actor_id")
+  actor      User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorEmail String  @map("actor_email")
+
+  action      String // USER_CREATED, USER_DELETED, PROJECT_STOPPED, ...
+  targetType  String  @map("target_type") // USER | PROJECT
+  /// Null for actions on many targets at once, such as a bulk import.
+  targetId    String? @map("target_id")
+  targetLabel String  @map("target_label")
+  /// Never holds passwords or other secrets.
+  meta        Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("admin_actions")
+}
+
 enum DeploymentStatus {
   QUEUED
   BUILDING
   DEPLOYED
   FAILED
   CANCELLED
+}
+
+/// Platform-wide settings edited in the admin panel: one row, id 1. A
+/// missing row means every default below, so nothing needs seeding.
+model PlatformSetting {
+  id                    Int      @id @default(1)
+  /// Quotas given to accounts created from now on; existing users keep theirs.
+  defaultProjectQuota   Int      @default(5) @map("default_project_quota")
+  defaultDomainQuota    Int      @default(1) @map("default_domain_quota")
+  /// Can only close self-registration: ALLOW_PUBLIC_REGISTRATION must be on too.
+  signupOpen            Boolean  @default(true) @map("signup_open")
+  /// Shown to every signed-in user above the dashboard when set.
+  bannerMessage         String?  @map("banner_message") @db.Text
+  /// Age past which the admin cleanup deletes proxy hits. At least 7.
+  proxyHitRetentionDays Int      @default(90) @map("proxy_hit_retention_days")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_settings")
 }
 
 model ProxyHit {

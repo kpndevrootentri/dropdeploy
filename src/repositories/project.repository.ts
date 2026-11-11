@@ -8,16 +8,20 @@ export interface IProjectRepository {
   findByIdWithDeployments(id: string): Promise<Project | null>;
   findByUserId(userId: string): Promise<Project[]>;
   findBySlug(slug: string): Promise<Project | null>;
+  /** Which of the given slugs belong to a project, in one query. */
+  findExistingSlugs(slugs: string[]): Promise<string[]>;
   findAll(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date; containerPort: number | null }[] })[]>;
   create(userId: string, data: CreateProjectDto): Promise<Project>;
   update(id: string, data: UpdateProjectDto): Promise<Project>;
   delete(id: string): Promise<void>;
   transferOwner(id: string, newUserId: string): Promise<Project>;
+  /** Records that the live container was stopped (a date) or started again (null). */
+  setStoppedAt(id: string, stoppedAt: Date | null): Promise<void>;
   /** Enable auto-deploy and persist the GitHub hook id + encrypted webhook secret. */
   setWebhookConfig(id: string, data: { githubHookId: string; webhookSecretEnc: string; webhookSecretIv: string; webhookSecretTag: string }): Promise<Project>;
   /** Disable auto-deploy and clear all webhook fields. */
   clearWebhookConfig(id: string): Promise<Project>;
-  /** All auto-deploy-enabled GitHub projects on a given branch (webhook fan-out). */
+  /** All auto-deploy-enabled GitHub projects on a given branch whose owner is not suspended (webhook fan-out). */
   findAutoDeployByBranch(branch: string): Promise<Project[]>;
 }
 
@@ -46,6 +50,11 @@ export class ProjectRepository implements IProjectRepository {
 
   async findBySlug(slug: string): Promise<Project | null> {
     return prisma.project.findUnique({ where: { slug } });
+  }
+
+  async findExistingSlugs(slugs: string[]): Promise<string[]> {
+    const rows = await prisma.project.findMany({ where: { slug: { in: slugs } }, select: { slug: true } });
+    return rows.map((r) => r.slug);
   }
 
   async findAll(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date; containerPort: number | null }[] })[]> {
@@ -91,6 +100,10 @@ export class ProjectRepository implements IProjectRepository {
     return prisma.project.update({ where: { id }, data: { userId: newUserId } });
   }
 
+  async setStoppedAt(id: string, stoppedAt: Date | null): Promise<void> {
+    await prisma.project.update({ where: { id }, data: { stoppedAt } });
+  }
+
   async setWebhookConfig(
     id: string,
     data: { githubHookId: string; webhookSecretEnc: string; webhookSecretIv: string; webhookSecretTag: string },
@@ -116,7 +129,8 @@ export class ProjectRepository implements IProjectRepository {
 
   async findAutoDeployByBranch(branch: string): Promise<Project[]> {
     return prisma.project.findMany({
-      where: { autoDeploy: true, source: 'GITHUB', branch },
+      // A suspended owner must not be able to rebuild their site with a git push.
+      where: { autoDeploy: true, source: 'GITHUB', branch, user: { suspendedAt: null } },
     });
   }
 

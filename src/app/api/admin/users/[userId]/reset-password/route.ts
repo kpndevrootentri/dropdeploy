@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { getSession } from '@/lib/get-session';
 import { requireContributor } from '@/lib/require-contributor';
 import { adminService } from '@/services/admin';
 import { handleApiError } from '@/lib/api-error';
+import { passwordSchema } from '@/validators/auth.validator';
+
+const resetSchema = z.union([
+  z.object({ newPassword: passwordSchema }),
+  z.object({ generate: z.literal(true) }),
+]);
 
 /**
  * PATCH /api/admin/users/[userId]/reset-password – set a new password for a user (contributor only).
+ * Send `{ newPassword }`, or `{ generate: true }` to have the server pick one;
+ * a generated password is returned once in `data.generatedPassword`.
  */
 export async function PATCH(
   req: NextRequest,
@@ -15,13 +24,9 @@ export async function PATCH(
     const session = await getSession(req);
     requireContributor(session);
     const { userId } = await params;
-    const body = await req.json();
-    const { newPassword } = body as { newPassword?: string };
-    if (!newPassword) {
-      return NextResponse.json({ success: false, error: 'newPassword is required' }, { status: 400 });
-    }
-    await adminService.resetUserPassword(userId, newPassword);
-    return NextResponse.json({ success: true });
+    const body = resetSchema.parse(await req.json());
+    const result = await adminService.resetUserPassword(userId, 'newPassword' in body ? body.newPassword : undefined, session.userId);
+    return NextResponse.json({ success: true, data: result }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     return handleApiError(error);
   }

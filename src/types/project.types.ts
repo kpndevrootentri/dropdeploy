@@ -4,7 +4,10 @@
 
 export type SourceType = 'GITHUB' | 'GITLAB' | 'UPLOAD';
 
-export type ProjectType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'GO' | 'RUST' | 'JAVA' | 'WORDPRESS';
+/** Mirrors the Prisma enum; the one list the forms, filters and validators share. */
+export const PROJECT_TYPES = ['STATIC', 'NODEJS', 'NEXTJS', 'DJANGO', 'REACT', 'FASTAPI', 'FLASK', 'VUE', 'SVELTE', 'GO', 'RUST', 'JAVA', 'WORDPRESS'] as const;
+
+export type ProjectType = (typeof PROJECT_TYPES)[number];
 
 /**
  * A fresh WordPress site hands admin to whoever opens its install wizard

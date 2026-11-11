@@ -24,15 +24,8 @@ export async function PATCH(
     requireContributor(session);
     const { userId } = await params;
     const body = await req.json();
-    const { projectQuota, domainQuota } = updateQuotaSchema.parse(body);
-
-    let user = null;
-    if (projectQuota !== undefined) {
-      user = await adminService.updateUserQuota(userId, projectQuota);
-    }
-    if (domainQuota !== undefined) {
-      user = await adminService.updateUserDomainQuota(userId, domainQuota);
-    }
+    const quotas = updateQuotaSchema.parse(body);
+    const user = await adminService.updateUserQuotas(userId, quotas, session.userId);
     return NextResponse.json({ success: true, data: user });
   } catch (error) {
     return handleApiError(error);

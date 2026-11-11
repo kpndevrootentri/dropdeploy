@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const AUTH_COOKIE_NAME = 'auth-token';
 
+/**
+ * Holds an admin's own session while they view the dashboard as another user.
+ * Host-only and scoped to the exit route, so no tenant subdomain and no other
+ * route ever receives it.
+ */
+export const ADMIN_RESTORE_COOKIE = 'admin-restore';
+export const IMPERSONATION_EXIT_PATH = '/api/auth/impersonation/exit';
+
 /** 7 days in seconds */
 const DEFAULT_MAX_AGE = 7 * 24 * 60 * 60;
 
@@ -31,13 +39,37 @@ function getCookieDomain(): string | undefined {
  * out rather than signed in as someone else.
  */
 export function getTokenFromCookieHeader(cookieHeader: string | null): string | undefined {
+  return readSingleCookie(cookieHeader, AUTH_COOKIE_NAME);
+}
+
+/** The value of cookie `name`, or undefined if it is missing or sent more than once. */
+function readSingleCookie(cookieHeader: string | null, name: string): string | undefined {
   if (!cookieHeader) return undefined;
   const values = cookieHeader
     .split(';')
     .map((pair) => pair.trim())
-    .filter((pair) => pair.slice(0, pair.indexOf('=')).trim() === AUTH_COOKIE_NAME)
+    .filter((pair) => pair.slice(0, pair.indexOf('=')).trim() === name)
     .map((pair) => pair.slice(pair.indexOf('=') + 1).trim());
   return values.length === 1 && values[0] ? values[0] : undefined;
+}
+
+/** The admin session saved while viewing as a user. Same one-cookie rule as the auth cookie. */
+export function getAdminRestoreToken(request: NextRequest): string | undefined {
+  return readSingleCookie(request.headers.get('cookie'), ADMIN_RESTORE_COOKIE);
+}
+
+export function setAdminRestoreCookie(response: NextResponse, token: string, maxAgeSeconds: number): void {
+  response.cookies.set(ADMIN_RESTORE_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: maxAgeSeconds,
+    path: IMPERSONATION_EXIT_PATH,
+  });
+}
+
+export function clearAdminRestoreCookie(response: NextResponse): void {
+  setAdminRestoreCookie(response, '', 0);
 }
 
 /**

@@ -1,10 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { deploymentRepository, type IDeploymentRepository } from '@/repositories/deployment.repository';
+import { deploymentRepository, type IDeploymentRepository, type DeploymentSummary } from '@/repositories/deployment.repository';
 import { projectRepository, type IProjectRepository } from '@/repositories/project.repository';
 import { deploymentQueueAdapter, type IDeploymentQueue } from '@/lib/queue';
 import { dockerService, type DockerService } from '@/services/docker';
 import { liveContainerName, candidateContainerName } from '@/services/docker/docker.service';
+import { PLATFORM_RESOURCE_SLUGS } from '@/lib/reserved-slugs';
 import { gitService, type IGitService, type GitCredentials } from '@/services/git';
 import { isPublicBuildEnv, WORDPRESS_CONFIG_FILE } from '@/services/docker/dockerfile.templates';
 import { startsPrivate } from '@/types/project.types';
@@ -227,7 +228,7 @@ export class DeploymentService {
   /**
    * Lists deployments for a project.
    */
-  async listByProjectId(projectId: string, userId: string, limit = 10): Promise<Deployment[]> {
+  async listByProjectId(projectId: string, userId: string, limit = 10): Promise<DeploymentSummary[]> {
     const project = await this.projectRepo.findById(projectId);
     if (!project || project.userId !== userId) {
       throw new NotFoundError('Project');
@@ -292,6 +293,19 @@ export class DeploymentService {
     const { project } = deployment;
     if (!project.githubUrl) {
       await this.deploymentRepo.update(deploymentId, { status: 'FAILED' });
+      return null;
+    }
+    // A project created before its slug was reserved: its container name is a platform
+    // resource's (e.g. the edge `dropdeploy-caddy`). Fail before any container work.
+    if (PLATFORM_RESOURCE_SLUGS.includes(project.slug)) {
+      await this.deploymentRepo.update(deploymentId, {
+        status: 'FAILED',
+        buildLog: `✗ The slug "${project.slug}" is reserved for the platform's own Docker resources. ` +
+          'Ask an admin to rename the project\'s slug, then redeploy.\n',
+        completedAt: new Date(),
+      });
+      getRedisConnection().publish(`build:${deploymentId}`, '__DONE__').catch(() => {});
+      log.warn('Refused to deploy a project with a platform slug', { deploymentId, slug: project.slug });
       return null;
     }
 
@@ -503,9 +517,9 @@ export class DeploymentService {
       if (createdTag) {
         await this.docker.removeImage(createdTag);
       }
+      // buildStep is kept: it records where the build stopped (admin analytics groups failures by it).
       await this.deploymentRepo.update(deploymentId, {
         status: 'FAILED',
-        buildStep: null,
         buildLog: logLines.join(''),
         completedAt: new Date(),
         ...(createdTag ? { imageTag: null } : {}),

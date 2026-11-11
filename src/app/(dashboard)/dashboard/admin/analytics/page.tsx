@@ -17,13 +17,19 @@ interface DeployDay { date: string; total: number; succeeded: number; failed: nu
 interface DeviceBreakdown { mobile: number; desktop: number; bot: number; unknown: number }
 
 interface AdminAnalytics {
+  range: number;
   users: { total: number; thisWeek: number; byDay: DayCount[] };
   projects: { total: number; thisWeek: number; byType: { type: string; count: number }[]; byDay: DayCount[] };
   deployments: {
     total: number; succeeded: number; failed: number;
     thisWeek: number; successRate: number | null; byDay: DeployDay[];
+    buildTimes: { p50Seconds: number | null; p95Seconds: number | null; count: number };
+    failuresByStep: { step: string | null; count: number }[];
   };
-  traffic: { totalHits: number; hitsThisWeek: number; byDay: DayCount[]; deviceBreakdown: DeviceBreakdown };
+  traffic: {
+    totalHits: number; hitsThisWeek: number; byDay: DayCount[]; deviceBreakdown: DeviceBreakdown;
+    topProjects: { name: string; slug: string; hits: number }[];
+  };
   showcase: { total: number; published: number; totalViews: number; topByViews: { name: string; slug: string; viewCount: number }[] };
   platformEvents: { byEvent: { event: string; count: number }[]; thisWeek: number };
 }
@@ -35,6 +41,21 @@ interface AdminAnalytics {
 function formatShortDate(dateStr: string): string {
   const d = new Date(dateStr + 'T12:00:00');
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+const RANGES = [7, 14, 30, 90] as const;
+
+/** Label the first, middle and last bar, whatever the range. */
+function showsLabel(i: number, n: number): boolean {
+  return i === 0 || i === Math.floor((n - 1) / 2) || i === n - 1;
+}
+
+function formatDuration(seconds: number | null): string {
+  if (seconds === null) return '—';
+  // Round once up front, or 119.6 would read "1m 60s".
+  const total = Math.round(seconds);
+  if (total < 60) return `${total}s`;
+  return `${Math.floor(total / 60)}m ${total % 60}s`;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,7 +89,7 @@ function SimpleBarChart({ days, color = 'bg-blue-500' }: { days: DayCount[]; col
       <div className="flex gap-px sm:gap-0.5 mt-0.5">
         {days.map((day, i) => (
           <div key={day.date} className="flex-1 text-center">
-            {(i === 0 || i === 6 || i === 13) && (
+            {showsLabel(i, days.length) && (
               <span className="text-[10px] text-muted-foreground">{formatShortDate(day.date)}</span>
             )}
           </div>
@@ -116,7 +137,7 @@ function DeployBarChart({ days }: { days: DeployDay[] }): React.ReactElement {
       <div className="flex gap-px sm:gap-0.5 mt-0.5">
         {days.map((day, i) => (
           <div key={day.date} className="flex-1 text-center">
-            {(i === 0 || i === 6 || i === 13) && (
+            {showsLabel(i, days.length) && (
               <span className="text-[10px] text-muted-foreground">{formatShortDate(day.date)}</span>
             )}
           </div>
@@ -178,19 +199,27 @@ export default function AdminAnalyticsPage(): React.ReactElement {
   const [data, setData] = useState<AdminAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [range, setRange] = useState<(typeof RANGES)[number]>(14);
 
   useEffect(() => {
-    fetch('/api/admin/analytics')
+    // A slower answer for an earlier range must not overwrite the one now selected.
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    fetch(`/api/admin/analytics?days=${range}`, { signal: controller.signal })
       .then((r) => r.json())
       .then((res: { success: boolean; data?: AdminAnalytics; error?: { message: string } }) => {
+        if (controller.signal.aborted) return;
         if (res.success && res.data) setData(res.data);
         else setError(res.error?.message ?? 'Failed to load');
       })
-      .catch(() => setError('Failed to load analytics'))
-      .finally(() => setLoading(false));
-  }, []);
+      .catch(() => { if (!controller.signal.aborted) setError('Failed to load analytics'); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [range]);
 
-  if (loading) {
+  // Keep the last result on screen while another range loads.
+  if (loading && !data) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -198,7 +227,7 @@ export default function AdminAnalyticsPage(): React.ReactElement {
     );
   }
 
-  if (error || !data) {
+  if (!data) {
     return (
       <Card>
         <CardHeader>
@@ -223,8 +252,37 @@ export default function AdminAnalyticsPage(): React.ReactElement {
     unknown: 'Unknown',
   };
 
+  const maxStepFailures = Math.max(...data.deployments.failuresByStep.map((f) => f.count), 1);
+  const maxProjectHits = Math.max(...data.traffic.topProjects.map((p) => p.hits), 1);
+
   return (
     <div className="space-y-8">
+
+      {/* ── Range picker ── */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          Charts and range stats cover the last {data.range} days (UTC). Totals are all-time.
+        </p>
+        <div className="flex items-center gap-2">
+          {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Loading" />}
+          <div role="group" aria-label="Date range" className="inline-flex rounded-md border p-0.5">
+            {RANGES.map((r) => (
+              <button
+                key={r}
+                type="button"
+                aria-pressed={range === r}
+                onClick={() => setRange(r)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-sm transition-colors ${
+                  range === r ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {r}d
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
 
       {/* ── Summary stat cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -262,7 +320,7 @@ export default function AdminAnalyticsPage(): React.ReactElement {
               <CardTitle className="text-sm">Deploy frequency</CardTitle>
               <span className="text-xs text-muted-foreground">{data.deployments.thisWeek} this week</span>
             </div>
-            <CardDescription className="text-xs">Deployments per day — last 14 days</CardDescription>
+            <CardDescription className="text-xs">Deployments per day — last {data.range} days</CardDescription>
           </CardHeader>
           <CardContent>
             <DeployBarChart days={data.deployments.byDay} />
@@ -280,7 +338,7 @@ export default function AdminAnalyticsPage(): React.ReactElement {
               <CardTitle className="text-sm">Proxy traffic</CardTitle>
               <span className="text-xs text-muted-foreground">{data.traffic.hitsThisWeek} this week</span>
             </div>
-            <CardDescription className="text-xs">Requests via subdomain proxy — last 14 days</CardDescription>
+            <CardDescription className="text-xs">Requests via subdomain proxy — last {data.range} days</CardDescription>
           </CardHeader>
           <CardContent>
             <SimpleBarChart days={data.traffic.byDay} color="bg-blue-500" />
@@ -296,7 +354,7 @@ export default function AdminAnalyticsPage(): React.ReactElement {
               <CardTitle className="text-sm">New signups</CardTitle>
               <span className="text-xs text-muted-foreground">+{data.users.thisWeek} this week</span>
             </div>
-            <CardDescription className="text-xs">User registrations — last 14 days</CardDescription>
+            <CardDescription className="text-xs">User registrations — last {data.range} days</CardDescription>
           </CardHeader>
           <CardContent>
             <SimpleBarChart days={data.users.byDay} color="bg-violet-500" />
@@ -309,7 +367,7 @@ export default function AdminAnalyticsPage(): React.ReactElement {
               <CardTitle className="text-sm">New projects</CardTitle>
               <span className="text-xs text-muted-foreground">+{data.projects.thisWeek} this week</span>
             </div>
-            <CardDescription className="text-xs">Projects created — last 14 days</CardDescription>
+            <CardDescription className="text-xs">Projects created — last {data.range} days</CardDescription>
           </CardHeader>
           <CardContent>
             <SimpleBarChart days={data.projects.byDay} color="bg-orange-500" />
@@ -337,6 +395,70 @@ export default function AdminAnalyticsPage(): React.ReactElement {
           icon={<BarChart2 className="h-3.5 w-3.5" />}
         />
       </div>
+
+      {/* ── Build times + Failure reasons ── */}
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Build time</CardTitle>
+            <CardDescription className="text-xs">
+              Successful builds in the last {data.range} days (rollbacks and uploads excluded)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div>
+                <p className="text-2xl font-bold tabular-nums">{formatDuration(data.deployments.buildTimes.p50Seconds)}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Median (p50)</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold tabular-nums">{formatDuration(data.deployments.buildTimes.p95Seconds)}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Slowest 5% (p95)</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold tabular-nums">{data.deployments.buildTimes.count}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Builds</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">Where builds fail</CardTitle>
+            <CardDescription className="text-xs">
+              Failed deploys in the last {data.range} days by the step they stopped at. Error messages aren&apos;t
+              stored, so open a deploy&apos;s log for the cause.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {data.deployments.failuresByStep.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No failed deploys in this range.</p>
+            ) : (
+              data.deployments.failuresByStep.map(({ step, count }) => (
+                <HorizBar key={step ?? 'none'} label={step ?? 'Unknown'} count={count} max={maxStepFailures} color="bg-destructive" />
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Top projects by traffic ── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Top projects by traffic</CardTitle>
+          <CardDescription className="text-xs">Proxy requests in the last {data.range} days</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {data.traffic.topProjects.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No traffic in this range.</p>
+          ) : (
+            data.traffic.topProjects.map((p, i) => (
+              <HorizBar key={p.slug || i} label={p.name} count={p.hits} max={maxProjectHits} color="bg-blue-500" />
+            ))
+          )}
+        </CardContent>
+      </Card>
 
       {/* ── Framework distribution + Device breakdown ── */}
       <div className="grid sm:grid-cols-2 gap-4">

@@ -16,7 +16,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
     const user = await authService.verifySession(token);
     return NextResponse.json({
       success: true,
-      data: { userId: user.userId, email: user.email, role: user.role },
+      data: { userId: user.userId, email: user.email, role: user.role, impersonating: Boolean(user.impersonatorId) },
     });
   } catch (e) {
     if (e instanceof UnauthorizedError) {

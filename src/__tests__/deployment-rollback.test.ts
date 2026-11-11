@@ -109,3 +109,17 @@ describe('publishStaticFiles', () => {
     expect((await fs.promises.readdir(STATIC_DIR)).filter((n) => n.startsWith('blog'))).toEqual(['blog']);
   });
 });
+
+describe('a failed build', () => {
+  it('keeps the step it stopped at, so admin analytics can group failures by step', async () => {
+    const row: Row = { id: 'dep-3', projectId: 'p1', status: 'QUEUED', rollbackOfId: 'pruned', buildStep: null };
+    const deploymentRepo = {
+      findByIdWithProject: async () => ({ ...row, project: { id: 'p1', slug: 'shop', type: 'NEXTJS', githubUrl: 'https://github.com/o/shop' } }),
+      findById: async () => null, // the image to roll back to is gone
+      update: async (_id: string, data: Row) => Object.assign(row, data),
+    };
+    const service = new DeploymentService(deploymentRepo, {}, {}, {}, {}, {});
+    await expect(service.buildAndDeploy('dep-3')).rejects.toThrow(/no longer has an image/);
+    expect(row).toMatchObject({ status: 'FAILED', buildStep: 'STARTING' });
+  });
+});

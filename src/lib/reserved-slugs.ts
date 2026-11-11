@@ -6,6 +6,14 @@
  * convincing phishing page on an official-looking platform hostname; names
  * like `www`, `mail` or `status` may be wanted by the platform itself.
  */
+/**
+ * A tenant container is `dropdeploy-<slug>` (containerNameFor), so these slugs would take the
+ * name of the platform's own Docker resources: `caddy` → the edge container `dropdeploy-caddy`
+ * (infra/caddy), `tenants` → the tenant network `dropdeploy-tenants` (TENANT_NETWORK).
+ * Reserved for new projects below; the Docker-ops worker refuses them for existing ones.
+ */
+export const PLATFORM_RESOURCE_SLUGS: readonly string[] = ['caddy', 'tenants'];
+
 const RESERVED_SLUGS = new Set([
   'www', 'app', 'api', 'admin', 'administrator', 'dashboard', 'console', 'panel',
   'login', 'logout', 'signin', 'signup', 'register', 'auth', 'oauth', 'sso', 'account', 'accounts',
@@ -15,6 +23,7 @@ const RESERVED_SLUGS = new Set([
   'cdn', 'static', 'assets', 'status', 'health', 'docs', 'help', 'support', 'blog', 'explore',
   'ingress', // custom domains CNAME to ingress.<BASE_DOMAIN>
   'localhost', 'staging', 'dev', 'test',
+  ...PLATFORM_RESOURCE_SLUGS,
 ]);
 
 export function isReservedSlug(slug: string): boolean {

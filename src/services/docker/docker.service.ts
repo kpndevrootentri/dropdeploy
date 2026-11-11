@@ -11,6 +11,11 @@ import * as tarStream from 'tar-stream';
 import type { Project } from '@prisma/client';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
+import { assertNotPlatformResource } from '@/lib/docker-ops';
+import { demuxLogs } from '@/lib/container-logs';
+import { diskUsageFromDf, type DiskUsage } from '@/lib/disk-usage';
+import { containerUsageFromStats, type ContainerUsage, type RawContainerStats } from '@/lib/container-usage';
+import type { DanglingImage, LabelledContainer } from '@/lib/docker-ops';
 import {
   DOCKERFILE_TEMPLATES,
   CONTAINER_PORTS,
@@ -27,6 +32,12 @@ const log = createLogger('docker');
 function isPortConflictError(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
   return msg.includes('port is already allocated') || msg.includes('address already in use');
+}
+
+/** Docker's "no such container" (404) and "already in that state" (304) replies. */
+function isMissingOrUnchanged(err: unknown): boolean {
+  const status = (err as { statusCode?: number } | null)?.statusCode;
+  return status === 404 || status === 304;
 }
 
 const CONTAINER_RESOURCES: Record<string, { memory: number; cpuShares: number }> = {
@@ -349,6 +360,7 @@ export class DockerService {
    */
   async promoteContainer(slug: string, candidateName: string, graceMs = 5_000): Promise<void> {
     const liveName = liveContainerName(slug);
+    assertNotPlatformResource(liveName);
     const old = this.docker.getContainer(liveName);
     const exists = await old.inspect().then(() => true, () => false);
     if (exists) {
@@ -451,6 +463,7 @@ export class DockerService {
 
   /**
    * Returns key container details for a given container name, or null if not found.
+   * Any other Docker error is thrown.
    */
   async getContainerInfo(containerName: string): Promise<{
     id: string;
@@ -486,6 +499,35 @@ export class DockerService {
         memoryLimitBytes: info.HostConfig?.Memory ?? 0,
         restartCount: info.RestartCount ?? 0,
       };
+    } catch (err) {
+      // Only a missing container is "no container"; a down daemon must surface.
+      if (isMissingOrUnchanged(err)) return null;
+      throw err;
+    }
+  }
+
+  /** Last `tail` lines of a container's output, timestamped; null if it does not exist. */
+  async getContainerLogs(containerName: string, tail: number): Promise<string | null> {
+    try {
+      const raw = await this.docker.getContainer(containerName)
+        .logs({ stdout: true, stderr: true, tail, timestamps: true, follow: false });
+      return demuxLogs(raw);
+    } catch (err) {
+      if ((err as { statusCode?: number }).statusCode === 404) return null;
+      throw err;
+    }
+  }
+
+  /** Totals of `docker system df`; the per-object detail it also returns is dropped. */
+  async getDiskUsage(): Promise<DiskUsage> {
+    return diskUsageFromDf(await this.docker.df());
+  }
+
+  /** One stats sample of a container; null if it is missing or stopped. */
+  async getContainerStats(containerName: string): Promise<ContainerUsage | null> {
+    try {
+      const stats = await this.docker.getContainer(containerName).stats({ stream: false });
+      return containerUsageFromStats(stats as unknown as RawContainerStats);
     } catch {
       return null;
     }
@@ -495,12 +537,17 @@ export class DockerService {
    * Stops a running container by name without removing it.
    */
   async stopContainer(containerName: string): Promise<void> {
+    assertNotPlatformResource(containerName);
     try {
       const container = this.docker.getContainer(containerName);
       const info = await container.inspect();
-      if (info.State.Running) await container.stop();
-    } catch {
-      // Container doesn't exist or already stopped — fine
+      // A crash-looping container is Restarting, not Running; stop it too, or
+      // its restart policy brings it back while the project reads as stopped.
+      if (info.State.Running || info.State.Restarting) await container.stop();
+    } catch (err) {
+      // Missing (404) or already stopped (304) is fine. Anything else must reach
+      // the caller, which records the stop only when it really happened.
+      if (!isMissingOrUnchanged(err)) throw err;
     }
   }
 
@@ -508,11 +555,12 @@ export class DockerService {
    * Restarts a container by name.
    */
   async restartContainer(containerName: string): Promise<void> {
+    assertNotPlatformResource(containerName);
     try {
       const container = this.docker.getContainer(containerName);
       await container.restart();
-    } catch {
-      // Container doesn't exist — fine
+    } catch (err) {
+      if (!isMissingOrUnchanged(err)) throw err;
     }
   }
 
@@ -520,6 +568,7 @@ export class DockerService {
    * Stops and removes a container by name. Silently ignores missing containers.
    */
   async stopAndRemoveContainer(containerName: string): Promise<void> {
+    assertNotPlatformResource(containerName);
     try {
       const container = this.docker.getContainer(containerName);
       const info = await container.inspect();
@@ -592,6 +641,27 @@ export class DockerService {
         log.warn('Failed to remove superseded image', { slug, imageId: image.Id, error: String(err) });
       });
     }
+  }
+
+  /** Containers started from project images, which inherit the image's slug label. */
+  async listLabelledContainers(): Promise<LabelledContainer[]> {
+    const containers = await this.docker.listContainers({ all: true, filters: { label: [SLUG_LABEL] } });
+    return containers.map((c) => ({
+      name: (c.Names[0] ?? '').replace(/^\//, ''),
+      slug: c.Labels?.[SLUG_LABEL] ?? '',
+      state: c.State,
+    }));
+  }
+
+  /** Untagged project images: what {@link removeSupersededImages} would remove. */
+  async listDanglingProjectImages(): Promise<DanglingImage[]> {
+    const images = await this.docker.listImages({ filters: { label: [SLUG_LABEL], dangling: ['true'] } });
+    return images.map((i) => ({
+      id: i.Id,
+      slug: i.Labels?.[SLUG_LABEL] ?? '',
+      sizeBytes: i.Size,
+      createdAt: new Date(i.Created * 1000).toISOString(),
+    }));
   }
 
   /** Deletes a project's persistent data volume. Call only after its container is gone. */

@@ -22,6 +22,19 @@ export function createRedisConnection(): Redis {
   });
 }
 
+/**
+ * Rejects if `command` has not settled within `ms`. With `maxRetriesPerRequest: null`
+ * a command issued while Redis is down waits in the offline queue forever, so a
+ * health check must give up on its own or it hangs during the very outage it reports.
+ */
+export function withRedisTimeout<T>(command: Promise<T>, ms = 2_000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`No answer within ${ms}ms`)), ms);
+  });
+  return Promise.race([command, timeout]).finally(() => clearTimeout(timer));
+}
+
 let redis: Redis | null = null;
 
 /**

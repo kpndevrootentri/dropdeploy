@@ -2,11 +2,20 @@ import type { Deployment, Project, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 export type DeploymentWithProject = Deployment & { project: Project };
+/** A deployment without `buildLog`, an unbounded TEXT column that lists never show. */
+export type DeploymentSummary = Omit<Deployment, 'buildLog'>;
+
+const SUMMARY_SELECT = {
+  id: true, status: true, containerPort: true, subdomain: true, buildStep: true, commitHash: true,
+  servingMethod: true, imageTag: true, rollbackOfId: true, startedAt: true, completedAt: true,
+  projectId: true, createdAt: true, updatedAt: true,
+} satisfies Prisma.DeploymentSelect;
 
 export interface IDeploymentRepository {
   findById(id: string): Promise<Deployment | null>;
   findByIdWithProject(id: string): Promise<DeploymentWithProject | null>;
-  findByProjectId(projectId: string, limit?: number, skip?: number): Promise<Deployment[]>;
+  /** Newest first, without build logs; the logs routes serve one on demand. */
+  findByProjectId(projectId: string, limit?: number, skip?: number): Promise<DeploymentSummary[]>;
   countByProjectId(projectId: string): Promise<number>;
   create(data: { projectId: string; status?: string; rollbackOfId?: string; commitHash?: string | null }): Promise<Deployment>;
   update(id: string, data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'buildLog' | 'commitHash' | 'servingMethod' | 'startedAt' | 'completedAt' | 'imageTag'>>): Promise<Deployment>;
@@ -52,6 +61,8 @@ export interface IDeploymentRepository {
   markBuildingAsFailed(): Promise<number>;
   /** Returns true if the project has at least one DEPLOYED deployment. */
   hasDeployedStatus(projectId: string): Promise<boolean>;
+  /** The deployment the proxy serves for this subdomain (a project's slug), or null. */
+  findLiveDeployment(subdomain: string): Promise<Deployment | null>;
 }
 
 export class DeploymentRepository implements IDeploymentRepository {
@@ -66,8 +77,9 @@ export class DeploymentRepository implements IDeploymentRepository {
     });
   }
 
-  async findByProjectId(projectId: string, limit = 10, skip = 0): Promise<Deployment[]> {
+  async findByProjectId(projectId: string, limit = 10, skip = 0): Promise<DeploymentSummary[]> {
     return prisma.deployment.findMany({
+      select: SUMMARY_SELECT,
       where: { projectId },
       orderBy: { createdAt: 'desc' },
       take: limit,
@@ -109,6 +121,9 @@ export class DeploymentRepository implements IDeploymentRepository {
         where: { id: deploymentId },
         data: { ...data, status: 'DEPLOYED', buildStep: null, subdomain },
       }),
+      // A deployment going live (a build, a rollback, a switch to static) is serving again.
+      // Filtered so a deploy of a running project leaves its updatedAt alone.
+      prisma.project.updateMany({ where: { id: projectId, stoppedAt: { not: null } }, data: { stoppedAt: null } }),
     ]);
     return activated;
   }
@@ -190,7 +205,7 @@ export class DeploymentRepository implements IDeploymentRepository {
   async markBuildingAsFailed(): Promise<number> {
     const result = await prisma.deployment.updateMany({
       where: { status: 'BUILDING' },
-      data: { status: 'FAILED', buildStep: null, completedAt: new Date() },
+      data: { status: 'FAILED', completedAt: new Date() },
     });
     return result.count;
   }
@@ -200,6 +215,10 @@ export class DeploymentRepository implements IDeploymentRepository {
       where: { projectId, status: 'DEPLOYED' },
     });
     return count > 0;
+  }
+
+  async findLiveDeployment(subdomain: string): Promise<Deployment | null> {
+    return prisma.deployment.findFirst({ where: { subdomain, status: 'DEPLOYED' } });
   }
 }
 

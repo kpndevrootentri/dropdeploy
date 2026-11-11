@@ -14,8 +14,16 @@ export interface DomainRoute {
   primaryHostname: string | null;
 }
 
+/** One row of the admin domains table. */
+export type AdminDomainRow = Pick<
+  CustomDomain,
+  'id' | 'hostname' | 'status' | 'isPrimary' | 'lastError' | 'failureCount' | 'lastCheckedAt' | 'verifiedAt' | 'createdAt'
+> & { project: { id: string; name: string; slug: string; user: { email: string } } };
+
 export interface IDomainRepository {
   findById(id: string): Promise<CustomDomain | null>;
+  /** Every domain on the platform, for the admin panel. */
+  listAll(): Promise<AdminDomainRow[]>;
   findByHostname(hostname: string): Promise<CustomDomain | null>;
   listByProject(projectId: string): Promise<CustomDomain[]>;
   /** Every domain belonging to any project owned by `userId` — for quota. */
@@ -40,6 +48,24 @@ export interface IDomainRepository {
 export class DomainRepository implements IDomainRepository {
   async findById(id: string): Promise<CustomDomain | null> {
     return prisma.customDomain.findUnique({ where: { id } });
+  }
+
+  async listAll(): Promise<AdminDomainRow[]> {
+    return prisma.customDomain.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        hostname: true,
+        status: true,
+        isPrimary: true,
+        lastError: true,
+        failureCount: true,
+        lastCheckedAt: true,
+        verifiedAt: true,
+        createdAt: true,
+        project: { select: { id: true, name: true, slug: true, user: { select: { email: true } } } },
+      },
+    });
   }
 
   async findByHostname(hostname: string): Promise<CustomDomain | null> {

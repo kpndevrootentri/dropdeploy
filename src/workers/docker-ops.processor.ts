@@ -12,7 +12,8 @@
 import type { Job } from 'bullmq';
 import { AppError } from '@/lib/errors';
 import { createLogger } from '@/lib/logger';
-import type { DockerOpRequest, DockerOpResult } from '@/lib/docker-ops';
+import { assertNotPlatformResource, type DockerOpRequest, type DockerOpResult } from '@/lib/docker-ops';
+import { clampTail } from '@/lib/container-logs';
 import { dockerService } from '@/services/docker';
 import { dockerTerminalService } from '@/services/docker/docker-terminal.service';
 import { removeProjectResources } from '@/services/project/project-cleanup';
@@ -33,7 +34,16 @@ function assertContainerName(name: unknown): string {
   if (typeof name !== 'string' || !CONTAINER_NAME.test(name)) {
     throw new RejectedRequestError('Not a project container');
   }
+  // Stop, restart and cleanup are also refused inside DockerService; terminal and containerInfo are not.
+  assertNotPlatformResource(name);
   return name;
+}
+
+function assertSlug(slug: unknown): string {
+  if (typeof slug !== 'string' || !SLUG.test(slug)) {
+    throw new RejectedRequestError('Invalid project slug');
+  }
+  return slug;
 }
 
 async function run(request: DockerOpRequest): Promise<unknown> {
@@ -49,6 +59,8 @@ async function run(request: DockerOpRequest): Promise<unknown> {
     }
     case 'containerInfo':
       return dockerService.getContainerInfo(assertContainerName(request.containerName));
+    case 'containerStats':
+      return dockerService.getContainerStats(assertContainerName(request.containerName));
     case 'stopContainer':
       await dockerService.stopContainer(assertContainerName(request.containerName));
       return null;
@@ -56,11 +68,21 @@ async function run(request: DockerOpRequest): Promise<unknown> {
       await dockerService.restartContainer(assertContainerName(request.containerName));
       return null;
     case 'removeProjectResources':
-      if (typeof request.slug !== 'string' || !SLUG.test(request.slug)) {
-        throw new RejectedRequestError('Invalid project slug');
-      }
-      await removeProjectResources(request.slug, dockerService);
+      await removeProjectResources(assertSlug(request.slug), dockerService);
       return null;
+    // Read-only, and limited to resources carrying the project slug label.
+    case 'listTenantContainers':
+      return dockerService.listLabelledContainers();
+    case 'listDanglingImages':
+      return dockerService.listDanglingProjectImages();
+    case 'removeSupersededImages':
+      await dockerService.removeSupersededImages(assertSlug(request.slug));
+      return null;
+    // Read-only. Logs can hold tenant secrets: returned to the caller, never logged here.
+    case 'containerLogs':
+      return dockerService.getContainerLogs(assertContainerName(request.containerName), clampTail(request.tail));
+    case 'diskUsage':
+      return dockerService.getDiskUsage();
     default:
       throw new RejectedRequestError('Unknown operation');
   }
