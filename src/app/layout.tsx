@@ -4,7 +4,7 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from '@/components/ui/sonner';
 
 export const metadata: Metadata = {
-  title: 'DropDeploy',
+  title: 'Entrify',
   description: 'Deploy projects instantly with drag & drop or GitHub',
 };
 

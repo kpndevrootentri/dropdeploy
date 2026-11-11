@@ -45,7 +45,7 @@ export function WelcomeModal({
           >
             <Rocket className="h-6 w-6 text-primary" />
           </span>
-          <DialogTitle className="text-2xl">Welcome to DropDeploy{name ? `, ${name}` : ''}</DialogTitle>
+          <DialogTitle className="text-2xl">Welcome to Entrify{name ? `, ${name}` : ''}</DialogTitle>
           <DialogDescription>
             Put a site online in minutes. How do you want to deploy your first project?
           </DialogDescription>

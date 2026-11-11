@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, Check } from 'lucide-react';
 
-export const metadata: Metadata = { title: 'Project Creation — DropDeploy Docs' };
+export const metadata: Metadata = { title: 'Project Creation — Entrify Docs' };
 
 function Code({ children }: { children: React.ReactNode }): React.ReactElement {
   return (
@@ -34,7 +34,7 @@ export default function GettingStartedPage(): React.ReactElement {
         <h1 className="text-3xl font-bold tracking-tight mb-3">Project Creation</h1>
         <p className="text-muted-foreground leading-relaxed">
           Deploy your first project in under five minutes — no server knowledge required.
-          DropDeploy clones your repository, builds a Docker container, and gives you a live URL.
+          Entrify clones your repository, builds a Docker container, and gives you a live URL.
         </p>
       </div>
 
@@ -57,7 +57,7 @@ export default function GettingStartedPage(): React.ReactElement {
 
       {/* Steps */}
       <div className="space-y-0">
-        <Step n={1} title="Sign in to DropDeploy">
+        <Step n={1} title="Sign in to Entrify">
           <p>
             Go to the <Link href="/login" className="text-blue-500 hover:underline">login page</Link> and
             create a free account with your email, or log in if you already have one.
@@ -78,7 +78,7 @@ export default function GettingStartedPage(): React.ReactElement {
               <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono shrink-0 mt-0.5">A</span>
               <span>
                 <strong className="text-foreground">GitHub or GitLab picker</strong> — Click the GitHub or GitLab
-                button, authorise DropDeploy once, and pick any repo from the list (including private ones).
+                button, authorise Entrify once, and pick any repo from the list (including private ones).
               </span>
             </li>
             <li className="flex items-start gap-2">
@@ -90,13 +90,13 @@ export default function GettingStartedPage(): React.ReactElement {
             </li>
           </ul>
           <p className="mt-2 text-xs text-muted-foreground/70 italic">
-            Tip: after you pick a repo DropDeploy auto-detects the framework — the framework selector updates automatically.
+            Tip: after you pick a repo Entrify auto-detects the framework — the framework selector updates automatically.
           </p>
         </Step>
 
         <Step n={4} title="Confirm the framework">
           <p>
-            DropDeploy inspects your repository files and selects the most likely framework.
+            Entrify inspects your repository files and selects the most likely framework.
             Review the selection and change it if needed — each choice generates a different Dockerfile
             and exposes a different port.
           </p>
@@ -120,7 +120,7 @@ export default function GettingStartedPage(): React.ReactElement {
 
         <Step n={6} title="Click Deploy">
           <p>
-            Hit <strong className="text-foreground">Deploy</strong>. DropDeploy will:
+            Hit <strong className="text-foreground">Deploy</strong>. Entrify will:
           </p>
           <ol className="list-decimal list-inside space-y-1 mt-1">
             <li>Clone your repository at the selected branch</li>

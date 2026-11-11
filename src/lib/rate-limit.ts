@@ -13,7 +13,7 @@ const WEBHOOK_MAX_REQUESTS = 60; // 60 deliveries per minute per source
 
 // NOTE: this store is in-memory and per-process. It does NOT span multiple
 // instances or survive a restart. Fine for a single-instance deployment; if
-// DropDeploy is scaled horizontally, back this with Redis (getRedisConnection).
+// Entrify is scaled horizontally, back this with Redis (getRedisConnection).
 const store = new Map<string, RateLimitEntry>();
 
 // Periodically clean expired entries to prevent memory leaks.

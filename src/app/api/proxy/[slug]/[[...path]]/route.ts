@@ -322,7 +322,7 @@ async function handler(
 
   // Build forwarded headers — strip hop-by-hop, host and accept-encoding.
   // Cookies are forwarded so apps can keep their own sessions, minus the
-  // platform's auth-token: that is the visitor's DropDeploy session and must
+  // platform's auth-token: that is the visitor's Entrify session and must
   // never reach tenant code.
   const forwardHeaders = new Headers();
   for (const [key, value] of request.headers.entries()) {

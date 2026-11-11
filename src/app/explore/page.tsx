@@ -42,7 +42,7 @@ export default async function ExplorePage({ searchParams }: PageProps) {
       <header className="border-b bg-background/80 backdrop-blur-xs sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
           <Link href="/" className="text-sm font-semibold tracking-tight">
-            DropDeploy
+            Entrify
           </Link>
           <span className="text-sm text-muted-foreground hidden sm:block">Explore</span>
           {session ? (

@@ -189,7 +189,7 @@ function AddAccessForm({
             />
             <p className="text-xs text-muted-foreground">
               {mode === 'email'
-                ? 'The user must already have a DropDeploy account.'
+                ? 'The user must already have an Entrify account.'
                 : 'Anyone signed in with an email at this domain can view the private URL.'}
             </p>
           </div>

@@ -45,7 +45,7 @@ export function InviteForm({ token }: { token: string }): React.ReactElement {
     <main className="min-h-screen flex flex-col items-center justify-center p-8">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-center">{done ? 'Password set' : 'Welcome to DropDeploy'}</CardTitle>
+          <CardTitle className="text-center">{done ? 'Password set' : 'Welcome to Entrify'}</CardTitle>
           <CardDescription className="text-center">
             {done ? 'You can sign in now.' : 'Choose a password for your new account'}
           </CardDescription>

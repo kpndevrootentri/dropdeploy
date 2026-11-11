@@ -5,8 +5,8 @@ import { DocsSidebar } from '@/components/docs/docs-sidebar';
 import { getSessionFromCookies } from '@/lib/get-session';
 
 export const metadata: Metadata = {
-  title: 'Docs — DropDeploy',
-  description: 'Learn how to create, configure, and deploy projects on DropDeploy.',
+  title: 'Docs — Entrify',
+  description: 'Learn how to create, configure, and deploy projects on Entrify.',
 };
 
 export default async function DocsLayout({ children }: { children: React.ReactNode }): Promise<React.ReactElement> {
@@ -18,7 +18,7 @@ export default async function DocsLayout({ children }: { children: React.ReactNo
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
           <div className="flex items-center gap-6">
             <Link href="/" className="text-sm font-semibold tracking-tight hover:opacity-80 transition-opacity">
-              DropDeploy
+              Entrify
             </Link>
             <span className="text-sm text-muted-foreground hidden sm:block">Documentation</span>
           </div>

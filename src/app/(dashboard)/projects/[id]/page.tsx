@@ -1377,7 +1377,7 @@ function SettingsPanel({
             <CardTitle className="text-base">Auto-Deploy</CardTitle>
             <CardDescription>
               When enabled, every push to the <span className="font-medium">{project.branch}</span> branch
-              automatically triggers a new deployment. DropDeploy registers a webhook on your GitHub repository.
+              automatically triggers a new deployment. Entrify registers a webhook on your GitHub repository.
             </CardDescription>
           </CardHeader>
           <CardContent>

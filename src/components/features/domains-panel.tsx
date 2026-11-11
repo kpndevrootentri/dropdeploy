@@ -260,7 +260,7 @@ function DomainCard({
         onChanged();
       }
     } catch {
-      setError('Could not reach DropDeploy. Check your connection and try again.');
+      setError('Could not reach Entrify. Check your connection and try again.');
     } finally {
       setBusy(null);
     }
@@ -484,7 +484,7 @@ function AddDomainForm({
         onCreated();
       }
     } catch {
-      setError('Could not reach DropDeploy. Check your connection and try again.');
+      setError('Could not reach Entrify. Check your connection and try again.');
     } finally {
       setSaving(false);
     }
@@ -613,7 +613,7 @@ export function DomainsPanel({ projectId }: { projectId: string }): React.ReactE
       <CardHeader>
         <CardTitle className="text-base">Custom domains</CardTitle>
         <CardDescription>
-          Serve this project from a domain you own instead of its DropDeploy address. You add two DNS
+          Serve this project from a domain you own instead of its Entrify address. You add two DNS
           records; we handle the HTTPS certificate and keep it renewed.
         </CardDescription>
       </CardHeader>
@@ -634,7 +634,7 @@ export function DomainsPanel({ projectId }: { projectId: string }): React.ReactE
             <Globe className="mb-2 h-8 w-8 text-muted-foreground/40" />
             <p className="text-sm font-medium">No custom domain yet</p>
             <p className="mt-1 max-w-sm text-xs leading-relaxed text-muted-foreground">
-              Right now this project is reachable at its DropDeploy address. Add a domain you own and
+              Right now this project is reachable at its Entrify address. Add a domain you own and
               we&apos;ll walk you through the DNS.
             </p>
             <div className="mt-4">

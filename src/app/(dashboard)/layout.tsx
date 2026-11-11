@@ -32,7 +32,7 @@ export default function DashboardLayout({
         <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <div className="flex h-14 items-center justify-between px-4 sm:px-6">
             <h1 className="text-base font-semibold tracking-tight">
-              <Link href="/dashboard" className="hover:opacity-80 transition-opacity">DropDeploy</Link>
+              <Link href="/dashboard" className="hover:opacity-80 transition-opacity">Entrify</Link>
             </h1>
             <DashboardNav />
           </div>

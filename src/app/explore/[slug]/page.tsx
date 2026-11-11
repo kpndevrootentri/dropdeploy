@@ -34,7 +34,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
   return {
-    title: `${showcase.project.name} — DropDeploy`,
+    title: `${showcase.project.name} — Entrify`,
     description: showcase.shortDescription,
     openGraph: {
       title: showcase.project.name,
@@ -90,7 +90,7 @@ export default async function ExploreToolPage({ params }: PageProps) {
             Explore
           </Link>
           <Link href="/" className="text-sm font-semibold tracking-tight">
-            DropDeploy
+            Entrify
           </Link>
           {session ? (
             <Link href="/dashboard">
