@@ -61,6 +61,16 @@ SELECT hostname, status FROM custom_domains;  -- owners to notify in step 10
 
 ## 5. App env (`ShipEntri/.env`)
 
+Back up first, so the rollback below needs no rebuild:
+
+```bash
+cp -a .env .env.pre-migration
+cp -a .next .next.prev
+cp -a /home/ubuntu/caddy /home/ubuntu/caddy.pre-migration
+```
+
+Then set:
+
 ```bash
 APP_URL="https://entrify.site"
 NEXT_PUBLIC_APP_URL="https://entrify.site"
@@ -146,6 +156,22 @@ npx tsx scripts/repoint-github-webhooks.ts
 
 A `FAIL` line usually means the owner disconnected GitHub. That owner can
 turn auto-deploy off and on again once they reconnect.
+
+## Rollback
+
+The code runs on either domain, so rolling back needs no revert. Use the
+backups from step 5:
+
+```bash
+cp -a .env.pre-migration .env
+rm -rf .next && mv .next.prev .next
+pm2 restart dropdeploy-app dropdeploy-worker dropdeploy-domains --update-env
+cd /home/ubuntu && rm -rf caddy && mv caddy.pre-migration caddy
+cd caddy && docker compose -f docker-compose.caddy.yml up -d
+```
+
+Then set the GitHub OAuth callback back to the old URL. If step 9 already ran,
+re-run the script with the old `APP_URL` in place.
 
 ## 10. Afterwards
 
