@@ -20,7 +20,7 @@ export async function PATCH(
     if (!newPassword) {
       return NextResponse.json({ success: false, error: 'newPassword is required' }, { status: 400 });
     }
-    await adminService.resetUserPassword(userId, newPassword);
+    await adminService.resetUserPassword(userId, newPassword, session.userId);
     return NextResponse.json({ success: true });
   } catch (error) {
     return handleApiError(error);

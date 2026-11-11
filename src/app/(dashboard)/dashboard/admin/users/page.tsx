@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Eye, EyeOff, KeyRound, Gauge, ShieldCheck, ShieldOff, Trash2, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Gauge, ShieldCheck, ShieldOff, Trash2, Loader2, UserX, UserCheck, LogOut } from 'lucide-react';
 
 interface BulkResult {
   created: string[];
@@ -32,6 +32,7 @@ interface AdminUser {
   role: string;
   projectQuota: number;
   domainQuota: number;
+  suspendedAt: string | null;
   createdAt: string;
   _count: { projects: number; customDomains: number };
 }
@@ -170,6 +171,50 @@ export default function AdminUsersPage(): React.ReactElement {
       setActing(null);
     }
   };
+
+  /** Runs a one-click user action after confirmation, then reloads the table. */
+  const runUserAction = async (
+    key: string,
+    question: string,
+    url: string,
+    init: RequestInit,
+  ): Promise<void> => {
+    if (!confirm(question)) return;
+    setActing(key);
+    try {
+      const res = await fetch(url, init);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        alert(body?.error?.message ?? body?.error ?? 'Action failed');
+        return;
+      }
+      load();
+    } catch {
+      alert('Network error');
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const handleSuspend = (u: AdminUser): Promise<void> => {
+    const suspend = !u.suspendedAt;
+    return runUserAction(
+      `${u.id}:suspend`,
+      suspend
+        ? `Suspend "${u.email}"? They are signed out everywhere and cannot sign in. Their sites keep running.`
+        : `Reinstate "${u.email}"? They will be able to sign in again.`,
+      `/api/admin/users/${u.id}/suspend`,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ suspended: suspend }) },
+    );
+  };
+
+  const handleSignOut = (u: AdminUser): Promise<void> =>
+    runUserAction(
+      `${u.id}:signout`,
+      `Sign "${u.email}" out of every browser and the CLI?`,
+      `/api/admin/users/${u.id}/sign-out`,
+      { method: 'POST' },
+    );
 
   const openQuotaModal = (user: AdminUser): void => {
     setQuotaTarget(user);
@@ -319,6 +364,14 @@ export default function AdminUsersPage(): React.ReactElement {
                       }`}>
                         {u.role}
                       </span>
+                      {u.suspendedAt && (
+                        <span
+                          className="ml-1.5 inline-block px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                          title={`Suspended ${new Date(u.suspendedAt).toLocaleString()}`}
+                        >
+                          SUSPENDED
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 pr-4">
                       <span className={`tabular-nums ${(u._count?.projects ?? 0) >= u.projectQuota ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''}`}>
@@ -373,6 +426,30 @@ export default function AdminUsersPage(): React.ReactElement {
                         >
                           <Gauge className="w-4 h-4" />
                           <span className="text-[10px] leading-none font-medium">Quota</span>
+                        </button>
+
+                        {/* Sign out everywhere */}
+                        <button
+                          title="Sign out — Revoke every browser session and CLI token"
+                          disabled={!!isActing}
+                          onClick={() => void handleSignOut(u)}
+                          className="inline-flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-md border border-transparent text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {acting === `${u.id}:signout` ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+                          <span className="text-[10px] leading-none font-medium">Sign out</span>
+                        </button>
+
+                        {/* Suspend / Unsuspend */}
+                        <button
+                          title={u.suspendedAt ? 'Unsuspend — Let this user sign in again' : 'Suspend — Block sign-in and sign out everywhere; sites keep running'}
+                          disabled={!!isActing}
+                          onClick={() => void handleSuspend(u)}
+                          className="inline-flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-md border border-transparent text-muted-foreground hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:hover:bg-red-950 dark:hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {acting === `${u.id}:suspend`
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : u.suspendedAt ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
+                          <span className="text-[10px] leading-none font-medium">{u.suspendedAt ? 'Unsuspend' : 'Suspend'}</span>
                         </button>
 
                         <div className="w-px h-8 bg-border" />

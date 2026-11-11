@@ -23,7 +23,7 @@ export async function PATCH(
     const { projectId } = await params;
     const body = await req.json();
     const { newOwnerId } = transferSchema.parse(body);
-    const project = await adminService.transferOwnership(projectId, newOwnerId);
+    const project = await adminService.transferOwnership(projectId, newOwnerId, session.userId);
     return NextResponse.json({ success: true, data: toPublicProject(project) });
   } catch (error) {
     return handleApiError(error);

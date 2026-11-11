@@ -55,6 +55,18 @@ describe('AuthService.verifySession', () => {
     await expect(auth.verifySession(tokens.accessToken)).rejects.toThrow();
   });
 
+  it('refuses to sign in a suspended user, even with the right password', async () => {
+    stored = { ...stored!, suspendedAt: new Date() };
+    await expect(auth.login({ email: 'dev@entri.me', password: 'old-password' })).rejects.toThrow(/suspended/);
+  });
+
+  it('rejects a token issued before the user was suspended', async () => {
+    const { tokens } = await auth.login({ email: 'dev@entri.me', password: 'old-password' });
+    // Suspension bumps tokenVersion too; leaving it unchanged proves suspendedAt alone is enforced.
+    stored = { ...stored!, suspendedAt: new Date() };
+    await expect(auth.verifySession(tokens.accessToken)).rejects.toThrow(/revoked/);
+  });
+
   it('refuses a password change with the wrong current password', async () => {
     await expect(auth.changePassword('u1', 'wrong', 'new-password-123')).rejects.toThrow(/incorrect/);
   });

@@ -1,5 +1,12 @@
 jest.mock('@/lib/docker-ops', () => ({ dockerOps: {}, containerNameFor: jest.fn() }));
 jest.mock('@/services/deployment', () => ({ deploymentService: {} }));
+// deleteUser's last-CONTRIBUTOR transaction. These users are plain USERs, so it only locks and writes.
+jest.mock('@/lib/prisma', () => ({
+  prisma: {
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({ $executeRaw: async () => undefined, user: { findUnique: async () => ({ role: 'USER' }) } }),
+  },
+}));
 
 import { AdminService } from '@/services/admin/admin.service';
 import { AppError, ConflictError } from '@/lib/errors';
@@ -7,6 +14,7 @@ import type { IUserRepository } from '@/repositories/user.repository';
 import type { IProjectRepository } from '@/repositories/project.repository';
 import type { IDeploymentRepository } from '@/repositories/deployment.repository';
 import type { IDockerOps } from '@/lib/docker-ops';
+import type { IAdminActionRepository } from '@/repositories/admin-action.repository';
 
 function setup({
   removeProjectResources = jest.fn(async () => undefined) as jest.Mock,
@@ -14,7 +22,7 @@ function setup({
   queued = [] as string[],
 } = {}) {
   const userRepo = {
-    findById: jest.fn(async () => ({ id: 'u1', role: 'USER' })),
+    findById: jest.fn(async () => ({ id: 'u1', email: 'u1@entri.me', role: 'USER' })),
     delete: jest.fn(async () => undefined),
   };
   const projects = [{ id: 'p1', name: 'Site A', slug: 'site-a' }, { id: 'p2', name: 'Site B', slug: 'site-b' }];
@@ -33,6 +41,7 @@ function setup({
     projectRepo as unknown as IProjectRepository,
     docker as unknown as IDockerOps,
     deploymentRepo as unknown as IDeploymentRepository,
+    { create: jest.fn(async () => ({})) } as unknown as IAdminActionRepository,
   );
   return { service, userRepo, projectRepo, docker };
 }
@@ -42,7 +51,7 @@ describe('AdminService.deleteUser', () => {
     const { service, userRepo, docker } = setup();
     await service.deleteUser('u1', 'admin');
     expect(docker.removeProjectResources.mock.calls).toEqual([['site-a'], ['site-b']]);
-    expect(userRepo.delete).toHaveBeenCalledWith('u1');
+    expect(userRepo.delete).toHaveBeenCalledWith('u1', expect.anything());
   });
 
   it('keeps the user when a container cannot be removed, so nothing is orphaned', async () => {
@@ -78,7 +87,7 @@ describe('AdminService.deleteUser', () => {
 describe('AdminService.deleteProject', () => {
   it('removes the Docker resources, then the project', async () => {
     const { service, projectRepo, docker } = setup();
-    await service.deleteProject('p1');
+    await service.deleteProject('p1', 'admin');
     expect(docker.removeProjectResources).toHaveBeenCalledWith('site-a');
     expect(projectRepo.delete).toHaveBeenCalledWith('p1');
   });
@@ -88,7 +97,7 @@ describe('AdminService.deleteProject', () => {
     ['QUEUED', { queued: ['p1'] }],
   ])('refuses while the project has a %s deployment', async (_status, inFlight) => {
     const { service, projectRepo, docker } = setup(inFlight);
-    await expect(service.deleteProject('p1')).rejects.toBeInstanceOf(ConflictError);
+    await expect(service.deleteProject('p1', 'admin')).rejects.toBeInstanceOf(ConflictError);
     expect(docker.removeProjectResources).not.toHaveBeenCalled();
     expect(projectRepo.delete).not.toHaveBeenCalled();
   });

@@ -19,7 +19,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
     const session = await getSession(req);
     requireContributor(session);
     const { emails, password } = bulkCreateSchema.parse(await req.json());
-    const result = await adminService.bulkCreateUsers(emails, password);
+    const result = await adminService.bulkCreateUsers(emails, password, session.userId);
     return NextResponse.json({ success: true, data: result }, { status: 201 });
   } catch (error) {
     return handleApiError(error);

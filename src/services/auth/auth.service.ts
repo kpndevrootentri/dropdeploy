@@ -1,7 +1,7 @@
 import * as bcrypt from 'bcryptjs';
 import * as jose from 'jose';
 import { userRepository, type IUserRepository } from '@/repositories/user.repository';
-import { UnauthorizedError, ConflictError, ValidationError } from '@/lib/errors';
+import { UnauthorizedError, ConflictError, ValidationError, ForbiddenError } from '@/lib/errors';
 import { getConfig } from '@/lib/config';
 import type { RegisterDto, LoginDto } from '@/validators/auth.validator';
 import type { User } from '@prisma/client';
@@ -69,6 +69,10 @@ export class AuthService {
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) {
       throw new UnauthorizedError('Invalid email or password');
+    }
+    // Checked after the password so the suspension is only revealed to the account holder.
+    if (user.suspendedAt) {
+      throw new ForbiddenError('This account has been suspended. Contact an admin.');
     }
     const tokens = await this.issueTokens(user);
     return { userId: user.id, tokens };
@@ -152,7 +156,9 @@ export class AuthService {
   async verifySession(token: string): Promise<SessionUser> {
     const payload = await this.verifyToken(token);
     const user = await this.userRepo.findById(payload.sub);
-    if (!user || user.tokenVersion !== payload.tokenVersion) {
+    // Suspension also bumps tokenVersion; checking suspendedAt as well keeps a
+    // suspended account locked out even if a token is somehow issued later.
+    if (!user || user.tokenVersion !== payload.tokenVersion || user.suspendedAt) {
       throw new UnauthorizedError('Session has been revoked');
     }
     return {

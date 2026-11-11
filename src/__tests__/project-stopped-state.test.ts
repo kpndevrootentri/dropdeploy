@@ -29,6 +29,7 @@ import type { IUserRepository } from '@/repositories/user.repository';
 import type { IProjectRepository } from '@/repositories/project.repository';
 import type { IDockerOps } from '@/lib/docker-ops';
 import type { IDeploymentRepository } from '@/repositories/deployment.repository';
+import type { IAdminActionRepository } from '@/repositories/admin-action.repository';
 
 const LIVE_CONTAINER = { running: true, ports: [{ hostPort: 4001, containerPort: 3000 }] };
 
@@ -53,6 +54,7 @@ function setup(container: object | null = LIVE_CONTAINER, live: object | null = 
     projectRepo as unknown as IProjectRepository,
     docker as unknown as IDockerOps,
     deploymentRepo as unknown as IDeploymentRepository,
+    { create: jest.fn(async () => ({})) } as unknown as IAdminActionRepository,
   );
   return { service, projectRepo, docker, deploymentRepo, calls };
 }

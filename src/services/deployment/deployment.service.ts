@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { deploymentRepository, type IDeploymentRepository } from '@/repositories/deployment.repository';
+import { deploymentRepository, type IDeploymentRepository, type DeploymentSummary } from '@/repositories/deployment.repository';
 import { projectRepository, type IProjectRepository } from '@/repositories/project.repository';
 import { deploymentQueueAdapter, type IDeploymentQueue } from '@/lib/queue';
 import { dockerService, type DockerService } from '@/services/docker';
@@ -228,7 +228,7 @@ export class DeploymentService {
   /**
    * Lists deployments for a project.
    */
-  async listByProjectId(projectId: string, userId: string, limit = 10): Promise<Deployment[]> {
+  async listByProjectId(projectId: string, userId: string, limit = 10): Promise<DeploymentSummary[]> {
     const project = await this.projectRepo.findById(projectId);
     if (!project || project.userId !== userId) {
       throw new NotFoundError('Project');

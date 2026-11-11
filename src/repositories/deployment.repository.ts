@@ -2,11 +2,20 @@ import type { Deployment, Project, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 export type DeploymentWithProject = Deployment & { project: Project };
+/** A deployment without `buildLog`, an unbounded TEXT column that lists never show. */
+export type DeploymentSummary = Omit<Deployment, 'buildLog'>;
+
+const SUMMARY_SELECT = {
+  id: true, status: true, containerPort: true, subdomain: true, buildStep: true, commitHash: true,
+  servingMethod: true, imageTag: true, rollbackOfId: true, startedAt: true, completedAt: true,
+  projectId: true, createdAt: true, updatedAt: true,
+} satisfies Prisma.DeploymentSelect;
 
 export interface IDeploymentRepository {
   findById(id: string): Promise<Deployment | null>;
   findByIdWithProject(id: string): Promise<DeploymentWithProject | null>;
-  findByProjectId(projectId: string, limit?: number, skip?: number): Promise<Deployment[]>;
+  /** Newest first, without build logs; the logs routes serve one on demand. */
+  findByProjectId(projectId: string, limit?: number, skip?: number): Promise<DeploymentSummary[]>;
   countByProjectId(projectId: string): Promise<number>;
   create(data: { projectId: string; status?: string; rollbackOfId?: string; commitHash?: string | null }): Promise<Deployment>;
   update(id: string, data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'buildLog' | 'commitHash' | 'servingMethod' | 'startedAt' | 'completedAt' | 'imageTag'>>): Promise<Deployment>;
@@ -68,8 +77,9 @@ export class DeploymentRepository implements IDeploymentRepository {
     });
   }
 
-  async findByProjectId(projectId: string, limit = 10, skip = 0): Promise<Deployment[]> {
+  async findByProjectId(projectId: string, limit = 10, skip = 0): Promise<DeploymentSummary[]> {
     return prisma.deployment.findMany({
+      select: SUMMARY_SELECT,
       where: { projectId },
       orderBy: { createdAt: 'desc' },
       take: limit,
