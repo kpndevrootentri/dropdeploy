@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { connection } from 'next/server';
 import { DashboardNav } from '@/components/features/dashboard-nav';
 import { ImpersonationBanner } from '@/components/features/impersonation-banner';
+import { EntrifyLogo } from '@/components/ui/entrify-logo';
 import { platformSettingsService } from '@/services/platform-settings/platform-settings.service';
 
 async function MaintenanceBanner(): Promise<React.ReactElement | null> {
@@ -32,7 +33,9 @@ export default function DashboardLayout({
         <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <div className="flex h-14 items-center justify-between px-4 sm:px-6">
             <h1 className="text-base font-semibold tracking-tight">
-              <Link href="/dashboard" className="hover:opacity-80 transition-opacity">Entrify</Link>
+              <Link href="/dashboard" className="flex hover:opacity-80 transition-opacity">
+                <EntrifyLogo className="h-7 w-auto" />
+              </Link>
             </h1>
             <DashboardNav />
           </div>
