@@ -173,7 +173,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   if (
     pathname.startsWith('/_next/static') ||
     pathname.startsWith('/_next/image') ||
-    pathname === '/favicon.ico'
+    ['/favicon.ico', '/icon.svg', '/apple-icon.png', '/opengraph-image.png'].includes(pathname)
   ) {
     return NextResponse.next();
   }
