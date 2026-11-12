@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { EntrifyLogo } from '@/components/ui/entrify-logo';
 import {
   Rocket,
   Zap,
@@ -242,9 +243,8 @@ export function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-8">
-              <Link href="/" className="flex items-center gap-2" aria-label="Entrify home">
-                <Rocket className="h-5 w-5 text-blue-500" aria-hidden="true" />
-                <span className="font-bold text-lg tracking-tight">Entrify</span>
+              <Link href="/" className="flex items-center" aria-label="Entrify home">
+                <EntrifyLogo className="h-8 w-auto" aria-hidden="true" />
               </Link>
               <div className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
                 <a href="#features" className="hover:text-foreground transition-colors">Features</a>
@@ -947,10 +947,7 @@ export function LandingPage() {
       <footer className="border-t border-border py-10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Rocket className="h-4 w-4 text-blue-500" aria-hidden="true" />
-              <span className="font-semibold">Entrify</span>
-            </div>
+            <EntrifyLogo className="h-6 w-auto" />
             <p className="text-sm text-muted-foreground">Your project, live on the internet. No setup required.</p>
             <div className="flex items-center gap-5 text-sm text-muted-foreground">
               <Link href="/explore" className="hover:text-foreground transition-colors">Explore</Link>
