@@ -2,7 +2,7 @@
 
 > Instant web deployment platform — paste a GitHub or GitLab repository URL and get a live subdomain URL. Entrify clones, containerizes, and hosts your app automatically.
 
-Entrify is a self-hosted deployment platform that supports static sites, Node.js, Next.js, and Django applications. Each deployment runs in an isolated Docker container and is routed via Nginx to a unique `<slug>.domain.in` subdomain. Projects can be deployed from the web dashboard, the `entrify-deploy` npm package, or directly from Claude Code using the `/deploy` skill.
+Entrify is a self-hosted deployment platform that supports static sites, Node.js, Next.js, and Django applications. Each deployment runs in an isolated Docker container (static sites are served as files) at its own `<slug>.entrify.site` subdomain. Projects can be deployed from the web dashboard, the `entrify` CLI (npm package `entrify-deploy`), or from Claude Code with the `entrify` plugin.
 
 Two processes run side by side: the Next.js web app (API + UI) and a BullMQ worker that processes build jobs asynchronously.
 
@@ -16,8 +16,8 @@ Two processes run side by side: the Next.js web app (API + UI) and a BullMQ work
 - [Node.js](https://entrify.site/docs/frameworks/nodejs): `npm install --omit=dev` + `npm start`. Requires a `start` script in `package.json`.
 - [Django](https://entrify.site/docs/frameworks/django): `pip install -r requirements.txt` + `manage.py runserver 0.0.0.0:8000`.
 - [FastAPI / Flask](https://entrify.site/docs/frameworks/fastapi): Python ASGI/WSGI apps with pip-based installs.
-- [CLI Reference](https://entrify.site/docs/local-dev): Install `entrify-deploy` (`npm install -g entrify-deploy`) and use `dropdeploy deploy` from any git repo.
-- [Claude Code Integration](https://entrify.site/docs/claude-code): Use the `/deploy` Claude Code skill to deploy the current project without leaving your editor.
+- [CLI Reference](https://github.com/kpndevrootentri/entrify-cli#readme): Install `entrify-deploy` (`npm install -g entrify-deploy`) and run `entrify deploy` in any git repo. Add `--json` to any command for one machine-readable JSON object; exit codes are 0 ok, 1 failed, 2 needs input, 3 not logged in.
+- [Claude Code Integration](https://github.com/kpndevrootentri/entrify-cli#use-it-from-claude-code): Install the plugin with `/plugin install entrify --marketplace kpndevrootentri/entrify-cli`, then ask Claude to deploy. It deploys, reads the build log when a deploy fails, fixes the cause and redeploys.
 
 ## API
 
@@ -25,7 +25,7 @@ All authenticated routes require a valid JWT. Browser clients use an httpOnly se
 
 - `POST /api/auth/register` — Create an account `{ email, password }`. Sets httpOnly cookie on success.
 - `POST /api/auth/login` — Log in `{ email, password }`. Sets httpOnly cookie.
-- `POST /api/auth/token` — CLI login. Same as `/login` but returns JWT in the response body (no cookie). Used by `dropdeploy auth login`.
+- `POST /api/auth/token` — CLI login. Same as `/login` but returns JWT in the response body (no cookie). Used by `entrify auth login`.
 - `POST /api/auth/logout` — Clear the session cookie.
 - `GET /api/auth/session` — Validate current session; returns `{ userId, email }`.
 - `GET /api/auth/github/connect` — Start GitHub OAuth flow.
@@ -48,5 +48,5 @@ All authenticated routes require a valid JWT. Browser clients use an httpOnly se
 ## Optional
 
 - [Explore](https://entrify.site/explore): Public showcase of deployed projects with SEO metadata and JSON-LD structured data.
-- [entrify-deploy on npm](https://www.npmjs.com/package/entrify-deploy): CLI package — `dropdeploy deploy`, `dropdeploy projects`, `dropdeploy auth login`. Supports `DROPDEPLOY_TOKEN` env var for CI use.
-- [Claude Code /deploy skill](https://entrify.site/deploy.md): Raw markdown file consumed by the Claude Code `/deploy` skill — handles CLI install, auth check, deploy trigger, and result interpretation.
+- [entrify-deploy on npm](https://www.npmjs.com/package/entrify-deploy): CLI package: `entrify deploy [--create]`, `status`, `logs [--follow]`, `env list|set|push|unset`, `rollback`, `cancel`, `projects`, `auth login`. Supports the `ENTRIFY_TOKEN` and `ENTRIFY_URL` env vars for CI.
+- [Claude Code /deploy skill](https://entrify.site/deploy.md): The `/deploy` skill as one file, for saving to `~/.claude/commands/`. It installs the CLI, checks the login, deploys with `--json`, and fixes failed deploys (at most 3 attempts).

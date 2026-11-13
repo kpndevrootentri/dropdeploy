@@ -1,0 +1,10 @@
+{
+  "name": "entrify",
+  "description": "Deploy to Entrify from Claude Code: say \"deploy this\" and get a live URL, with logs, environment variables, fixes and rollback through the entrify CLI.",
+  "version": "1.3.0",
+  "author": { "name": "Entrify", "url": "https://entrify.site" },
+  "license": "MIT",
+  "homepage": "https://entrify.site",
+  "repository": "https://github.com/kpndevrootentri/entrify-cli",
+  "keywords": ["deploy", "hosting", "entrify"]
+}
