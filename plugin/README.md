@@ -1,11 +1,11 @@
-# @entrify/cli
+# entrifycli
 
 Official CLI for [Entrify](https://entrify.site): deploy any project from the terminal in seconds.
 
-Formerly `dropdeploy-cli`. To switch: `npm uninstall -g dropdeploy-cli && npm install -g @entrify/cli`. Your saved login carries over.
+Formerly `dropdeploy-cli`. To switch: `npm uninstall -g dropdeploy-cli && npm install -g entrifycli`. Your saved login carries over.
 
 ```bash
-npm install -g @entrify/cli
+npm install -g entrifycli
 ```
 
 This installs the `entrify` command. The older `dropdeploy` command is installed too and does the same thing, so existing scripts keep working.
@@ -144,7 +144,7 @@ Entrify auto-detects your framework from the repository contents:
 Always install globally so the `entrify` command is available system-wide:
 
 ```bash
-npm install -g @entrify/cli
+npm install -g entrifycli
 ```
 
 Verify the installation:

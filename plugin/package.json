@@ -1,5 +1,5 @@
 {
-  "name": "@entrify/cli",
+  "name": "entrifycli",
   "version": "1.2.0",
   "description": "Deploy to Entrify from the terminal or with the Claude Code /deploy skill",
   "repository": {

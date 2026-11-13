@@ -774,12 +774,12 @@ npm run worker         # Terminal 2: BullMQ deployment worker
 
 ---
 
-## 13. CLI (@entrify/cli)
+## 13. CLI (entrifycli)
 
-`@entrify/cli` is a standalone npm package in `plugin/` that exposes a `dropdeploy` binary.
+`entrifycli` is a standalone npm package in `plugin/` that exposes a `dropdeploy` binary.
 
 ```bash
-npm install -g @entrify/cli
+npm install -g entrifycli
 ```
 
 ### Authentication flow
@@ -869,4 +869,4 @@ The Claude Code `/deploy` skill is also served as a raw Markdown file at `public
 | Database | PostgreSQL |
 | Git | simple-git |
 | Validation | Zod, TypeScript strict mode |
-| CLI | Node.js ESM, @entrify/cli (npm) |
+| CLI | Node.js ESM, entrifycli (npm) |

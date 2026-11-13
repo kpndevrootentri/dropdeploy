@@ -35,7 +35,7 @@ graph LR
 - Interactive terminal for deployed containers
 - Local network access URLs
 - Secure execution environment
-- CLI tool (`@entrify/cli`) for terminal and CI/CD deployments
+- CLI tool (`entrifycli`) for terminal and CI/CD deployments
 - In-app documentation with per-framework guides
 
 ### Non-Goals (Out of Scope)
@@ -142,7 +142,7 @@ Detection runs server-side (via `POST /api/projects/detect-type`) and client-sid
 
 ### 5.4a CLI Access
 
-`@entrify/cli` is an npm package (`npm install -g @entrify/cli`) that exposes a `dropdeploy` binary.
+`entrifycli` is an npm package (`npm install -g entrifycli`) that exposes a `dropdeploy` binary.
 
 **Commands:**
 
