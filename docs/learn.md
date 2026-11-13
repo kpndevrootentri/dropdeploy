@@ -394,7 +394,7 @@ sequenceDiagram
 
 ## Block 16: CLI Plugin
 
-> The `dropdeploy-cli` npm package lives in `plugin/`. It is a self-contained Node.js ESM project — no Next.js dependency — that calls the same REST API the browser uses.
+> The `@entrify/cli` npm package lives in `plugin/`. It is a self-contained Node.js ESM project — no Next.js dependency — that calls the same REST API the browser uses.
 
 - [ ] **`plugin/src/auth.ts`** -- `login()` calls `POST /api/auth/token` (JWT in body, not cookie). Credentials written atomically to `~/.dropdeploy/credentials.json`. `readCredentials()` / `clearCredentials()` manage the file. `DROPDEPLOY_TOKEN` env var overrides the file for CI use.
   - **Learn:** CLI credential storage pattern, atomic writes, env var override
@@ -427,5 +427,5 @@ sequenceDiagram
 | `components/` | 6+ | UI building blocks |
 | `pages/` | 9+ | User-facing routes (+ explore, admin panel, analytics, docs) |
 | `app/` root | 2 | `sitemap.ts`, `robots.ts` for SEO |
-| `plugin/` | 4 | CLI (dropdeploy-cli npm package) |
+| `plugin/` | 4 | CLI (@entrify/cli npm package) |
 | **Total** | **~70+** | |
