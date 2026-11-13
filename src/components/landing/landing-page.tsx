@@ -338,7 +338,7 @@ export function LandingPage() {
             <button
               type="button"
               onClick={() => {
-                navigator.clipboard.writeText('npm install -g entrifycli').then(() => {
+                navigator.clipboard.writeText('npm install -g entrify-deploy').then(() => {
                   setInstallCopied(true);
                   setTimeout(() => setInstallCopied(false), 2000);
                 });
@@ -346,7 +346,7 @@ export function LandingPage() {
               className="inline-flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors cursor-pointer group"
               aria-label="Copy CLI install command"
             >
-              npm install -g entrifycli
+              npm install -g entrify-deploy
               {installCopied
                 ? <Check className="h-3 w-3 text-green-500 shrink-0" aria-hidden="true" />
                 : <Copy className="h-3 w-3 text-muted-foreground/40 group-hover:text-muted-foreground shrink-0 transition-colors" aria-hidden="true" />
@@ -660,7 +660,7 @@ export function LandingPage() {
                   <p className="text-zinc-500"># install once</p>
                   <p>
                     <span className="text-blue-400">$</span>
-                    <span className="text-zinc-200"> npm install -g entrifycli</span>
+                    <span className="text-zinc-200"> npm install -g entrify-deploy</span>
                   </p>
                   <p className="text-zinc-500 pt-2"># log in</p>
                   <p>
@@ -700,7 +700,7 @@ export function LandingPage() {
                   Deploy without leaving your terminal.
                 </h2>
                 <p className="text-lg text-muted-foreground leading-relaxed">
-                  Install <code className="rounded bg-muted px-1.5 py-0.5 text-sm font-mono">entrifycli</code> once and deploy any project with a single command — no browser required.
+                  Install <code className="rounded bg-muted px-1.5 py-0.5 text-sm font-mono">entrify-deploy</code> once and deploy any project with a single command — no browser required.
                 </p>
               </div>
 
@@ -743,7 +743,7 @@ export function LandingPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText('npm install -g entrifycli').then(() => {
+                    navigator.clipboard.writeText('npm install -g entrify-deploy').then(() => {
                       setInstallCopied(true);
                       setTimeout(() => setInstallCopied(false), 2000);
                     });
@@ -751,14 +751,14 @@ export function LandingPage() {
                   className="flex-1 flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-4 py-2.5 font-mono text-sm text-foreground hover:bg-muted/70 transition-colors cursor-pointer group text-left"
                   aria-label="Copy install command"
                 >
-                  <span className="flex-1">npm install -g entrifycli</span>
+                  <span className="flex-1">npm install -g entrify-deploy</span>
                   {installCopied
                     ? <Check className="h-3.5 w-3.5 text-green-500 shrink-0" aria-hidden="true" />
                     : <Copy className="h-3.5 w-3.5 text-muted-foreground/50 group-hover:text-muted-foreground shrink-0 transition-colors" aria-hidden="true" />
                   }
                 </button>
                 <Button variant="outline" size="sm" className="shrink-0" asChild>
-                  <a href="https://www.npmjs.com/package/entrifycli" target="_blank" rel="noopener noreferrer">
+                  <a href="https://www.npmjs.com/package/entrify-deploy" target="_blank" rel="noopener noreferrer">
                     <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
                     npm
                   </a>

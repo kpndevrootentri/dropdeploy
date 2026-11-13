@@ -227,13 +227,13 @@ dropDeploy/
 ├── docker/
 │   ├── templates/                     # Dockerfile templates per project type
 │   └── nginx/                         # Reverse-proxy config
-├── plugin/                            # entrifycli npm package
+├── plugin/                            # entrify-deploy npm package
 │   ├── src/
 │   │   ├── cli.ts                     # Entry point — commands: deploy, projects, auth, help
 │   │   ├── api.ts                     # API client — listProjects, triggerDeploy, streamLogs, detectType
 │   │   ├── auth.ts                    # Credential storage (JSON file) + login via /api/auth/token
 │   │   └── detector.ts                # Local git info (remote URL, branch, dirty check) + framework hint
-│   ├── package.json                   # Published as entrifycli on npm (binary: dropdeploy)
+│   ├── package.json                   # Published as entrify-deploy on npm (binary: dropdeploy)
 │   └── README.md
 ├── public/
 │   └── deploy.md                      # Markdown rendered by the Claude Code /deploy command download page
@@ -378,7 +378,7 @@ sequenceDiagram
 | 5.2 Git Providers | `GitProviderService`, `GitProviderRepository`, `/api/auth/github/*`, `/api/auth/gitlab/*`, `/api/git-providers/*` |
 | 5.3 Type Detection | `ProjectType` enum, `DOCKERFILE_TEMPLATES` in `services/docker/`, `detector.ts` in CLI |
 | 5.4 Build & Deploy | `DeploymentService`, `DockerService`, `GitService`, `deployment.worker.ts` |
-| 5.4a CLI Access | `plugin/` package (`entrifycli`), `/api/auth/token`, `DropDeployApi`, credential file |
+| 5.4a CLI Access | `plugin/` package (`entrify-deploy`), `/api/auth/token`, `DropDeployApi`, credential file |
 | 5.5 Status | `DeploymentStatus` enum, `buildStep` tracking (CLONING / BUILDING_IMAGE / STARTING) |
 | 5.6 URLs | Subdomain routing via Nginx, `BASE_DOMAIN` in config |
 | 5.7 Branches | `project.branch` field, `GitService.ensureRepo()` with branch switching |

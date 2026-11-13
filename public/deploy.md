@@ -15,7 +15,7 @@ which dropdeploy 2>/dev/null || echo "NOT_FOUND"
 If NOT_FOUND, ask the user:
 > "dropdeploy CLI is not installed. Would you like me to install it now? (yes/no)"
 
-**If the user says no** — stop and tell them they can install it manually with `npm install -g entrifycli`.
+**If the user says no** — stop and tell them they can install it manually with `npm install -g entrify-deploy`.
 
 **If the user says yes** — proceed with the following sub-steps:
 
@@ -27,7 +27,7 @@ which npm 2>/dev/null || echo "NPM_NOT_FOUND"
 
 **If npm is found** — install the CLI globally:
 ```
-npm install -g entrifycli
+npm install -g entrify-deploy
 ```
 Wait for it to complete, then verify with `which dropdeploy`. If still not found, tell the user the install failed and stop.
 
@@ -64,7 +64,7 @@ Then install Node.js LTS using the appropriate method for the platform:
 
 After Node/npm installation, verify npm is available, then install the CLI:
 ```
-npm install -g entrifycli
+npm install -g entrify-deploy
 ```
 Verify with `which dropdeploy` before proceeding. If it fails, stop and report the error.
 
