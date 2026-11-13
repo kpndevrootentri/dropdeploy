@@ -175,7 +175,7 @@ re-run the script with the old `APP_URL` in place.
 
 ## 10. Afterwards
 
-- **CLI.** Publish `dropdeploy-cli` 1.0.4: `cd plugin && npm publish`. It
+- **CLI.** Publish `entrify-deploy` (formerly `dropdeploy-cli`): `cd plugin && npm publish --access public`. It
   defaults to `entrify.site` and rewrites saved `app.en3.wtf` logins. Tokens
   stay valid because `JWT_SECRET` is unchanged. Older CLIs keep working through
   the proxied `/api/*` until retirement.
