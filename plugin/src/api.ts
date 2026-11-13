@@ -1,11 +1,13 @@
 import type { Credentials } from './auth.js';
-import { apiErrorMessage, cliName } from './util.js';
+import { CliError, EXIT, apiErrorMessage, cliName } from './util.js';
 
 export interface Project {
   id: string;
   name: string;
   slug: string;
   type: string;
+  /** GITHUB, GITLAB or UPLOAD. */
+  source?: string;
   githubUrl: string | null;
   /** The branch the server builds, whatever is checked out locally. */
   branch?: string;
@@ -28,6 +30,20 @@ export interface DeployStatus {
   buildLog: string | null;
   commitHash: string | null;
   subdomain: string | null;
+}
+
+export interface Deployment {
+  id: string;
+  status: string;
+  subdomain: string | null;
+  commitHash?: string | null;
+  createdAt: string;
+}
+
+export interface EnvVar {
+  id: string;
+  key: string;
+  environment: string;
 }
 
 export interface DetectResult {
@@ -75,11 +91,15 @@ export class EntrifyApi {
       });
       if (res.status === 401) {
         // CLI logins are JWTs that expire (7 days by default).
-        throw new Error(`Your login has expired or is no longer valid. Run: ${cliName()} auth login`);
+        throw new CliError(
+          `Your login has expired or is no longer valid. Run: ${cliName()} auth login`,
+          'AUTH_EXPIRED',
+          EXIT.AUTH,
+        );
       }
       if (!res.ok) {
         const body: unknown = await res.json().catch(() => null);
-        throw new Error(apiErrorMessage(body, `API ${res.status} on ${method} ${path}`));
+        throw new CliError(apiErrorMessage(body, `API ${res.status} on ${method} ${path}`), `HTTP_${res.status}`);
       }
       const payload = (await res.json()) as { data: T };
       return payload.data;
@@ -98,6 +118,42 @@ export class EntrifyApi {
 
   async triggerDeploy(projectId: string): Promise<DeployResult> {
     return this.json<DeployResult>('POST', `/api/projects/${projectId}/deploy`);
+  }
+
+  async createProject(dto: { name: string; source: 'GITHUB' | 'GITLAB'; githubUrl: string; type?: string; branch?: string }): Promise<Project> {
+    return this.json<Project>('POST', '/api/projects', dto);
+  }
+
+  /** Newest first. */
+  async listDeployments(projectId: string, limit = 20): Promise<Deployment[]> {
+    const data = await this.json<{ deployments: Deployment[] }>('GET', `/api/projects/${projectId}/deployments?limit=${limit}`);
+    return data.deployments;
+  }
+
+  /** Re-runs an earlier deployment; resolves to the new deployment's id. */
+  async rollback(projectId: string, deploymentId: string): Promise<{ deploymentId: string; queued: boolean }> {
+    return this.json('POST', `/api/projects/${projectId}/deployments/${deploymentId}/rollback`);
+  }
+
+  async cancelDeployment(projectId: string, deploymentId: string): Promise<void> {
+    await this.json('POST', `/api/projects/${projectId}/deployments/${deploymentId}/cancel`);
+  }
+
+  /** Keys only: the API never returns values. */
+  async listEnv(projectId: string): Promise<EnvVar[]> {
+    return this.json<EnvVar[]>('GET', `/api/projects/${projectId}/env-vars`);
+  }
+
+  async createEnv(projectId: string, key: string, value: string): Promise<void> {
+    await this.json('POST', `/api/projects/${projectId}/env-vars`, { key, value });
+  }
+
+  async updateEnv(projectId: string, varId: string, value: string): Promise<void> {
+    await this.json('PUT', `/api/projects/${projectId}/env-vars/${varId}`, { value });
+  }
+
+  async deleteEnv(projectId: string, varId: string): Promise<void> {
+    await this.json('DELETE', `/api/projects/${projectId}/env-vars/${varId}`);
   }
 
   async getDeploymentStatus(

@@ -1,0 +1,11 @@
+{
+  "name": "entrify",
+  "owner": { "name": "Entrify" },
+  "plugins": [
+    {
+      "name": "entrify",
+      "source": "./plugins/entrify",
+      "description": "Deploy to Entrify from Claude Code: say \"deploy this\" and get a live URL, with logs, environment variables, fixes and rollback through the entrify CLI."
+    }
+  ]
+}

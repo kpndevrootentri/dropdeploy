@@ -1,123 +1,61 @@
+---
+name: deploy
+description: Deploy the current project to Entrify and get a live URL. Use when the user wants to deploy, ship, publish, host or put their app online, share a live link, or check, fix, see logs of or roll back an Entrify deployment.
+argument-hint: "[--project-id <id|slug>]"
+allowed-tools: Bash(entrify *) Bash(git status *)
+---
+
 # Deploy to Entrify
 
-Deploy the current project to Entrify using the git-based deployment pipeline.
+Deploy the current project with the `entrify` CLI (npm package `entrify-deploy`) and report the live URL. Entrify builds from the git remote, so only pushed commits are deployed.
 
-## Arguments
-- `--project-id <id|slug>` — skip project selection and deploy to a specific project
+Always pass `--json`. Each command then prints one JSON object: `{"ok": true, ...}` or `{"ok": false, "error": {"code": "...", "message": "..."}, ...}`. Exit codes: 0 ok, 1 failed, 2 needs input, 3 not logged in. Branch on `error.code`, not on the wording.
 
-## Steps
+Arguments: $ARGUMENTS. If they include `--project-id <id|slug>`, pass it to every `entrify` command below.
 
-### 1. Check CLI is installed
-Run:
-```
-which dropdeploy 2>/dev/null || echo "NOT_FOUND"
-```
-If NOT_FOUND, ask the user:
-> "dropdeploy CLI is not installed. Would you like me to install it now? (yes/no)"
+## 1. Check the CLI
 
-**If the user says no** — stop and tell them they can install it manually with `npm install -g entrify-deploy`.
+Run `entrify --version`.
 
-**If the user says yes** — proceed with the following sub-steps:
+- If the command is missing or the version is below 1.3.0, ask: "The Entrify CLI isn't installed or is out of date. Install it with `npm install -g entrify-deploy`?" On yes, run it, then check the version again.
+- If `npm` is missing, tell the user to install Node.js LTS (https://nodejs.org, or `brew install node` on macOS), then stop.
 
-#### 1a. Check if npm is available
-Run:
-```
-which npm 2>/dev/null || echo "NPM_NOT_FOUND"
-```
+## 2. Check the login
 
-**If npm is found** — install the CLI globally:
-```
-npm install -g entrify-deploy
-```
-Wait for it to complete, then verify with `which dropdeploy`. If still not found, tell the user the install failed and stop.
+Run `entrify auth status --json`. If it exits with 3:
 
-**If npm is NOT found** — tell the user:
-> "npm is not installed. I'll install Node.js (LTS) and npm first."
+- Never ask for the password in the chat.
+- Tell the user to run `! entrify auth login`. The `!` runs it in this session and hides the password as they type.
+- Wait for them to confirm, then continue.
 
-Then install Node.js LTS using the appropriate method for the platform:
+## 3. Check the code is pushed
 
-- **macOS** — check if Homebrew is available (`which brew`). If yes:
-  ```
-  brew install node@lts || brew install node
-  ```
-  Then reload the PATH so `npm` is available in this session:
-  ```
-  export PATH="$(brew --prefix)/bin:$PATH"
-  ```
-  If Homebrew is NOT available, install it first:
-  ```
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  ```
-  Then install Node: `brew install node`
+Run `git status --porcelain --branch`. If there are uncommitted changes, or the branch is ahead of its remote, explain that Entrify deploys what is pushed and ask whether to commit and push first. Don't push without the user's OK.
 
-- **Linux (Debian/Ubuntu)** — use NodeSource:
-  ```
-  curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs
-  ```
+## 4. Deploy
 
-- **Linux (RHEL/Fedora/CentOS)** — use NodeSource:
-  ```
-  curl -fsSL https://rpm.nodesource.com/setup_lts.x | sudo bash - && sudo yum install -y nodejs
-  ```
+Run `entrify deploy --json`. A build can take several minutes, so use a 10-minute timeout.
 
-- **Windows** — tell the user to download the LTS installer from https://nodejs.org and rerun the skill after installation.
+- **`ok: true`**: tell the user the site is live at `url`. Check it answers with `curl -s -o /dev/null -w "%{http_code}" <url>`, and say so if it isn't 200. Relay any `warnings`.
+- **`NO_PROJECTS` or `NO_PROJECT_MATCH`**: there's no Entrify project for this repository. Ask whether to create one; on yes run `entrify deploy --create --json`. If they'd rather use an existing project, list them with `entrify projects --json` and pass `--project-id`.
+- **`UPLOAD_PROJECT`**: the project was made by uploading files, so there's no repository to build. Tell the user to upload a new version from the dashboard.
+- **`INVALID_PROJECT`**: relay `errors` (for example, no git remote) and help fix them.
+- **`DEPLOY_FAILED`**: go to step 5.
 
-After Node/npm installation, verify npm is available, then install the CLI:
-```
-npm install -g entrify-deploy
-```
-Verify with `which dropdeploy` before proceeding. If it fails, stop and report the error.
+## 5. Fix a failed deploy (at most 3 attempts)
 
-### 2. Check authentication
-Run:
-```
-dropdeploy auth status
-```
-If the output contains "Not logged in":
-- **Never ask for the password in the chat.**
-- Tell the user to run the login command themselves using the `!` prefix so the password is entered directly in the terminal (hidden input, never visible in the conversation):
-  ```
-  ! dropdeploy auth login
-  ```
-  The CLI will interactively prompt for URL, email, and password with the password hidden.
-- Wait **one turn** for the user to confirm they have logged in. If they don't confirm, remind them once and stop.
+Read `cause`, `fix` and `logTail`. For more of the log, run `entrify logs --json --lines 400`.
 
-### 3. Run the deployment
+- **The code or its config is wrong** (missing dependency, build error, app listening on 127.0.0.1 instead of 0.0.0.0 and `$PORT`): fix it in the repo, show the user the change, commit and push with their OK, then deploy again.
+- **The app needs settings** (for example "Set SESSION_SECRET"): run `entrify env list --json` to see which names are set. Ask the user for the missing values, or offer `entrify env push <file>` for a `.env` file they choose. Never print secret values or put them in commits. Then deploy again.
+- **The server failed** (for example "out of disk space"): stop and tell the user it isn't their code.
 
-Build the command:
-- Base command: `dropdeploy deploy`
-- If `--project-id <value>` was passed in ARGUMENTS, append `--project-id <value>`
+After 3 failed attempts, stop and summarise what you tried and the last error.
 
-Run it — the CLI auto-detects the project from the current directory's git remote:
-```
-dropdeploy deploy
-```
+## Other requests
 
-The CLI handles:
-- Repository validation
-- Framework detection
-- Project matching via git remote URL
-- Live progress bar (step-by-step)
-- Build log streaming
-
-If the output contains "unpushed commits", pause and warn the user:
-> "You have unpushed commits. Entrify deploys from the remote — run `git push` first, then redeploy."
-Then ask if they want to push and retry.
-
-### 4. Interpret the result
-
-Use the **exit code** as the source of truth, not string matching:
-
-**Exit code 0 → success.**
-Tell the user the deployment succeeded and relay the Live URL printed in the CLI output. Example:
-> "Deployed! Live at: https://my-app.entrify.site"
-
-**Exit code 1 → failure.**
-Check what the output contains:
-- If it contains "Deployment failed": relay the "Probable cause" and "Suggested fix" lines. Ask if they want to fix it and try again.
-- If no build was triggered (validation error): relay the specific error and tell the user what to do.
-
-## Notes
-- Entrify deploys from the git remote, not local files. Ensure changes are pushed before deploying.
-- If no project matches the git remote automatically, the CLI will prompt the user to pick one interactively.
-- Use `dropdeploy projects` to list available projects and their current status.
+- **Is it live?** `entrify status --json`
+- **Logs:** `entrify logs --json`; add `--follow` while a build is running.
+- **Roll back:** confirm with the user first, because it replaces what's live, then run `entrify rollback --json`.
+- **Stop a stuck build:** `entrify cancel --json`
+- **Environment variables:** `entrify env list|set KEY=VALUE|push [file]|unset KEY --json`. Changes apply on the next deploy.

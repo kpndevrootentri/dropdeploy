@@ -12,6 +12,20 @@ This installs the `entrify` command. The older `dropdeploy` command is installed
 
 ---
 
+## Use it from Claude Code
+
+Install the plugin, then ask Claude to "deploy this":
+
+```
+/plugin install entrify --marketplace kpndevrootentri/entrify-cli
+```
+
+On Claude Code older than 2.1.275, run `/plugin marketplace add kpndevrootentri/entrify-cli`, then `/plugin install entrify@entrify`.
+
+Claude installs the CLI if needed, deploys, and reads the build log when a deploy fails. It then fixes the cause (code, settings or environment variables) and deploys again. It asks before pushing code or rolling back, and never asks for your password in the chat.
+
+---
+
 ## Quick start
 
 ```bash
@@ -51,10 +65,11 @@ Trigger a deployment for the current repository.
 entrify deploy                          # auto-match project by git remote
 entrify deploy --project-id my-app      # deploy to a specific project
 entrify deploy --project-id=my-app      # same
+entrify deploy --create                 # create a project from this repo if none matches
 entrify deploy --dir /path/to/repo      # use a different directory
 ```
 
-Entrify deploys from your **git remote**, not local files. Push your changes before deploying.
+Entrify deploys from your **git remote**, not local files. Push your changes before deploying. With `--create`, a repository that has no project yet gets one, named after the repository, with its framework detected.
 
 The project is matched by your `origin` remote, whether it's an HTTPS or SSH URL. If several projects use the same repo, the one on your current branch wins. The server always builds the **project's** branch; the CLI warns you when that isn't the branch you have checked out.
 
@@ -95,6 +110,39 @@ Your projects:
 
 ---
 
+The commands below act on the project matched from the current repository. Pass `--project-id <id|slug>` to choose another.
+
+### `entrify status`
+The latest deployment and the live URL. The live version can be older than the latest deployment when the latest one failed.
+
+### `entrify logs`
+The build log of the latest deployment.
+
+```bash
+entrify logs                     # last 200 lines
+entrify logs --lines all
+entrify logs --follow            # stream a build that is still running
+entrify logs --deployment <id>   # a specific deployment
+```
+
+### `entrify env`
+Environment variables. Entrify stores the values encrypted, and the CLI never prints them back. Changes apply on the next deploy.
+
+```bash
+entrify env list                         # names only
+entrify env set API_URL=https://x.io DEBUG=0
+entrify env push .env.production         # every variable in a .env file (default: .env)
+entrify env unset DEBUG
+```
+
+### `entrify rollback`
+Go back to the previous successful deployment, or to `--to <deployment-id>`.
+
+### `entrify cancel`
+Cancel the deployment that is queued or building.
+
+---
+
 ### `entrify help`
 Print the full command reference.
 
@@ -114,7 +162,16 @@ export ENTRIFY_URL=https://entrify.site
 entrify deploy --project-id my-app
 ```
 
-`DROPDEPLOY_TOKEN`, `DROPDEPLOY_URL` and `DROPDEPLOY_EMAIL` still work. Without a terminal, the CLI never prompts. If it can't match the repository to a project, it exits with an error asking for `--project-id`.
+`DROPDEPLOY_TOKEN`, `DROPDEPLOY_URL` and `DROPDEPLOY_EMAIL` still work. Without a terminal, the CLI never prompts. If it can't match the repository to a project, it exits with an error asking for `--project-id` or `--create`.
+
+Add `--json` to any command for a single JSON object on stdout: `{ "ok": true, ... }`, or `{ "ok": false, "error": { "code": "...", "message": "..." }, ... }`. A failed deploy also includes `cause`, `fix` and the last 40 lines of the log (`logTail`). Exit codes:
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | The operation failed (for example, the build failed) |
+| 2 | Needs input: a flag, a project, a file |
+| 3 | Not logged in, or the login expired |
 
 ---
 

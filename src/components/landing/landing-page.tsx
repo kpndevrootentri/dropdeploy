@@ -35,6 +35,7 @@ import {
 // Inlined at build time, so the copy follows whichever domain this build serves.
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://entrify.site';
 const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'entrify.site';
+const CLAUDE_PLUGIN_INSTALL = '/plugin install entrify --marketplace kpndevrootentri/entrify-cli';
 
 function useInView(threshold = 0.12) {
   const ref = useRef<HTMLDivElement>(null);
@@ -783,10 +784,10 @@ export function LandingPage() {
                   Claude Code
                 </div>
                 <h2 id="claude-code-heading" className="text-4xl sm:text-5xl font-bold mb-4">
-                  Deploy with <code className="text-violet-400">/deploy</code> in Claude Code.
+                  Say <span className="text-violet-400">“deploy this”</span> in Claude Code.
                 </h2>
                 <p className="text-lg text-muted-foreground leading-relaxed">
-                  Add the <code className="rounded bg-muted px-1.5 py-0.5 text-sm font-mono">/deploy</code> slash command to Claude Code. One download, then trigger deployments directly from your AI editor — no browser needed.
+                  Install the Entrify plugin once. Claude deploys your project, and when a build fails it reads the log, fixes the cause and deploys again. No browser needed.
                 </p>
               </div>
 
@@ -795,18 +796,18 @@ export function LandingPage() {
                 {[
                   {
                     n: '1',
-                    title: 'Download the command file',
-                    desc: 'Save deploy.md to your Claude commands directory.',
+                    title: 'Install the plugin',
+                    desc: `Run ${CLAUDE_PLUGIN_INSTALL} in Claude Code.`,
                   },
                   {
                     n: '2',
-                    title: 'Place it in ~/.claude/commands/',
-                    desc: 'Claude Code picks up any .md file in that folder as a slash command automatically.',
+                    title: 'Ask Claude to deploy',
+                    desc: 'Say “deploy this” or type /entrify:deploy. Claude installs the CLI if needed and checks your login.',
                   },
                   {
                     n: '3',
-                    title: 'Type /deploy in Claude Code',
-                    desc: 'The skill checks your CLI, auth, and runs dropdeploy deploy — streaming build output right in the chat.',
+                    title: 'Failed builds get fixed',
+                    desc: 'Claude reads the build log, fixes the code or settings and deploys again. It asks before pushing code.',
                   },
                 ].map((step) => (
                   <li key={step.n} className="flex gap-4">
@@ -832,17 +833,15 @@ export function LandingPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText(
-                      `mkdir -p ~/.claude/commands && curl -o ~/.claude/commands/deploy.md ${APP_URL}/deploy.md`
-                    ).then(() => {
+                    navigator.clipboard.writeText(CLAUDE_PLUGIN_INSTALL).then(() => {
                       setClaudeCmdCopied(true);
                       setTimeout(() => setClaudeCmdCopied(false), 2000);
                     });
                   }}
                   className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 font-mono text-xs text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors cursor-pointer group text-left"
-                  aria-label="Copy one-line install command"
+                  aria-label="Copy the plugin install command"
                 >
-                  <span className="flex-1 truncate">curl -o ~/.claude/commands/deploy.md …</span>
+                  <span className="flex-1 truncate">/plugin install entrify …</span>
                   {claudeCmdCopied
                     ? <Check className="h-3.5 w-3.5 text-green-500 shrink-0" aria-hidden="true" />
                     : <Copy className="h-3.5 w-3.5 text-muted-foreground/50 group-hover:text-muted-foreground shrink-0 transition-colors" aria-hidden="true" />
@@ -866,7 +865,7 @@ export function LandingPage() {
                   {/* Chat bubble — user */}
                   <div className="flex justify-end">
                     <div className="rounded-2xl rounded-tr-sm bg-violet-600/20 border border-violet-500/20 px-4 py-2 text-sm text-zinc-200 max-w-[80%]">
-                      /deploy
+                      deploy this
                     </div>
                   </div>
                   {/* Chat bubble — assistant */}
@@ -875,7 +874,7 @@ export function LandingPage() {
                       <Bot className="h-3.5 w-3.5 text-violet-400" aria-hidden="true" />
                     </div>
                     <div className="rounded-2xl rounded-tl-sm bg-zinc-900 border border-zinc-800 px-4 py-3 text-xs text-zinc-300 space-y-1.5 flex-1">
-                      <p className="text-zinc-400">Checking dropdeploy CLI… <span className="text-green-400">✓ found</span></p>
+                      <p className="text-zinc-400">Checking entrify CLI… <span className="text-green-400">✓ found</span></p>
                       <p className="text-zinc-400">Auth status… <span className="text-green-400">✓ logged in</span></p>
                       <p className="text-zinc-400">Running deployment…</p>
                       <div className="pl-2 space-y-0.5 border-l border-zinc-700 mt-2">
@@ -892,12 +891,12 @@ export function LandingPage() {
 
               {/* Install hint below mockup */}
               <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4 text-xs font-mono text-muted-foreground space-y-1">
-                <p className="text-muted-foreground/60"># one-time setup</p>
-                <p>mkdir -p ~/.claude/commands</p>
-                <p>curl -o ~/.claude/commands/deploy.md \</p>
-                <p className="pl-4">{APP_URL}/deploy.md</p>
-                <p className="text-muted-foreground/60 pt-1"># then in Claude Code:</p>
-                <p className="text-violet-400">/deploy</p>
+                <p className="text-muted-foreground/60"># one-time setup, in Claude Code</p>
+                <p className="break-all">{CLAUDE_PLUGIN_INSTALL}</p>
+                <p className="text-muted-foreground/60 pt-1"># then just ask</p>
+                <p className="text-violet-400">deploy this</p>
+                <p className="text-muted-foreground/60 pt-1"># no plugins? save the skill as a command:</p>
+                <p className="break-all">curl -o ~/.claude/commands/deploy.md {APP_URL}/deploy.md</p>
               </div>
             </AnimatedSection>
 

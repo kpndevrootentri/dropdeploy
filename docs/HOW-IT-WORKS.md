@@ -776,11 +776,15 @@ npm run worker         # Terminal 2: BullMQ deployment worker
 
 ## 13. CLI (entrify-deploy)
 
-`entrify-deploy` is a standalone npm package in `plugin/` that exposes a `dropdeploy` binary.
+`entrify-deploy` is a standalone npm package in `plugin/` that exposes an `entrify` binary (and the older `dropdeploy` name).
 
 ```bash
 npm install -g entrify-deploy
 ```
+
+Commands: `deploy [--create]`, `status`, `logs [--follow]`, `env list|set|push|unset`, `rollback`, `cancel`, `projects`, `auth login|status|logout`. With `--json` every command prints one JSON object, and exit codes are 0 ok, 1 failed, 2 needs input, 3 not logged in. That is the contract the Claude Code skill relies on.
+
+The Claude Code plugin lives beside the CLI. `plugin/.claude-plugin/marketplace.json` lists it, and `plugin/plugins/entrify/skills/deploy/SKILL.md` is the skill. Users install it with `/plugin install entrify --marketplace kpndevrootentri/entrify-cli`.
 
 ### Authentication flow
 
@@ -853,7 +857,7 @@ On failure the CLI scans the last 40 lines of the build log against a set of pat
 | `frameworks/[slug]` | Per-framework guides (Next.js, React, Vue, Svelte, Django, FastAPI, Flask, Node.js, Static) |
 | `claude-code` | Using the Claude Code `/deploy` command |
 
-The Claude Code `/deploy` skill is also served as a raw Markdown file at `public/deploy.md`, which the landing page download section links to.
+The Claude Code `/deploy` skill is also served as a raw Markdown file at `public/deploy.md`, for people who save it to `~/.claude/commands/` instead of installing the plugin. It must stay identical to the plugin's `SKILL.md`; `deploy-skill-sync.test.ts` fails when they differ.
 
 ---
 
