@@ -11,6 +11,8 @@
  *   npx tsx scripts/repoint-github-webhooks.ts
  */
 
+export {}; // A module, so its main() does not clash with other scripts' in the type-check.
+
 // Like dotenv: read .env if present, never overriding variables already set.
 try {
   process.loadEnvFile();
