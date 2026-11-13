@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { ThemeToggle } from '@/components/theme-toggle';
 import {
   DropdownMenu,
@@ -44,7 +44,6 @@ export function DashboardNav(): React.ReactElement {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const pathname = usePathname();
-  const router = useRouter();
   const isAdminRoute = pathname.startsWith('/dashboard/admin');
   const isContributor = session?.role === 'CONTRIBUTOR';
 
@@ -60,7 +59,9 @@ export function DashboardNav(): React.ReactElement {
 
   const handleLogout = async (): Promise<void> => {
     await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
+    // A full page load, not router.push: the client router may still hold a signed-in
+    // prefetch of /login (a redirect to /dashboard, e.g. from the home page's links).
+    window.location.assign('/');
   };
 
   if (loading) {
