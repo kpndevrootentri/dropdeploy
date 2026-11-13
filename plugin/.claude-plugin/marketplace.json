@@ -1,6 +1,7 @@
 {
   "name": "entrify",
   "owner": { "name": "Entrify" },
+  "description": "Claude Code plugins for Entrify, the platform that turns a GitHub or GitLab repo into a live site at <name>.entrify.site.",
   "plugins": [
     {
       "name": "entrify",
