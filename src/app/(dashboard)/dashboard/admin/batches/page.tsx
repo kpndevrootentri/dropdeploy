@@ -160,7 +160,7 @@ export default function AdminBatchesPage(): React.ReactElement {
 
       <Dialog open={creating} onOpenChange={setCreating}>
         <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+          <DialogHeader className="mb-4">
             <DialogTitle>New batch</DialogTitle>
             <DialogDescription>You&apos;ll get a join link to share with the students. Add mentors on the batch&apos;s page.</DialogDescription>
           </DialogHeader>

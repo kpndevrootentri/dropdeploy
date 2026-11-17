@@ -3,11 +3,11 @@
 import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { Archive, ArchiveRestore, ArrowLeft, FolderGit2, RefreshCw } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowLeft, FolderGit2, Link2, RefreshCw, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CopyValue } from '@/components/ui/copy-value';
 import { adminRequest } from '@/components/admin/admin-request';
 import { JoiningPill, RolePill, StagePill, batchStage, formatDay, isJoinable } from '@/components/admin/batch-status';
@@ -76,6 +76,7 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
   const [acting, setActing] = useState(false);
   const [mentorEmail, setMentorEmail] = useState('');
   const [filter, setFilter] = useState<MemberFilter>('all');
+  const [dialog, setDialog] = useState<'join' | 'mentor' | null>(null);
 
   const load = useCallback(() => {
     adminRequest<Detail>(`/api/admin/cohorts/${cohortId}`)
@@ -154,138 +155,155 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
         <Stat label={when.label} value={when.value} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* First in the markup so phones show the join link before the member list. */}
-        <div className="min-w-0 space-y-6 lg:col-start-3 lg:row-start-1">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-base">Join link</CardTitle>
-                <JoiningPill open={joinable} />
-              </div>
-              <CardDescription>Students sign up and join with this link, even when sign-up is closed.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {/* Rendered only after the client fetch, so window is defined. */}
-              <CopyValue label="Join link" value={`${window.location.origin}/join/${cohort.joinCode}`} />
-              {(stage === 'Ended' || stage === 'Archived') && (
-                <p className="text-xs text-muted-foreground">The link doesn&apos;t work because the batch has {stage === 'Ended' ? 'ended' : 'been archived'}.</p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" disabled={acting} onClick={() => void run(() => patch({ joinOpen: !cohort.joinOpen }), cohort.joinOpen ? 'Joining closed' : 'Joining opened')}>
-                  {cohort.joinOpen ? 'Close joining' : 'Open joining'}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={acting}
-                  title="Use this if the link leaked"
-                  onClick={() => {
-                    if (!confirm('Get a new join link? The current link stops working immediately.')) return;
-                    void run(() => adminRequest(`/api/admin/cohorts/${cohortId}/join-code`, { method: 'POST' }), 'New join link ready');
-                  }}
-                >
-                  <RefreshCw className="mr-1 h-3.5 w-3.5" aria-hidden />New link
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Add a mentor</CardTitle>
-              <CardDescription>Mentors see this batch&apos;s projects, private sites and build logs, read-only. They need an Entrify account.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form
-                className="flex gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void run(() => adminRequest(`/api/admin/cohorts/${cohortId}/mentors`, { method: 'POST', body: { email: mentorEmail } }), `Added ${mentorEmail}`)
-                    .then((ok) => ok && setMentorEmail(''));
-                }}
-              >
-                <Label htmlFor="mentor-email" className="sr-only">Mentor email</Label>
-                <Input id="mentor-email" type="email" required placeholder="mentor@entri.me" value={mentorEmail} onChange={(e) => setMentorEmail(e.target.value)} />
-                <Button type="submit" disabled={acting}>Add</Button>
-              </form>
-            </CardContent>
-          </Card>
+      <section className="space-y-3" aria-labelledby="members-heading">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 id="members-heading" className="text-base font-semibold">Members</h3>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => setDialog('join')}>
+              <Link2 className="mr-1 h-4 w-4" aria-hidden />Join link
+              {/* A quiet reminder that the link currently works. */}
+              {joinable && <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-green-500" aria-label="open" />}
+            </Button>
+            <Button size="sm" onClick={() => setDialog('mentor')}>
+              <UserPlus className="mr-1 h-4 w-4" aria-hidden />Add mentor
+            </Button>
+          </div>
         </div>
 
-        <section className="min-w-0 space-y-3 lg:col-span-2 lg:row-start-1" aria-labelledby="members-heading">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 id="members-heading" className="text-base font-semibold">Members</h3>
-            <div className="inline-flex rounded-lg border p-0.5" role="group" aria-label="Show members">
-              {MEMBER_FILTERS.map((f) => (
-                <button
-                  key={f.key}
-                  type="button"
-                  aria-pressed={filter === f.key}
-                  onClick={() => setFilter(f.key)}
-                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${filter === f.key ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                >
-                  {f.label} <span className="tabular-nums opacity-70">{count(f.key)}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+        <div className="inline-flex rounded-lg border p-0.5" role="group" aria-label="Show members">
+          {MEMBER_FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              aria-pressed={filter === f.key}
+              onClick={() => setFilter(f.key)}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${filter === f.key ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              {f.label} <span className="tabular-nums opacity-70">{count(f.key)}</span>
+            </button>
+          ))}
+        </div>
 
+        <div className="relative overflow-x-auto rounded-lg border">
           {/* relative: keeps the sr-only caption inside the scroll box, so phones get no page-wide scroll. */}
-          <div className="relative overflow-x-auto rounded-lg border">
-            <table className="w-full text-sm border-collapse">
-              <caption className="sr-only">Members of {cohort.name}</caption>
-              <thead className="bg-muted/40">
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">Person</th>
-                  <th className="w-24 px-4 py-2 font-medium">Role</th>
-                  <th className="hidden w-32 px-4 py-2 font-medium sm:table-cell">Joined</th>
-                  <th className="w-20 px-4 py-2 text-right font-medium">Projects</th>
-                  <th className="w-40 px-4 py-2 text-right font-medium"><span className="sr-only">Status or action</span></th>
+          <table className="w-full text-sm border-collapse">
+            <caption className="sr-only">Members of {cohort.name}</caption>
+            <thead className="bg-muted/40">
+              <tr className="border-b text-left text-muted-foreground">
+                <th className="px-4 py-2 font-medium">Person</th>
+                <th className="w-28 px-4 py-2 font-medium">Role</th>
+                <th className="hidden w-36 px-4 py-2 font-medium sm:table-cell">Joined</th>
+                <th className="w-24 px-4 py-2 text-right font-medium">Projects</th>
+                <th className="w-44 px-4 py-2 text-right font-medium"><span className="sr-only">Status or action</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((m) => (
+                <tr key={m.userId} className={`border-b last:border-0 ${m.endedAt ? 'text-muted-foreground' : ''}`}>
+                  <td className="min-w-48 px-4 py-3">
+                    <div className="font-medium">{m.user.name ?? m.user.email}</div>
+                    {m.user.name && <div className="text-xs text-muted-foreground">{m.user.email}</div>}
+                  </td>
+                  <td className="px-4 py-3"><RolePill role={m.role} /></td>
+                  <td className="hidden whitespace-nowrap px-4 py-3 text-xs sm:table-cell">{formatDay(m.joinedAt)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{m.projectCount}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right">
+                    {m.endedAt ? (
+                      <span className="text-xs">Left {formatDay(m.endedAt)}</span>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={acting}
+                        onClick={() => {
+                          if (!confirm(`End ${m.user.email}'s membership? Their projects stay in the batch.`)) return;
+                          void run(() => adminRequest(`/api/admin/cohorts/${cohortId}/members/${m.userId}`, { method: 'DELETE' }), 'Membership ended');
+                        }}
+                        className="text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
+                      >
+                        End membership
+                      </Button>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {shown.map((m) => (
-                  <tr key={m.userId} className={`border-b last:border-0 ${m.endedAt ? 'text-muted-foreground' : ''}`}>
-                    <td className="min-w-48 px-4 py-3">
-                      <div className="font-medium">{m.user.name ?? m.user.email}</div>
-                      {m.user.name && <div className="text-xs text-muted-foreground">{m.user.email}</div>}
-                    </td>
-                    <td className="px-4 py-3"><RolePill role={m.role} /></td>
-                    <td className="hidden whitespace-nowrap px-4 py-3 text-xs sm:table-cell">{formatDay(m.joinedAt)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{m.projectCount}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right">
-                      {m.endedAt ? (
-                        <span className="text-xs">Left {formatDay(m.endedAt)}</span>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={acting}
-                          onClick={() => {
-                            if (!confirm(`End ${m.user.email}'s membership? Their projects stay in the batch.`)) return;
-                            void run(() => adminRequest(`/api/admin/cohorts/${cohortId}/members/${m.userId}`, { method: 'DELETE' }), 'Membership ended');
-                          }}
-                          className="text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
-                        >
-                          End membership
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {shown.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
-                      {members.length === 0 ? 'Nobody has joined yet. Share the join link with the students.' : 'Nobody here.'}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+              ))}
+              {shown.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                    {members.length === 0 ? (
+                      <div className="space-y-3">
+                        <p>Nobody has joined yet.</p>
+                        <Button variant="outline" size="sm" onClick={() => setDialog('join')}><Link2 className="mr-1 h-4 w-4" aria-hidden />Share join link</Button>
+                      </div>
+                    ) : 'Nobody here.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <Dialog open={dialog === 'join'} onOpenChange={(open) => setDialog(open ? 'join' : null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader className="mb-4">
+            <div className="flex items-center gap-2">
+              <DialogTitle>Join link</DialogTitle>
+              <JoiningPill open={joinable} />
+            </div>
+            <DialogDescription>Students sign up and join with this link, even when sign-up is closed. Get a new link if it leaks.</DialogDescription>
+          </DialogHeader>
+          <div className="min-w-0 space-y-3">
+            {/* Rendered only after the client fetch, so window is defined. */}
+            <CopyValue label="Join link" value={`${window.location.origin}/join/${cohort.joinCode}`} />
+            {(stage === 'Ended' || stage === 'Archived') && (
+              <p className="text-xs text-muted-foreground">The link doesn&apos;t work because the batch has {stage === 'Ended' ? 'ended' : 'been archived'}.</p>
+            )}
           </div>
-        </section>
-      </div>
+          <DialogFooter className="mt-4 gap-2 sm:justify-start">
+            <Button variant="outline" size="sm" disabled={acting} onClick={() => void run(() => patch({ joinOpen: !cohort.joinOpen }), cohort.joinOpen ? 'Joining closed' : 'Joining opened')}>
+              {cohort.joinOpen ? 'Close joining' : 'Open joining'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={acting}
+              onClick={() => {
+                if (!confirm('Get a new join link? The current link stops working immediately.')) return;
+                void run(() => adminRequest(`/api/admin/cohorts/${cohortId}/join-code`, { method: 'POST' }), 'New join link ready');
+              }}
+            >
+              <RefreshCw className="mr-1 h-3.5 w-3.5" aria-hidden />New link
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialog === 'mentor'} onOpenChange={(open) => setDialog(open ? 'mentor' : null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="mb-4">
+            <DialogTitle>Add a mentor</DialogTitle>
+            <DialogDescription>Mentors see this batch&apos;s projects, private sites and build logs, read-only. They need an Entrify account.</DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run(() => adminRequest(`/api/admin/cohorts/${cohortId}/mentors`, { method: 'POST', body: { email: mentorEmail } }), `Added ${mentorEmail}`)
+                .then((ok) => { if (ok) { setMentorEmail(''); setDialog(null); } });
+            }}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="mentor-email">Email</Label>
+              <Input id="mentor-email" type="email" required autoFocus placeholder="mentor@entri.me" value={mentorEmail} onChange={(e) => setMentorEmail(e.target.value)} />
+            </div>
+            <DialogFooter className="gap-2">
+              <Button type="button" variant="outline" onClick={() => setDialog(null)}>Cancel</Button>
+              <Button type="submit" disabled={acting}>{acting ? 'Adding…' : 'Add mentor'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
