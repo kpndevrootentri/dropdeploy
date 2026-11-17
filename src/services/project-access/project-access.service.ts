@@ -7,11 +7,14 @@ import { userRepository, type IUserRepository } from '@/repositories/user.reposi
 import { projectRepository, type IProjectRepository } from '@/repositories/project.repository';
 import { NotFoundError, ConflictError, ValidationError } from '@/lib/errors';
 import type { GrantAccessDto } from '@/validators/project-access.validator';
+import { cohortService, type CohortService } from '@/services/cohort/cohort.service';
 
 /** Minimal project shape needed to make an access decision. */
 export interface AccessProject {
   id: string;
   userId: string;
+  /** The project's batch, if any: its active mentors may view it. */
+  cohortId?: string | null;
 }
 
 /** Minimal session shape needed to make an access decision. */
@@ -26,6 +29,7 @@ export class ProjectAccessService {
     private readonly accessRepo: IProjectAccessRepository,
     private readonly userRepo: IUserRepository,
     private readonly projectRepo: IProjectRepository,
+    private readonly mentors: Pick<CohortService, 'canMentorView'>,
   ) {}
 
   /** Lists access entries for a project the caller owns. */
@@ -78,13 +82,16 @@ export class ProjectAccessService {
 
   /**
    * Central authorization rule for serving a private deployment.
-   * Allows the owner, anyone on the access list (USER or DOMAIN), and platform
-   * admins (CONTRIBUTOR). Remove the role clause for strict owner/list-only access.
+   * Allows the owner, anyone on the access list (USER or DOMAIN), platform
+   * admins (CONTRIBUTOR), and active mentors of the project's batch.
+   * Remove the role clause for strict owner/list-only access.
    */
   async canView(project: AccessProject, session: AccessSession): Promise<boolean> {
     if (session.userId === project.userId) return true;
     if (session.role === 'CONTRIBUTOR') return true;
-    return this.accessRepo.isAuthorized(project.id, session.userId, session.email);
+    if (await this.accessRepo.isAuthorized(project.id, session.userId, session.email)) return true;
+    if (!project.cohortId) return false;
+    return this.mentors.canMentorView(project.cohortId, session.userId);
   }
 
   private async assertOwner(projectId: string, ownerId: string): Promise<{ id: string; userId: string }> {
@@ -100,4 +107,5 @@ export const projectAccessService = new ProjectAccessService(
   projectAccessRepository,
   userRepository,
   projectRepository,
+  cohortService,
 );

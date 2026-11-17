@@ -11,7 +11,11 @@ export interface IProjectRepository {
   /** Which of the given slugs belong to a project, in one query. */
   findExistingSlugs(slugs: string[]): Promise<string[]>;
   findAll(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date; containerPort: number | null }[] })[]>;
-  create(userId: string, data: CreateProjectDto): Promise<Project>;
+  /**
+   * Creates the project unless its owner already has `quota` projects; returns
+   * null when the quota is full. The count and the insert are atomic per user.
+   */
+  create(userId: string, data: CreateProjectDto & { cohortId?: string | null }, quota: number): Promise<Project | null>;
   update(id: string, data: UpdateProjectDto): Promise<Project>;
   delete(id: string): Promise<void>;
   transferOwner(id: string, newUserId: string): Promise<Project>;
@@ -67,21 +71,27 @@ export class ProjectRepository implements IProjectRepository {
     }) as Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date; containerPort: number | null }[] })[]>;
   }
 
-  async create(userId: string, data: CreateProjectDto): Promise<Project> {
+  async create(userId: string, data: CreateProjectDto & { cohortId?: string | null }, quota: number): Promise<Project | null> {
     const slug = await this.generateUniqueSlug(data.name);
-    return prisma.project.create({
-      data: {
-        userId,
-        name: data.name,
-        description: data.description,
-        slug,
-        source: data.source,
-        githubUrl: data.githubUrl,
-        type: data.type ?? 'STATIC',
-        branch: data.branch ?? 'main',
-        useStaticHosting: data.useStaticHosting ?? false,
-        isPrivate: data.isPrivate ?? false,
-      },
+    return prisma.$transaction(async (tx) => {
+      // Held until the transaction ends, so two parallel creates by one user cannot both pass the count.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
+      if ((await tx.project.count({ where: { userId } })) >= quota) return null;
+      return tx.project.create({
+        data: {
+          userId,
+          name: data.name,
+          description: data.description,
+          slug,
+          source: data.source,
+          githubUrl: data.githubUrl,
+          type: data.type ?? 'STATIC',
+          branch: data.branch ?? 'main',
+          useStaticHosting: data.useStaticHosting ?? false,
+          isPrivate: data.isPrivate ?? false,
+          cohortId: data.cohortId ?? null,
+        },
+      });
     });
   }
 
