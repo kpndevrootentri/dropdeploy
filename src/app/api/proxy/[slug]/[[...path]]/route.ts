@@ -238,7 +238,7 @@ async function handler(
       containerPort: true,
       servingMethod: true,
       projectId: true,
-      project: { select: { id: true, isPrivate: true, userId: true } },
+      project: { select: { id: true, isPrivate: true, userId: true, cohortId: true } },
     },
   });
 
@@ -251,8 +251,9 @@ async function handler(
 
   // ── Private URL gate ─────────────────────────────────────────────────────
   // Authorize the project owner, anyone on the per-project access list (specific
-  // user or allowed email domain), and platform admins (CONTRIBUTOR). A logged-in
-  // user who is none of these is denied — being authenticated is not enough.
+  // user or allowed email domain), platform admins (CONTRIBUTOR) and active mentors
+  // of the project's batch. A logged-in user who is none of these is denied —
+  // being authenticated is not enough.
   if (deployment.project.isPrivate) {
     const token = getTokenFromCookie(request);
     let authorized = false;
@@ -263,7 +264,7 @@ async function handler(
         // collaborator must lose access now, not when the token expires.
         const user = await authService.verifySession(token);
         authorized = await projectAccessService.canView(
-          { id: deployment.project.id, userId: deployment.project.userId },
+          { id: deployment.project.id, userId: deployment.project.userId, cohortId: deployment.project.cohortId },
           { userId: user.userId, email: user.email, role: user.role },
         );
       } catch {

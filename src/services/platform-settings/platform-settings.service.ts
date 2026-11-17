@@ -15,6 +15,7 @@ export const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
   signupOpen: true,
   bannerMessage: null,
   proxyHitRetentionDays: 90,
+  cohortsEnabled: false,
 };
 
 function toSettings(row: PlatformSetting | null): PlatformSettings {

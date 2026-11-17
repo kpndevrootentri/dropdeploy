@@ -137,6 +137,7 @@ const LOGIN_ACCOUNT_MAX = 20; // 20 attempts per 15 minutes per account
 
 const REGISTER_WINDOW_MS = 60 * 60_000; // 1 hour
 const REGISTER_MAX = 5; // 5 sign-ups per hour per IP
+const JOIN_REGISTER_MAX = 60; // 60 sign-ups per hour per IP with a batch join code
 
 const PASSWORD_CHANGE_WINDOW_MS = 15 * 60_000; // 15 minutes
 const PASSWORD_CHANGE_MAX = 10; // 10 attempts per 15 minutes per user
@@ -160,6 +161,15 @@ export function checkLoginRateLimit(ip: string, email: string): NextResponse | n
 /** Rate limit account registration — 5 per hour per IP. */
 export function checkRegisterRateLimit(ip: string): NextResponse | null {
   return checkRateLimit(`register:${ip}`, { windowMs: REGISTER_WINDOW_MS, max: REGISTER_MAX });
+}
+
+/**
+ * Sign-up through a batch join link — 60 per hour per IP. A whole classroom
+ * joins from one school network, so the 5-per-IP limit would lock most of it
+ * out; the join code itself is too long to guess.
+ */
+export function checkJoinRegisterRateLimit(ip: string): NextResponse | null {
+  return checkRateLimit(`register-join:${ip}`, { windowMs: REGISTER_WINDOW_MS, max: JOIN_REGISTER_MAX });
 }
 
 /** Rate limit password changes, which verify the current password — 10 per 15 min per user. */

@@ -11,6 +11,7 @@ export const updatePlatformSettingsSchema = z
     // An empty message clears the banner.
     bannerMessage: z.string().trim().max(500).nullable().transform((v) => v || null),
     proxyHitRetentionDays: z.number().int().min(MIN_PROXY_HIT_RETENTION_DAYS).max(3650),
+    cohortsEnabled: z.boolean(),
   })
   .partial();
 

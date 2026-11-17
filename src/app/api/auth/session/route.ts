@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authService } from '@/services/auth';
+import { cohortService } from '@/services/cohort';
 import { getTokenFromCookie } from '@/lib/auth-cookie';
 import { UnauthorizedError } from '@/lib/errors';
 
@@ -14,9 +15,11 @@ export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
   }
   try {
     const user = await authService.verifySession(token);
+    // Shows the Batches menu item; looked up per request so an ended membership hides it at once.
+    const inCohort = (await cohortService.myMemberships(user.userId)).length > 0;
     return NextResponse.json({
       success: true,
-      data: { userId: user.userId, email: user.email, role: user.role, impersonating: Boolean(user.impersonatorId) },
+      data: { userId: user.userId, email: user.email, role: user.role, impersonating: Boolean(user.impersonatorId), inCohort },
     });
   } catch (e) {
     if (e instanceof UnauthorizedError) {

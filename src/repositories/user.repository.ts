@@ -16,6 +16,7 @@ export interface NewUserQuotas {
 export type NewUserData = {
   email: string;
   passwordHash: string;
+  name?: string;
   role?: UserRole;
   mustResetPassword?: boolean;
   invite?: NewInvite;
@@ -76,6 +77,7 @@ export class UserRepository implements IUserRepository {
       data: {
         email: data.email.toLowerCase(),
         passwordHash: data.passwordHash,
+        ...(data.name ? { name: data.name } : {}),
         ...(data.role ? { role: data.role } : {}),
         ...(data.mustResetPassword !== undefined ? { mustResetPassword: data.mustResetPassword } : {}),
         ...(data.projectQuota !== undefined ? { projectQuota: data.projectQuota } : {}),

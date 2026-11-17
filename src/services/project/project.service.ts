@@ -4,6 +4,7 @@ import { dockerOps, type IDockerOps } from '@/lib/docker-ops';
 import { NotFoundError, QuotaExceededError } from '@/lib/errors';
 import { startsPrivate, type CreateProjectDto, type UpdateProjectDto } from '@/types/project.types';
 import type { Project } from '@prisma/client';
+import { cohortService, type CohortService } from '@/services/cohort/cohort.service';
 
 export type ProjectWithDeployments = Project & {
   deployments: Array<{
@@ -20,6 +21,7 @@ export class ProjectService {
     private readonly projectRepo: IProjectRepository,
     private readonly docker: IDockerOps,
     private readonly userRepo: IUserRepository,
+    private readonly cohorts: Pick<CohortService, 'cohortForNewProject'>,
   ) {}
 
   async getById(id: string, userId: string): Promise<Project> {
@@ -55,14 +57,19 @@ export class ProjectService {
     const user = await this.userRepo.findById(userId);
     if (!user) throw new NotFoundError('User');
 
-    const existing = await this.projectRepo.findByUserId(userId);
-    if (existing.length >= user.projectQuota) {
+    // Every way of creating a project (dashboard, upload, CLI) comes through here.
+    const cohortId = await this.cohorts.cohortForNewProject(userId);
+    const project = await this.projectRepo.create(
+      userId,
+      { ...dto, isPrivate: startsPrivate(dto.type), cohortId },
+      user.projectQuota,
+    );
+    if (!project) {
       throw new QuotaExceededError(
         `You have reached your project limit of ${user.projectQuota}. Contact an admin to increase your quota.`
       );
     }
-
-    return this.projectRepo.create(userId, { ...dto, isPrivate: startsPrivate(dto.type) });
+    return project;
   }
 
   async update(id: string, userId: string, dto: UpdateProjectDto): Promise<Project> {
@@ -84,4 +91,4 @@ export class ProjectService {
   }
 }
 
-export const projectService = new ProjectService(projectRepository, dockerOps, userRepository);
+export const projectService = new ProjectService(projectRepository, dockerOps, userRepository, cohortService);
