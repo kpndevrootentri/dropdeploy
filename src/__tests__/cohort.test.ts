@@ -30,7 +30,10 @@ const MENTOR_ACCOUNTS: Record<string, { id: string; email: string; mustResetPass
   'suspended@entri.me': { id: 'm3', email: 'suspended@entri.me', mustResetPassword: false, suspendedAt: new Date() },
 };
 
-function setup(opts:{ enabled?: boolean; cohort?: ReturnType<typeof cohort> | null; member?: unknown; mentor?: boolean } = {}) {
+function setup(opts: {
+  enabled?: boolean; cohort?: ReturnType<typeof cohort> | null; member?: unknown; mentor?: boolean;
+  added?: boolean; removed?: boolean; memberships?: unknown[];
+} = {}) {
   const repo = {
     create: jest.fn(async (data: Record<string, unknown>) => ({ ...cohort(), ...data })),
     update: jest.fn(async (_id: string, data: Record<string, unknown>) => ({ ...cohort(), ...data })),
@@ -44,14 +47,16 @@ function setup(opts:{ enabled?: boolean; cohort?: ReturnType<typeof cohort> | nu
     endMember: jest.fn(async () => undefined),
     findActiveStudentCohortId: jest.fn(async () => 'c1'),
     isActiveMentor: jest.fn(async () => opts.mentor ?? false),
-    listActiveMemberships: jest.fn(async () => []),
+    listActiveMemberships: jest.fn(async () => opts.memberships ?? []),
     listProjects: jest.fn(async () => []),
+    addProject: jest.fn(async () => opts.added ?? true),
+    removeProject: jest.fn(async () => opts.removed ?? true),
   };
   const users = {
-    findById: jest.fn(async () => ({ id: 'admin', email: 'admin@entri.me' })),
+    findById: jest.fn(async (id: string) => ({ id, email: `${id}@entri.me` })),
     findByEmail: jest.fn(async (email: string) => MENTOR_ACCOUNTS[email] ?? null),
   };
-  const projects = { findById: jest.fn(async (id: string) => ({ id, cohortId: id === 'p-other' ? 'c2' : 'c1' })) };
+  const projects = { findById: jest.fn(async (id: string) => ({ id, userId: 's1', name: 'portfolio', cohortId: id === 'p-other' ? 'c2' : 'c1' })) };
   const deployments = {
     findById: jest.fn(async (id: string) => ({
       id, projectId: id === 'd-other' ? 'p-other' : 'p1', status: 'FAILED', buildLog: 'boom',
@@ -171,6 +176,91 @@ describe('managing batches', () => {
     await service.endMembership('c1', 's1', 'admin');
     expect(repo.endMember).toHaveBeenCalledWith('c1', 's1', expect.any(Date));
     await expect(setup().service.endMembership('c1', 's1', 'admin')).rejects.toThrow('Membership not found');
+  });
+});
+
+describe('a batch page', () => {
+  it("returns the batch's projects", async () => {
+    const { service, repo } = setup();
+    repo.listProjects.mockResolvedValueOnce([{ id: 'p1' }] as never);
+    expect((await service.get('c1')).projects).toEqual([{ id: 'p1' }]);
+    expect(repo.listProjects).toHaveBeenCalledWith('c1');
+  });
+});
+
+describe('adding a project to a batch', () => {
+  const asStudent = [{ role: 'STUDENT', cohort: cohort() }];
+
+  it('adds your own project to your batch and records it with you as the actor', async () => {
+    const { service, repo, adminActions } = setup({ memberships: asStudent });
+    await service.addProject('p1', 's1', 'c1');
+    expect(repo.addProject).toHaveBeenCalledWith('p1', 's1', 'c1');
+    expect(adminActions.create).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'COHORT_PROJECT_ADDED', actorId: 's1', actorEmail: 's1@entri.me', targetId: 'c1',
+      meta: { projectId: 'p1', project: 'portfolio' },
+    }));
+  });
+
+  it("refuses someone else's project", async () => {
+    const { service, repo, adminActions } = setup({ memberships: asStudent });
+    await expect(service.addProject('p1', 's2', 'c1')).rejects.toThrow('Project not found');
+    expect(repo.addProject).not.toHaveBeenCalled();
+    expect(adminActions.create).not.toHaveBeenCalled();
+  });
+
+  it.each<[string, Parameters<typeof setup>[0] & {}]>([
+    ['no batch', { memberships: [] }],
+    ['only a mentor', { memberships: [{ role: 'MENTOR', cohort: cohort() }] }],
+    ['batches switched off', { enabled: false, memberships: asStudent }],
+  ])('refuses when the owner has %s', async (_case, opts) => {
+    const { service, repo, adminActions } = setup(opts);
+    await expect(service.addProject('p1', 's1', 'c1')).rejects.toThrow('not a student in an active batch');
+    expect(repo.addProject).not.toHaveBeenCalled();
+    expect(adminActions.create).not.toHaveBeenCalled();
+    if (opts.enabled === false) expect(repo.listActiveMemberships).not.toHaveBeenCalled();
+  });
+
+  const twoBatches = [{ role: 'STUDENT', cohort: cohort({ id: 'c2', name: 'Newer' }) }, { role: 'STUDENT', cohort: cohort() }];
+
+  it('uses the batch joined most recently, as new projects do', async () => {
+    const { service, repo } = setup({ memberships: twoBatches });
+    expect((await service.addProject('p1', 's1', 'c2')).id).toBe('c2');
+    expect(repo.addProject).toHaveBeenCalledWith('p1', 's1', 'c2');
+  });
+
+  it('refuses when the batch changed after the page loaded', async () => {
+    const { service, repo, adminActions } = setup({ memberships: twoBatches });
+    await expect(service.addProject('p1', 's1', 'c1')).rejects.toThrow('Your batch changed');
+    expect(repo.addProject).not.toHaveBeenCalled();
+    expect(adminActions.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses a project that is already in a batch', async () => {
+    const { service, adminActions } = setup({ memberships: asStudent, added: false });
+    await expect(service.addProject('p1', 's1', 'c1')).rejects.toThrow('already in a batch');
+    expect(adminActions.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('removing a project from a batch', () => {
+  it('lets an admin remove it, and records it', async () => {
+    const { service, repo, adminActions } = setup();
+    await service.removeProject('c1', 'p1', 'admin');
+    expect(repo.removeProject).toHaveBeenCalledWith('c1', 'p1');
+    expect(adminActions.create).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'COHORT_PROJECT_REMOVED', actorId: 'admin', meta: { projectId: 'p1', project: 'portfolio' },
+    }));
+  });
+
+  it('refuses a project outside the batch, or an unknown batch, and records nothing', async () => {
+    const outside = setup({ removed: false });
+    await expect(outside.service.removeProject('c1', 'p1', 'admin')).rejects.toThrow('Project not found');
+    expect(outside.adminActions.create).not.toHaveBeenCalled();
+
+    const unknown = setup({ cohort: null });
+    await expect(unknown.service.removeProject('c9', 'p1', 'admin')).rejects.toThrow('Batch not found');
+    expect(unknown.repo.removeProject).not.toHaveBeenCalled();
+    expect(unknown.adminActions.create).not.toHaveBeenCalled();
   });
 });
 

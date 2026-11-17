@@ -149,8 +149,9 @@ model Project {
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // The batch the owner was a student in when the project was created. Kept when
-  // they leave, so the batch's reports do not change; cleared if the batch is deleted.
+  // The batch the project is in: stamped at creation from the owner's active student
+  // batch, or added later by the owner. Only an admin takes it out. Kept when they
+  // leave, so the batch's reports do not change; cleared if the batch is deleted.
   cohortId String? @map("cohort_id")
   cohort   Cohort? @relation(fields: [cohortId], references: [id], onDelete: SetNull)
 
@@ -415,7 +416,7 @@ model AdminAction {
   actorEmail String  @map("actor_email")
 
   action      String // USER_CREATED, USER_DELETED, PROJECT_STOPPED, ...
-  targetType  String  @map("target_type") // USER | PROJECT
+  targetType  String  @map("target_type") // USER | PROJECT | COHORT
   /// Null for actions on many targets at once, such as a bulk import.
   targetId    String? @map("target_id")
   targetLabel String  @map("target_label")

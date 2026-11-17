@@ -5,7 +5,7 @@ export type CohortWithCounts = Cohort & { _count: { members: number; projects: n
 
 export type CohortMemberRow = CohortMember & {
   user: { id: string; email: string; name: string | null };
-  /** Projects this person made in this batch. */
+  /** This person's projects in this batch, made in it or added later. */
   projectCount: number;
 };
 
@@ -42,6 +42,10 @@ export interface ICohortRepository {
   listActiveMemberships(userId: string): Promise<MembershipWithCohort[]>;
   /** The batch's projects with their owner and latest deployment. */
   listProjects(cohortId: string): Promise<CohortProjectRow[]>;
+  /** Puts the user's own project in the batch, only if it is in no batch. False if nothing changed. */
+  addProject(projectId: string, userId: string, cohortId: string): Promise<boolean>;
+  /** Takes the project out of this batch. False if it was not in it. */
+  removeProject(cohortId: string, projectId: string): Promise<boolean>;
 }
 
 /** Membership that still counts: not ended, and the batch is not archived. */
@@ -143,6 +147,17 @@ export class CohortRepository implements ICohortRepository {
       },
       orderBy: { createdAt: 'asc' },
     });
+  }
+
+  // Each is one conditional UPDATE, so double clicks and a student racing an admin can't both win.
+  async addProject(projectId: string, userId: string, cohortId: string): Promise<boolean> {
+    const { count } = await prisma.project.updateMany({ where: { id: projectId, userId, cohortId: null }, data: { cohortId } });
+    return count > 0;
+  }
+
+  async removeProject(cohortId: string, projectId: string): Promise<boolean> {
+    const { count } = await prisma.project.updateMany({ where: { id: projectId, cohortId }, data: { cohortId: null } });
+    return count > 0;
   }
 }
 

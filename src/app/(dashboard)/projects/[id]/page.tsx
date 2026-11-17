@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { ProjectTerminal } from '@/components/features/terminal';
 import { EnvVarsPanel } from '@/components/features/env-vars-panel';
 import { AccessListPanel } from '@/components/features/access-list-panel';
+import { AddToBatchCard } from '@/components/features/add-to-batch-card';
 import { DomainsPanel } from '@/components/features/domains-panel';
 import { getLocalIP } from '@/lib/local-ip';
 import {
@@ -75,6 +76,8 @@ interface Deployment {
 interface ProjectDetail {
   id: string;
   name: string;
+  /** The batch the project is in, if any. */
+  cohortId: string | null;
   slug: string;
   description: string | null;
   source: string;
@@ -1466,6 +1469,8 @@ function SettingsPanel({
 
       {/* Access list — only relevant while the URL is private */}
       {isPrivate && <AccessListPanel projectId={project.id} />}
+
+      <AddToBatchCard projectId={project.id} cohortId={project.cohortId} onAdded={onUpdated} />
 
       {/* Danger Zone */}
       <Card className="border-destructive/50">

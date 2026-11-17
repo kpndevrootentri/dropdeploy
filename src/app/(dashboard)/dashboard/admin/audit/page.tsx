@@ -43,7 +43,7 @@ export default function AdminAuditPage(): React.ReactElement {
     <div className="space-y-4">
       <div>
         <h2 className="text-2xl font-bold">Audit log</h2>
-        <p className="text-sm text-muted-foreground">Every change made from the admin panel, newest first.</p>
+        <p className="text-sm text-muted-foreground">Every recorded change, newest first.</p>
       </div>
 
       {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
@@ -53,7 +53,7 @@ export default function AdminAuditPage(): React.ReactElement {
           <thead>
             <tr className="border-b text-left text-muted-foreground">
               <th className="pb-2 pr-4">When</th>
-              <th className="pb-2 pr-4">Admin</th>
+              <th className="pb-2 pr-4">By</th>
               <th className="pb-2 pr-4">Action</th>
               <th className="pb-2 pr-4">Target</th>
               <th className="pb-2">Details</th>
@@ -83,7 +83,7 @@ export default function AdminAuditPage(): React.ReactElement {
             })}
             {!loading && actions.length === 0 && !error && (
               <tr>
-                <td colSpan={5} className="py-8 text-center text-muted-foreground">No admin actions recorded yet.</td>
+                <td colSpan={5} className="py-8 text-center text-muted-foreground">Nothing recorded yet.</td>
               </tr>
             )}
           </tbody>
