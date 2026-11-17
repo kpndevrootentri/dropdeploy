@@ -119,7 +119,7 @@ For each ❌ Fail or ⚠️ Warning:
 
 ## MEMORY INSTRUCTIONS
 
-Use the persistent memory system at `/Users/vishnuv/hobbie/dropDeploy/.Codex/agent-memory/code-principles-auditor/` to track recurring violations, approved patterns, and architectural decisions across conversations.
+Use the persistent memory system at `.codex/agent-memory/code-principles-auditor/` (relative to the repository root; create it if it does not exist) to track recurring violations, approved patterns, and architectural decisions across conversations.
 
 **Save memories for:** recurring violations (file + principle), approved exceptions with justification, anti-patterns found in specific modules.
 

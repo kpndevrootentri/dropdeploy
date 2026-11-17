@@ -31,6 +31,9 @@ data/
 .DS_Store
 *.pem
 
+# Codex agent memory: per-developer notes, never committed
+.codex/agent-memory/
+
 # MemPalace per-project files (issue #185)
 mempalace.yaml
 entities.json

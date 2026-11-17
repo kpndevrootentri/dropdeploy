@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/vishnuv/.local/bin/headroom wrap selfheal --marker headroom-wrap-selfheal",
+            "command": "sh -c 'if command -v headroom >/dev/null 2>&1; then exec headroom wrap selfheal --marker headroom-wrap-selfheal; fi'",
             "timeout": 10
           }
         ]
