@@ -36,6 +36,7 @@ const projectTarget = (project: Pick<Project, 'id' | 'name'>): AuditTarget =>
 export interface AdminUserRow {
   id: string;
   email: string;
+  name: string | null;
   role: UserRole;
   projectQuota: number;
   domainQuota: number;
@@ -162,6 +163,7 @@ export class AdminService {
         select: {
           id: true,
           email: true,
+          name: true,
           role: true,
           projectQuota: true,
           domainQuota: true,

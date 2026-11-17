@@ -263,7 +263,9 @@ async function handler(
         // verifySession, not a bare JWT check: a revoked session or a removed
         // collaborator must lose access now, not when the token expires.
         const user = await authService.verifySession(token);
-        authorized = await projectAccessService.canView(
+        // Someone still on an invited or admin-reset password signs in with a password
+        // they didn't choose; like every API route, the site waits until they set their own.
+        authorized = !user.mustResetPassword && await projectAccessService.canView(
           { id: deployment.project.id, userId: deployment.project.userId, cohortId: deployment.project.cohortId },
           { userId: user.userId, email: user.email, role: user.role },
         );
