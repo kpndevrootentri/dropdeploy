@@ -33,7 +33,8 @@ async function main(): Promise<void> {
   const passwordHash = await bcrypt.hash(password!, 10);
   const user = await prisma.user.upsert({
     where: { email: email!.toLowerCase() },
-    update: { passwordHash, role: 'CONTRIBUTOR' },
+    // An operator-chosen password must be changed at first login, for new and existing accounts alike.
+    update: { passwordHash, role: 'CONTRIBUTOR', mustResetPassword: true },
     create: { email: email!.toLowerCase(), passwordHash, role: 'CONTRIBUTOR', mustResetPassword: true },
   });
   console.log(`✓ Contributor account ready: ${user.email} (id: ${user.id})`);

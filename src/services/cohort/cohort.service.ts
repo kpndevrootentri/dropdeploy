@@ -129,12 +129,15 @@ export class CohortService {
     return cohort;
   }
 
-  /** Mentors are added by email; they need an account already. */
+  /** Mentors are added by email; they need an active account with a password they chose themselves. */
   async addMentor(id: string, email: string, actorId: string): Promise<CohortMember> {
     const cohort = await this.repo.findById(id);
     if (!cohort) throw new NotFoundError('Batch');
     const user = await this.users.findByEmail(email.toLowerCase());
     if (!user) throw new NotFoundError('User');
+    // Invited accounts and accounts after an admin password reset carry a password nobody chose.
+    if (user.mustResetPassword) throw new ConflictError(`${user.email} has not set their own password yet`);
+    if (user.suspendedAt) throw new ConflictError(`${user.email} is suspended`);
     const existing = await this.repo.findMember(id, user.id);
     // Turning a current student into a mentor would let them read classmates' build logs.
     if (existing && !existing.endedAt && existing.role === 'STUDENT') {
