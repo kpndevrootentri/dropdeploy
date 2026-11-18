@@ -35,8 +35,6 @@ export interface ICohortRepository {
   /** Adds the person, or brings back a membership that had ended, with the given role. */
   upsertMember(cohortId: string, userId: string, role: CohortRole): Promise<CohortMember>;
   endMember(cohortId: string, userId: string, at: Date): Promise<void>;
-  /** The batch a new project belongs to: the latest active student membership in a batch that is not archived. */
-  findActiveStudentCohortId(userId: string): Promise<string | null>;
   isActiveMentor(cohortId: string, userId: string): Promise<boolean>;
   /** The user's memberships that have not ended, in batches that are not archived. */
   listActiveMemberships(userId: string): Promise<MembershipWithCohort[]>;
@@ -106,15 +104,6 @@ export class CohortRepository implements ICohortRepository {
 
   async endMember(cohortId: string, userId: string, at: Date): Promise<void> {
     await prisma.cohortMember.updateMany({ where: { cohortId, userId, endedAt: null }, data: { endedAt: at } });
-  }
-
-  async findActiveStudentCohortId(userId: string): Promise<string | null> {
-    const membership = await prisma.cohortMember.findFirst({
-      where: { userId, role: 'STUDENT', ...ACTIVE },
-      orderBy: { joinedAt: 'desc' },
-      select: { cohortId: true },
-    });
-    return membership?.cohortId ?? null;
   }
 
   async isActiveMentor(cohortId: string, userId: string): Promise<boolean> {

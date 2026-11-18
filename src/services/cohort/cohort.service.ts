@@ -210,7 +210,7 @@ export class CohortService {
 
   /** The batch a project made now belongs to, or null (no batch, or batches are off). */
   async cohortForNewProject(userId: string): Promise<string | null> {
-    return (await this.isEnabled()) ? this.repo.findActiveStudentCohortId(userId) : null;
+    return (await this.studentCohort(userId))?.id ?? null;
   }
 
   /** The mentor rule for private sites: an active mentor of the project's batch may view it. */
@@ -225,6 +225,14 @@ export class CohortService {
   }
 
   /**
+   * The batch a student's projects go in, new or added later: their newest-joined active student
+   * membership. Null if they have none or batches are off. The one place this rule lives.
+   */
+  private async studentCohort(userId: string): Promise<Cohort | null> {
+    return (await this.myMemberships(userId)).find((m) => m.role === 'STUDENT')?.cohort ?? null;
+  }
+
+  /**
    * A student puts an older project of theirs in their batch: the batch a new project would get.
    * `cohortId` is the batch they confirmed; a mismatch means it changed after the page loaded.
    * Only an admin can take it out.
@@ -232,8 +240,7 @@ export class CohortService {
   async addProject(projectId: string, userId: string, cohortId: string): Promise<Cohort> {
     const project = await this.projects.findById(projectId);
     if (!project || project.userId !== userId) throw new NotFoundError('Project');
-    // myMemberships applies the switch, ended memberships, archived batches and newest-first order: the same rule as new projects.
-    const cohort = (await this.myMemberships(userId)).find((m) => m.role === 'STUDENT')?.cohort;
+    const cohort = await this.studentCohort(userId);
     if (!cohort) throw new ValidationError('You are not a student in an active batch');
     if (cohort.id !== cohortId) throw new ConflictError('Your batch changed. Reload the page and try again.');
     if (!(await this.repo.addProject(projectId, userId, cohort.id))) throw new ConflictError('This project is already in a batch');

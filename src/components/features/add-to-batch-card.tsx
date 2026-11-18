@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { GraduationCap, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { adminRequest } from '@/components/admin/admin-request';
 
 interface AddToBatchCardProps {
   projectId: string;
@@ -31,11 +32,10 @@ export function AddToBatchCard({ projectId, cohortId, onAdded }: AddToBatchCardP
   useEffect(() => {
     if (cohortId !== null) return;
     let ignore = false;
-    fetch('/api/cohorts')
-      .then((res) => res.json())
+    adminRequest<Membership[]>('/api/cohorts')
       // Newest-joined first, so the first STUDENT row is the batch the server will pick.
-      .then((body: { success?: boolean; data?: Membership[] }) => {
-        if (!ignore) setBatch(body.success ? body.data?.find((m) => m.role === 'STUDENT')?.cohort ?? null : null);
+      .then((memberships) => {
+        if (!ignore) setBatch(memberships.find((m) => m.role === 'STUDENT')?.cohort ?? null);
       })
       .catch(() => { /* no batch information: the card stays hidden */ });
     return () => { ignore = true; };
@@ -57,14 +57,8 @@ export function AddToBatchCard({ projectId, cohortId, onAdded }: AddToBatchCardP
     if (!confirm(`Current and future mentors of ${batch.name} can open this project's private site and read its build logs, including builds from before today. This stays if you leave the batch. Only an admin can undo it.`)) return;
     setAdding(true);
     try {
-      const res = await fetch(`/api/projects/${projectId}/cohort`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cohortId: batch.id }),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.error?.message ?? 'Could not add the project to the batch');
-      toast.success(`Added to ${body.data.name}`);
+      const result = await adminRequest<{ name: string }>(`/api/projects/${projectId}/cohort`, { method: 'POST', body: { cohortId: batch.id } });
+      toast.success(`Added to ${result.name}`);
       setAdded(true);
       onAdded();
     } catch (err) {

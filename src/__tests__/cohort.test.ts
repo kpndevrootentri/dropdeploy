@@ -45,7 +45,6 @@ function setup(opts: {
     findMember: jest.fn(async () => opts.member ?? null),
     upsertMember: jest.fn(async () => ({})),
     endMember: jest.fn(async () => undefined),
-    findActiveStudentCohortId: jest.fn(async () => 'c1'),
     isActiveMentor: jest.fn(async () => opts.mentor ?? false),
     listActiveMemberships: jest.fn(async () => opts.memberships ?? []),
     listProjects: jest.fn(async () => []),
@@ -270,12 +269,14 @@ describe('the switch', () => {
     expect(await service.cohortForNewProject('s1')).toBeNull();
     expect(await service.canMentorView('c1', 'm1')).toBe(false);
     expect(await service.myMemberships('s1')).toEqual([]);
-    expect(repo.findActiveStudentCohortId).not.toHaveBeenCalled();
+    expect(repo.listActiveMemberships).not.toHaveBeenCalled();
     expect(repo.isActiveMentor).not.toHaveBeenCalled();
   });
 
-  it('stamps the active batch when on', async () => {
-    expect(await setup().service.cohortForNewProject('s1')).toBe('c1');
+  it('stamps the newest active student batch when on, skipping batches they mentor', async () => {
+    const memberships = [{ role: 'MENTOR', cohort: cohort({ id: 'c9' }) }, { role: 'STUDENT', cohort: cohort() }];
+    expect(await setup({ memberships }).service.cohortForNewProject('s1')).toBe('c1');
+    expect(await setup({ memberships: [memberships[0]] }).service.cohortForNewProject('s1')).toBeNull();
   });
 });
 
