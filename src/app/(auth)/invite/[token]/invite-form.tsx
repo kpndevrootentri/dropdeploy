@@ -30,7 +30,7 @@ export function InviteForm({ token }: { token: string }): React.ReactElement {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(body?.error?.message ?? 'Could not accept the invite');
+        setError(body?.error?.message ?? 'Could not set your password');
         return;
       }
       setDone(true);
@@ -45,9 +45,9 @@ export function InviteForm({ token }: { token: string }): React.ReactElement {
     <main className="min-h-screen flex flex-col items-center justify-center p-8">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-center">{done ? 'Password set' : 'Welcome to Entrify'}</CardTitle>
+          <CardTitle className="text-center">{done ? 'Password set' : 'Set your password'}</CardTitle>
           <CardDescription className="text-center">
-            {done ? 'You can sign in now.' : 'Choose a password for your new account'}
+            {done ? 'You can sign in now.' : 'Choose a password for your Entrify account'}
           </CardDescription>
         </CardHeader>
         <CardContent>

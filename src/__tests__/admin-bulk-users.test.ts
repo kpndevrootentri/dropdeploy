@@ -2,7 +2,7 @@ jest.mock('@/lib/docker-ops', () => ({ dockerOps: {}, containerNameFor: jest.fn(
 jest.mock('@/services/deployment', () => ({ deploymentService: {} }));
 
 import { AdminService } from '@/services/admin/admin.service';
-import { hashInviteToken } from '@/services/invite/invite.service';
+import { hashInviteToken, INVITE_TTL_MS, RESET_TTL_MS } from '@/services/invite/invite.service';
 import type { IUserRepository, NewInvite } from '@/repositories/user.repository';
 import type { IProjectRepository } from '@/repositories/project.repository';
 import type { IDockerOps } from '@/lib/docker-ops';
@@ -10,7 +10,7 @@ import type { IDeploymentRepository } from '@/repositories/deployment.repository
 import type { IAdminActionRepository } from '@/repositories/admin-action.repository';
 import { DEFAULT_PLATFORM_SETTINGS } from '@/services/platform-settings/platform-settings.service';
 
-function setup(registered: string[], users: Record<string, { mustResetPassword: boolean }> = {}) {
+function setup(registered: string[], users: Record<string, { email: string; mustResetPassword: boolean }> = {}) {
   const userRepo = {
     createMany: jest.fn(async (invited: (NewInvite & { email: string })[], _passwordHash: string, _quotas?: unknown) =>
       invited.filter((i) => !registered.includes(i.email)).map(({ email }) => ({ id: `id-${email}`, email })),
@@ -91,17 +91,27 @@ describe('AdminService.inviteUser', () => {
   });
 });
 
-describe('AdminService.reissueInvite', () => {
-  it('issues a fresh link for a user who has not chosen a password', async () => {
-    const { service, invites } = setup([], { pending: { mustResetPassword: true } });
-    await expect(service.reissueInvite('pending')).resolves.toBe('token-for-pending');
-    expect(invites.issue).toHaveBeenCalledWith('pending');
+describe('AdminService.issuePasswordLink', () => {
+  it('issues a 7-day invite while the user has not chosen a password, and audits it', async () => {
+    const { service, invites, adminActions } = setup([], { pending: { email: 'new@entri.me', mustResetPassword: true } });
+    await expect(service.issuePasswordLink('pending', 'admin')).resolves.toEqual({
+      token: 'token-for-pending',
+      email: 'new@entri.me',
+      kind: 'invite',
+    });
+    expect(invites.issue).toHaveBeenCalledWith('pending', INVITE_TTL_MS);
+    expect(adminActions.create).toHaveBeenCalledWith(expect.objectContaining({ action: 'USER_PASSWORD_LINK_ISSUED' }));
   });
 
-  it('refuses once the user has chosen their own password, and for unknown users', async () => {
-    const { service, invites } = setup([], { active: { mustResetPassword: false } });
-    await expect(service.reissueInvite('active')).rejects.toThrow(/already chosen/);
-    await expect(service.reissueInvite('ghost')).rejects.toThrow(/not found/i);
+  it('issues a 1-hour reset link once the user has chosen their own password', async () => {
+    const { service, invites } = setup([], { active: { email: 'old@entri.me', mustResetPassword: false } });
+    await expect(service.issuePasswordLink('active', 'admin')).resolves.toMatchObject({ kind: 'reset' });
+    expect(invites.issue).toHaveBeenCalledWith('active', RESET_TTL_MS);
+  });
+
+  it('refuses unknown users', async () => {
+    const { service, invites } = setup([]);
+    await expect(service.issuePasswordLink('ghost', 'admin')).rejects.toThrow(/not found/i);
     expect(invites.issue).not.toHaveBeenCalled();
   });
 });

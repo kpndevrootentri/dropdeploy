@@ -769,8 +769,12 @@ npm run worker         # Terminal 2: BullMQ deployment worker
 | `GITHUB_CLIENT_SECRET` | `...` | GitHub OAuth App client secret (optional) |
 | `GITLAB_CLIENT_ID` | `...` | GitLab OAuth Application ID (optional) |
 | `GITLAB_CLIENT_SECRET` | `...` | GitLab OAuth Application secret (optional) |
+| `GMAIL_USER` | `you@gmail.com` | Sender of invite and password-reset emails (optional) |
+| `GMAIL_APP_PASSWORD` | `abcd efgh ijkl mnop` | Google App Password for `GMAIL_USER`; needs 2-Step Verification (optional) |
 
 > GitHub/GitLab OAuth variables are optional — private repo support is disabled if they are absent.
+
+> Email is optional too: without `GMAIL_USER` and `GMAIL_APP_PASSWORD` nothing is emailed, "Forgot password?" sends nothing, and admins copy invite and reset links by hand. Links in emails are built from `NEXT_PUBLIC_APP_URL`, so set it to the public URL. A personal Gmail account sends at most 500 emails a day, so bulk imports of more than 100 users are not emailed.
 
 ---
 
