@@ -4,15 +4,23 @@ import { inviteRepository, type IInviteRepository } from '@/repositories/invite.
 import { userRepository, type IUserRepository } from '@/repositories/user.repository';
 import { ValidationError } from '@/lib/errors';
 import { getConfig } from '@/lib/config';
-import { sendEmail } from '@/lib/email';
+import { isEmailConfigured, sendEmail } from '@/lib/email';
 import { createLogger } from '@/lib/logger';
+import { checkRateLimit } from '@/lib/rate-limit';
 import { SALT_ROUNDS } from '@/services/auth/auth.service';
 
 const log = createLogger('invite');
 
-export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const INVITE_TTL_MS = 7 * DAY_MS;
 /** Short, because anyone can ask for a reset link for any address. */
 export const RESET_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * Forgot-password emails a day, across all addresses. Personal Gmail sends 500 a
+ * day and stops all sending once that is used up; this keeps 300 for invites.
+ */
+const RESET_EMAILS_PER_DAY = 200;
 
 /** One message for every bad token — unknown, expired or used — so the link reveals nothing. */
 export const INVALID_INVITE_MESSAGE = 'This link is invalid, has expired or was already used';
@@ -24,13 +32,13 @@ const EMAILS: Record<PasswordLinkKind, { subject: string; body: (url: string) =>
   invite: {
     subject: 'You are invited to Entrify',
     body: (url) =>
-      `You have been invited to Entrify.\n\nChoose your password here. The link works once and expires in 7 days:\n${url}\n`,
+      `You have been invited to Entrify.\n\nChoose your password here. The link works once and expires in ${INVITE_TTL_MS / DAY_MS} days:\n${url}\n`,
   },
   reset: {
     subject: 'Reset your Entrify password',
     body: (url) =>
       `We got a request to reset the password for your Entrify account.\n\n` +
-      `Choose a new password here. The link works once and expires in 1 hour:\n${url}\n\n` +
+      `Choose a new password here. The link works once and expires in ${RESET_TTL_MS / 60_000} minutes:\n${url}\n\n` +
       `If you did not ask for this, ignore this email. Your password stays the same.\n`,
   },
 };
@@ -86,8 +94,19 @@ export class InviteService {
    * account that is not suspended, and quietly does nothing otherwise.
    */
   async requestReset(email: string): Promise<void> {
+    // Issuing cancels the user's other unused links, so never issue one that cannot be emailed.
+    if (!isEmailConfigured()) {
+      log.warn('Forgot password was requested, but email is not configured; nothing sent');
+      return;
+    }
     const user = await this.users.findByEmail(email.trim());
     if (!user || user.suspendedAt) return;
+    // Counted after the lookup, so only real sends use up the day's allowance.
+    // ponytail: per process, like every limiter in rate-limit.ts; share it (Redis) if Entrify runs more than one instance.
+    if (checkRateLimit('reset-emails-daily', { windowMs: DAY_MS, max: RESET_EMAILS_PER_DAY })) {
+      log.warn('Daily forgot-password email limit reached; nothing sent', { max: RESET_EMAILS_PER_DAY });
+      return;
+    }
     await this.sendLink(user.email, await this.issue(user.id, RESET_TTL_MS), 'reset');
   }
 

@@ -774,7 +774,7 @@ npm run worker         # Terminal 2: BullMQ deployment worker
 
 > GitHub/GitLab OAuth variables are optional — private repo support is disabled if they are absent.
 
-> Email is optional too: without `GMAIL_USER` and `GMAIL_APP_PASSWORD` nothing is emailed, "Forgot password?" sends nothing, and admins copy invite and reset links by hand. Links in emails are built from `NEXT_PUBLIC_APP_URL`, so set it to the public URL. A personal Gmail account sends at most 500 emails a day, so bulk imports of more than 100 users are not emailed.
+> Email is optional too: without `GMAIL_USER`, `GMAIL_APP_PASSWORD` and `NEXT_PUBLIC_APP_URL` (links in emails are built from it, so set it to the public URL) nothing is emailed, "Forgot password?" sends nothing and leaves existing links alone, and admins copy invite and reset links by hand. A personal Gmail account sends at most 500 emails a day, so bulk imports of more than 100 users are not emailed, and forgot-password emails stop for the day after 200.
 
 ---
 

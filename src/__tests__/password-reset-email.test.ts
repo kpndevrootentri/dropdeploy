@@ -1,8 +1,8 @@
-jest.mock('@/lib/email', () => ({ sendEmail: jest.fn(async () => true) }));
+jest.mock('@/lib/email', () => ({ sendEmail: jest.fn(async () => true), isEmailConfigured: jest.fn(() => true) }));
 // A trailing slash, to check the link does not come out as `//invite`.
 jest.mock('@/lib/config', () => ({ getConfig: () => ({ NEXT_PUBLIC_APP_URL: 'https://app.example.com/' }) }));
 
-import { sendEmail } from '@/lib/email';
+import { isEmailConfigured, sendEmail } from '@/lib/email';
 import { InviteService, RESET_TTL_MS, hashInviteToken } from '@/services/invite/invite.service';
 import type { IInviteRepository } from '@/repositories/invite.repository';
 import type { IUserRepository } from '@/repositories/user.repository';
@@ -16,7 +16,10 @@ function setup(user: { id: string; email: string; suspendedAt: Date | null } | n
   return { service, invites };
 }
 
-beforeEach(() => jest.mocked(sendEmail).mockClear());
+beforeEach(() => {
+  jest.mocked(sendEmail).mockClear();
+  jest.mocked(isEmailConfigured).mockReturnValue(true);
+});
 
 describe('InviteService.requestReset', () => {
   it('emails a one-hour, single-use link built from NEXT_PUBLIC_APP_URL', async () => {
@@ -41,6 +44,14 @@ describe('InviteService.requestReset', () => {
       await service.requestReset('gone@entri.me');
       expect(invites.replaceUnused).not.toHaveBeenCalled();
     }
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('issues no link when email is off, so pending links keep working', async () => {
+    jest.mocked(isEmailConfigured).mockReturnValue(false);
+    const { service, invites } = setup({ id: 'u3', email: 'new@entri.me', suspendedAt: null });
+    await service.requestReset('new@entri.me');
+    expect(invites.replaceUnused).not.toHaveBeenCalled();
     expect(sendEmail).not.toHaveBeenCalled();
   });
 });

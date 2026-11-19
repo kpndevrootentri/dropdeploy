@@ -6,10 +6,10 @@ const log = createLogger('email');
 
 let transport: Transporter | undefined;
 
-/** Whether GMAIL_USER and GMAIL_APP_PASSWORD are both set. */
+/** Whether password links can be emailed: GMAIL_USER, GMAIL_APP_PASSWORD and NEXT_PUBLIC_APP_URL (to build the link) are set. */
 export function isEmailConfigured(): boolean {
-  const { GMAIL_USER, GMAIL_APP_PASSWORD } = getConfig();
-  return !!GMAIL_USER && !!GMAIL_APP_PASSWORD;
+  const { GMAIL_USER, GMAIL_APP_PASSWORD, NEXT_PUBLIC_APP_URL } = getConfig();
+  return !!GMAIL_USER && !!GMAIL_APP_PASSWORD && !!NEXT_PUBLIC_APP_URL;
 }
 
 /**

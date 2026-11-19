@@ -16,6 +16,7 @@ import {
 import { Eye, EyeOff, KeyRound, Gauge, ShieldCheck, ShieldOff, Trash2, Loader2, UserX, UserCheck, LogOut, Mail, MailPlus } from 'lucide-react';
 import { UserBulkQuotaBar, SelectAllCheckbox, RowCheckbox } from '@/components/admin/bulk-actions';
 import { CopyValue } from '@/components/ui/copy-value';
+import { adminRequest } from '@/components/admin/admin-request';
 
 interface BulkResult {
   created: { email: string; invitePath: string }[];
@@ -24,11 +25,15 @@ interface BulkResult {
   emailing: boolean;
 }
 
-/** A password link an admin just issued; `kind` decides how long it lasts. */
+/** A reset link an admin just issued. */
 interface PasswordLink {
   url: string;
   emailed: boolean;
-  kind: 'invite' | 'reset';
+}
+
+/** Issues a one-time password link and emails it; the link also comes back, once. */
+function issuePasswordLink(userId: string, kind: 'invite' | 'reset'): Promise<{ invitePath: string; emailed: boolean }> {
+  return adminRequest(`/api/admin/users/${userId}/invite`, { method: 'POST', body: { kind } });
 }
 
 /** Invite links are returned as paths; the admin shares the full URL. */
@@ -131,15 +136,10 @@ export default function AdminUsersPage(): React.ReactElement {
     setResetError(null);
     setResetting(true);
     try {
-      const res = await fetch(`/api/admin/users/${resetTarget.id}/invite`, { method: 'POST' });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setResetError(body?.error?.message ?? body?.error ?? 'Failed to create a reset link');
-        return;
-      }
-      setResetLink({ url: inviteUrl(body.data.invitePath), emailed: !!body.data.emailed, kind: body.data.kind });
-    } catch {
-      setResetError('Network error');
+      const { invitePath, emailed } = await issuePasswordLink(resetTarget.id, 'reset');
+      setResetLink({ url: inviteUrl(invitePath), emailed });
+    } catch (err) {
+      setResetError(err instanceof Error ? err.message : 'Failed to create a reset link');
     } finally {
       setResetting(false);
     }
@@ -263,19 +263,14 @@ export default function AdminUsersPage(): React.ReactElement {
     if (!confirm(`Email ${user.email} a new invite link? Any earlier unused link stops working.`)) return;
     setActing(`${user.id}:invite`);
     try {
-      const res = await fetch(`/api/admin/users/${user.id}/invite`, { method: 'POST' });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(body?.error?.message ?? body?.error ?? 'Failed to create an invite link');
-        return;
-      }
+      const { invitePath, emailed } = await issuePasswordLink(user.id, 'invite');
       setInviteEmail(user.email);
       setInviteError(null);
-      setInviteLink(inviteUrl(body.data.invitePath));
-      setInviteEmailed(!!body.data.emailed);
+      setInviteLink(inviteUrl(invitePath));
+      setInviteEmailed(emailed);
       setOpen(true);
-    } catch {
-      toast.error('Network error');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create an invite link');
     } finally {
       setActing(null);
     }
@@ -651,8 +646,7 @@ export default function AdminUsersPage(): React.ReactElement {
                   {resetLink.emailed
                     ? `Emailed to ${resetTarget?.email}. `
                     : 'Not emailed (email is off or the send failed), so send it to them yourself. '}
-                  Works once and expires in {resetLink.kind === 'invite' ? '7 days' : '1 hour'}. Their current password
-                  keeps working until they use it.
+                  Works once and expires in 1 hour. Any password they have keeps working until they use it.
                 </p>
               </div>
             ) : (

@@ -353,21 +353,25 @@ export class AdminService {
   }
 
   /**
-   * A fresh password link for a user: an invite (7 days) while they have not
-   * chosen a password, e.g. when the first one expired or went to the wrong
-   * person, otherwise a reset link (1 hour). Earlier unused links stop working.
-   * Audited, because the admin sees a link that sets this user's password.
+   * A fresh password link for a user: an invite (7 days), e.g. when the first
+   * one expired or went to the wrong person, or a reset link (1 hour). Earlier
+   * unused links stop working. Audited, because the admin sees a link that sets
+   * this user's password.
    */
   async issuePasswordLink(
     userId: string,
+    kind: PasswordLinkKind,
     actorId: string,
-  ): Promise<{ token: string; email: string; kind: PasswordLinkKind }> {
+  ): Promise<{ token: string; email: string }> {
     const user = await this.userRepo.findById(userId);
     if (!user) throw new NotFoundError('User');
-    const kind: PasswordLinkKind = user.mustResetPassword ? 'invite' : 'reset';
+    // mustResetPassword alone cannot pick the kind: an admin-set password sets it too.
+    if (kind === 'invite' && !user.mustResetPassword) {
+      throw new ValidationError('They already chose a password; send a reset link instead');
+    }
     const token = await this.invites.issue(userId, kind === 'invite' ? INVITE_TTL_MS : RESET_TTL_MS);
     await this.record(actorId, 'USER_PASSWORD_LINK_ISSUED', userTarget(user), { kind });
-    return { token, email: user.email, kind };
+    return { token, email: user.email };
   }
 
   async listAllProjects(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date }[] })[]> {

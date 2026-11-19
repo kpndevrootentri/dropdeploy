@@ -94,24 +94,24 @@ describe('AdminService.inviteUser', () => {
 describe('AdminService.issuePasswordLink', () => {
   it('issues a 7-day invite while the user has not chosen a password, and audits it', async () => {
     const { service, invites, adminActions } = setup([], { pending: { email: 'new@entri.me', mustResetPassword: true } });
-    await expect(service.issuePasswordLink('pending', 'admin')).resolves.toEqual({
+    await expect(service.issuePasswordLink('pending', 'invite', 'admin')).resolves.toEqual({
       token: 'token-for-pending',
       email: 'new@entri.me',
-      kind: 'invite',
     });
     expect(invites.issue).toHaveBeenCalledWith('pending', INVITE_TTL_MS);
     expect(adminActions.create).toHaveBeenCalledWith(expect.objectContaining({ action: 'USER_PASSWORD_LINK_ISSUED' }));
   });
 
-  it('issues a 1-hour reset link once the user has chosen their own password', async () => {
-    const { service, invites } = setup([], { active: { email: 'old@entri.me', mustResetPassword: false } });
-    await expect(service.issuePasswordLink('active', 'admin')).resolves.toMatchObject({ kind: 'reset' });
-    expect(invites.issue).toHaveBeenCalledWith('active', RESET_TTL_MS);
+  it('issues a 1-hour reset link when asked, even on an admin-set password', async () => {
+    const { service, invites } = setup([], { temp: { email: 'old@entri.me', mustResetPassword: true } });
+    await service.issuePasswordLink('temp', 'reset', 'admin');
+    expect(invites.issue).toHaveBeenCalledWith('temp', RESET_TTL_MS);
   });
 
-  it('refuses unknown users', async () => {
-    const { service, invites } = setup([]);
-    await expect(service.issuePasswordLink('ghost', 'admin')).rejects.toThrow(/not found/i);
+  it('refuses an invite for a user who already chose a password, and unknown users', async () => {
+    const { service, invites } = setup([], { active: { email: 'old@entri.me', mustResetPassword: false } });
+    await expect(service.issuePasswordLink('active', 'invite', 'admin')).rejects.toThrow(/already chose a password/);
+    await expect(service.issuePasswordLink('ghost', 'reset', 'admin')).rejects.toThrow(/not found/i);
     expect(invites.issue).not.toHaveBeenCalled();
   });
 });

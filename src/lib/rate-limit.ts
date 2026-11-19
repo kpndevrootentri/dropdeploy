@@ -163,8 +163,9 @@ const FORGOT_PASSWORD_ACCOUNT_MAX = 3; // 3 reset emails per hour per address
 
 /**
  * Rate limit forgot-password requests — per IP, and per address so nobody can
- * flood one inbox or burn the daily Gmail sending cap. The per-address count
- * includes unknown addresses, so a 429 says nothing about which accounts exist.
+ * flood one inbox. The per-address count includes unknown addresses, so a 429
+ * says nothing about which accounts exist. The daily Gmail cap is guarded by a
+ * separate, global count in InviteService.requestReset.
  */
 export function checkForgotPasswordRateLimit(ip: string, email: string): NextResponse | null {
   return (
