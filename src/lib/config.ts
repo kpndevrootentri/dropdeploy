@@ -66,6 +66,11 @@ const envSchema = z.object({
   GITLAB_CLIENT_ID: z.string().optional(),
   GITLAB_CLIENT_SECRET: z.string().optional(),
   APP_URL: z.string().url().optional(),
+  // Invite and password-reset emails, sent through Gmail SMTP. Off unless both
+  // are set; admins still get a copyable link either way. The password is a
+  // Google App Password (needs 2-Step Verification), not the account password.
+  GMAIL_USER: z.string().email().optional(),
+  GMAIL_APP_PASSWORD: z.string().min(1).optional(),
 
   // Self-service sign-up. Off by default: accounts are created by admins, and
   // emails are never verified, so with this on anyone can register

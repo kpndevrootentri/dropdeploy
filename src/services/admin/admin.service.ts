@@ -16,7 +16,14 @@ import {
   type IAdminActionRepository,
 } from '@/repositories/admin-action.repository';
 import { createLogger } from '@/lib/logger';
-import { inviteService, newInviteToken, type InviteService } from '@/services/invite';
+import {
+  inviteService,
+  newInviteToken,
+  INVITE_TTL_MS,
+  RESET_TTL_MS,
+  type InviteService,
+  type PasswordLinkKind,
+} from '@/services/invite';
 import { getConfig } from '@/lib/config';
 import { planRedeployAll, type RedeployCandidate, type RedeployFilters } from './redeploy-plan';
 
@@ -346,15 +353,25 @@ export class AdminService {
   }
 
   /**
-   * A fresh invite link for a user who has not chosen a password yet, e.g.
-   * when the first one expired or went to the wrong person. Earlier unused
-   * links stop working.
+   * A fresh password link for a user: an invite (7 days), e.g. when the first
+   * one expired or went to the wrong person, or a reset link (1 hour). Earlier
+   * unused links stop working. Audited, because the admin sees a link that sets
+   * this user's password.
    */
-  async reissueInvite(userId: string): Promise<string> {
+  async issuePasswordLink(
+    userId: string,
+    kind: PasswordLinkKind,
+    actorId: string,
+  ): Promise<{ token: string; email: string }> {
     const user = await this.userRepo.findById(userId);
     if (!user) throw new NotFoundError('User');
-    if (!user.mustResetPassword) throw new ConflictError('This user has already chosen a password');
-    return this.invites.issue(userId);
+    // mustResetPassword alone cannot pick the kind: an admin-set password sets it too.
+    if (kind === 'invite' && !user.mustResetPassword) {
+      throw new ValidationError('They already chose a password; send a reset link instead');
+    }
+    const token = await this.invites.issue(userId, kind === 'invite' ? INVITE_TTL_MS : RESET_TTL_MS);
+    await this.record(actorId, 'USER_PASSWORD_LINK_ISSUED', userTarget(user), { kind });
+    return { token, email: user.email };
   }
 
   async listAllProjects(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date }[] })[]> {
