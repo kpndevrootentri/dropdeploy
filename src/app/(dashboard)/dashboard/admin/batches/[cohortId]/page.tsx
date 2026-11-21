@@ -33,6 +33,7 @@ interface Detail {
     archivedAt: string | null;
   };
   members: Member[];
+  projects: Array<{ id: string; name: string; user: { email: string; name: string | null } }>;
 }
 
 type MemberFilter = 'all' | 'students' | 'mentors' | 'left';
@@ -115,13 +116,12 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
 
   if (error) return <p className="text-sm text-destructive" role="alert">{error}</p>;
   if (!detail) return <p className="text-sm text-muted-foreground">Loading…</p>;
-  const { cohort, members } = detail;
+  const { cohort, members, projects } = detail;
   const patch = (body: Record<string, unknown>) => adminRequest(`/api/admin/cohorts/${cohortId}`, { method: 'PATCH', body });
   const stage = batchStage(cohort);
   const joinable = isJoinable(cohort);
   const count = (key: MemberFilter): number => members.filter(MEMBER_FILTERS.find((f) => f.key === key)!.match).length;
   const shown = members.filter(MEMBER_FILTERS.find((f) => f.key === filter)!.match);
-  const projects = members.reduce((sum, m) => sum + m.projectCount, 0);
   const when = timeline(cohort);
   const activeIds = new Set(members.filter((m) => !m.endedAt).map((m) => m.userId));
   // Same rule the server enforces: a password they chose, not suspended, and not already in this batch.
@@ -173,7 +173,7 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Students" value={count('students')} />
         <Stat label="Mentors" value={count('mentors')} />
-        <Stat label="Projects" value={projects} />
+        <Stat label="Projects" value={projects.length} />
         <Stat label={when.label} value={when.value} />
       </div>
 
@@ -259,6 +259,53 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
                       </div>
                     ) : 'Nobody here.'}
                   </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="space-y-3" aria-labelledby="projects-heading">
+        <h3 id="projects-heading" className="text-base font-semibold">Projects</h3>
+        <div className="relative overflow-x-auto rounded-lg border">
+          {/* relative: keeps the sr-only caption inside the scroll box, so phones get no page-wide scroll. */}
+          <table className="w-full text-sm border-collapse">
+            <caption className="sr-only">Projects in {cohort.name}</caption>
+            <thead className="bg-muted/40">
+              <tr className="border-b text-left text-muted-foreground">
+                <th className="px-4 py-2 font-medium">Project</th>
+                <th className="px-4 py-2 font-medium">Owner</th>
+                <th className="w-44 px-4 py-2 text-right font-medium"><span className="sr-only">Action</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {projects.map((p) => (
+                <tr key={p.id} className="border-b last:border-0">
+                  <td className="min-w-40 px-4 py-3 font-medium">{p.name}</td>
+                  <td className="min-w-48 px-4 py-3">
+                    <div>{p.user.name ?? p.user.email}</div>
+                    {p.user.name && <div className="text-xs text-muted-foreground">{p.user.email}</div>}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={acting}
+                      onClick={() => {
+                        if (!confirm(`Remove ${p.name} from ${cohort.name}? Its mentors lose access. The student can add it again unless you end their membership first. To take it out for good: End membership, then Remove from batch.`)) return;
+                        void run(() => adminRequest(`/api/admin/cohorts/${cohortId}/projects/${p.id}`, { method: 'DELETE' }), 'Project removed from batch');
+                      }}
+                      className="text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
+                    >
+                      Remove from batch
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+              {projects.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-4 py-10 text-center text-muted-foreground">No projects in this batch yet.</td>
                 </tr>
               )}
             </tbody>

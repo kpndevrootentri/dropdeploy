@@ -8,7 +8,7 @@ import { handleApiError } from '@/lib/api-error';
 type Ctx = { params: Promise<{ cohortId: string }> };
 
 /**
- * GET /api/admin/cohorts/[cohortId] – the batch, its join code and everyone who was ever in it (contributor only).
+ * GET /api/admin/cohorts/[cohortId] – the batch, its join code, everyone who was ever in it and its projects (contributor only).
  */
 export async function GET(req: NextRequest, { params }: Ctx): Promise<NextResponse<unknown>> {
   try {

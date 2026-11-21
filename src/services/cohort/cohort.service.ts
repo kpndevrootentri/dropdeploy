@@ -6,14 +6,16 @@
  * Where core reads this module (everything to touch if batches are ever removed):
  *   - prisma/schema.prisma: Cohort, CohortMember, User.name, Project.cohortId, PlatformSetting.cohortsEnabled
  *   - ProjectService.create: stamps cohortForNewProject() on new projects
+ *   - POST /api/projects/[id]/cohort: a student adds an older project to their batch (addProject)
  *   - ProjectAccessService.canView: the mentor rule for private sites (canMentorView)
  *   - the tenant proxy route: selects project.cohortId for that check
  *   - POST /api/auth/register: a join code opens sign-up even when it is closed
  *   - GET /api/auth/session: `inCohort`, which shows the Batches menu item
  *   - admin settings (the switch) and the admin layout (the Batches tab)
  *
- * The switch (PlatformSetting.cohortsEnabled) turns off joining, stamping and
- * mentor access. Admins can still see and edit batches while it is off.
+ * The switch (PlatformSetting.cohortsEnabled) turns off joining, stamping, adding
+ * projects and mentor access. Admins can still see and edit batches, and remove
+ * projects from them, while it is off.
  */
 import { randomBytes } from 'crypto';
 import type { Cohort, CohortMember, Prisma } from '@prisma/client';
@@ -51,6 +53,7 @@ export interface CohortViewer {
 export interface CohortDetail {
   cohort: Cohort;
   members: CohortMemberRow[];
+  projects: CohortProjectRow[];
 }
 
 export interface BuildLogView {
@@ -84,7 +87,8 @@ export class CohortService {
   async get(id: string): Promise<CohortDetail> {
     const cohort = await this.repo.findById(id);
     if (!cohort) throw new NotFoundError('Batch');
-    return { cohort, members: await this.repo.listMembers(id) };
+    const [members, projects] = await Promise.all([this.repo.listMembers(id), this.repo.listProjects(id)]);
+    return { cohort, members, projects };
   }
 
   async create(dto: CreateCohortDto, actorId: string): Promise<Cohort> {
@@ -158,6 +162,16 @@ export class CohortService {
     await this.record(actorId, 'COHORT_MEMBERSHIP_ENDED', cohort, { userId, role: member.role });
   }
 
+  /** Admin: takes a project out of the batch. Mentors lose access on their next request. */
+  async removeProject(cohortId: string, projectId: string, actorId: string): Promise<void> {
+    const cohort = await this.repo.findById(cohortId);
+    if (!cohort) throw new NotFoundError('Batch');
+    // Looked up only for the audit row's name; the conditional update refuses a project from another batch.
+    const project = await this.projects.findById(projectId);
+    if (!project || !(await this.repo.removeProject(cohortId, projectId))) throw new NotFoundError('Project');
+    await this.record(actorId, 'COHORT_PROJECT_REMOVED', cohort, { projectId, project: project.name });
+  }
+
   // ── Joining ──────────────────────────────────────────────────────────────
 
   /** What the join page shows before someone signs up or joins. */
@@ -196,7 +210,7 @@ export class CohortService {
 
   /** The batch a project made now belongs to, or null (no batch, or batches are off). */
   async cohortForNewProject(userId: string): Promise<string | null> {
-    return (await this.isEnabled()) ? this.repo.findActiveStudentCohortId(userId) : null;
+    return (await this.studentCohort(userId))?.id ?? null;
   }
 
   /** The mentor rule for private sites: an active mentor of the project's batch may view it. */
@@ -208,6 +222,30 @@ export class CohortService {
 
   async myMemberships(userId: string): Promise<MembershipWithCohort[]> {
     return (await this.isEnabled()) ? this.repo.listActiveMemberships(userId) : [];
+  }
+
+  /**
+   * The batch a student's projects go in, new or added later: their newest-joined active student
+   * membership. Null if they have none or batches are off. The one place this rule lives.
+   */
+  private async studentCohort(userId: string): Promise<Cohort | null> {
+    return (await this.myMemberships(userId)).find((m) => m.role === 'STUDENT')?.cohort ?? null;
+  }
+
+  /**
+   * A student puts an older project of theirs in their batch: the batch a new project would get.
+   * `cohortId` is the batch they confirmed; a mismatch means it changed after the page loaded.
+   * Only an admin can take it out.
+   */
+  async addProject(projectId: string, userId: string, cohortId: string): Promise<Cohort> {
+    const project = await this.projects.findById(projectId);
+    if (!project || project.userId !== userId) throw new NotFoundError('Project');
+    const cohort = await this.studentCohort(userId);
+    if (!cohort) throw new ValidationError('You are not a student in an active batch');
+    if (cohort.id !== cohortId) throw new ConflictError('Your batch changed. Reload the page and try again.');
+    if (!(await this.repo.addProject(projectId, userId, cohort.id))) throw new ConflictError('This project is already in a batch');
+    await this.record(userId, 'COHORT_PROJECT_ADDED', cohort, { projectId, project: project.name });
+    return cohort;
   }
 
   /** Read-only views for mentors (and admins). Nothing here exposes env vars or the terminal. */
