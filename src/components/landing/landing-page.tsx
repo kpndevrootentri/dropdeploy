@@ -666,7 +666,7 @@ export function LandingPage() {
                   <p className="text-zinc-500 pt-2"># log in</p>
                   <p>
                     <span className="text-blue-400">$</span>
-                    <span className="text-zinc-200"> dropdeploy auth login</span>
+                    <span className="text-zinc-200"> entrify auth login</span>
                   </p>
                   <p className="text-zinc-400 pl-2">Email: you@example.com</p>
                   <p className="text-zinc-400 pl-2">Password: ••••••••</p>
@@ -674,7 +674,7 @@ export function LandingPage() {
                   <p className="text-zinc-500 pt-2"># deploy from any repo</p>
                   <p>
                     <span className="text-blue-400">$</span>
-                    <span className="text-zinc-200"> dropdeploy deploy</span>
+                    <span className="text-zinc-200"> entrify deploy</span>
                   </p>
                   <div className="pt-1 space-y-0.5 text-xs">
                     <p className="text-zinc-400">  Checking repository… <span className="text-green-400">✓</span></p>
@@ -686,6 +686,19 @@ export function LandingPage() {
                     <p className="text-green-400 pt-1 font-semibold">✓ Deployed successfully</p>
                     <p className="text-zinc-400">  Live URL → <span className="text-blue-400">https://my-app.entrify.site</span></p>
                   </div>
+                  <p className="text-zinc-500 pt-2"># check, debug and undo</p>
+                  <p>
+                    <span className="text-blue-400">$</span>
+                    <span className="text-zinc-200"> entrify logs --follow</span>
+                  </p>
+                  <p>
+                    <span className="text-blue-400">$</span>
+                    <span className="text-zinc-200"> entrify env set DEBUG=0</span>
+                  </p>
+                  <p>
+                    <span className="text-blue-400">$</span>
+                    <span className="text-zinc-200"> entrify rollback</span>
+                  </p>
                 </div>
               </div>
             </AnimatedSection>
@@ -710,12 +723,12 @@ export function LandingPage() {
                   {
                     icon: Package,
                     title: 'One install, use everywhere',
-                    desc: 'Install globally with npm and the dropdeploy command is available in every project on your machine.',
+                    desc: 'Install globally with npm and the entrify command is available in every project on your machine.',
                   },
                   {
                     icon: Zap,
                     title: 'Auto-detects your framework',
-                    desc: 'No flags needed. The CLI reads your repo and picks the right build pipeline automatically.',
+                    desc: 'No flags needed. The CLI reads your repo and picks the right build pipeline. New repo? entrify deploy --create sets up the project as it deploys.',
                   },
                   {
                     icon: Eye,
@@ -723,9 +736,14 @@ export function LandingPage() {
                     desc: 'Watch every build step in real time — cloning, installing, building, starting — with a live progress bar.',
                   },
                   {
+                    icon: RefreshCw,
+                    title: 'Logs, settings and rollback',
+                    desc: 'Read a failed build with entrify logs, add a missing setting with entrify env set, or go back to the last good version with entrify rollback.',
+                  },
+                  {
                     icon: Lock,
-                    title: 'CI-ready',
-                    desc: 'Set DROPDEPLOY_TOKEN and DROPDEPLOY_URL as environment variables and deploy from any pipeline.',
+                    title: 'Built for CI and AI agents',
+                    desc: 'Set ENTRIFY_TOKEN and ENTRIFY_URL to deploy from any pipeline. Add --json to any command for one machine-readable result and clear exit codes.',
                   },
                 ].map((item) => (
                   <div key={item.title} className="flex gap-4">
@@ -765,6 +783,9 @@ export function LandingPage() {
                   </a>
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground -mt-4">
+                Formerly <code className="font-mono">dropdeploy-cli</code>. The <code className="font-mono">dropdeploy</code> command still works, and your saved login carries over.
+              </p>
             </AnimatedSection>
 
           </div>
