@@ -23,12 +23,15 @@ import {
   User,
   BookOpen,
   Compass,
+  GraduationCap,
 } from 'lucide-react';
 
 interface Session {
   userId: string;
   email: string;
   role?: string;
+  // In a batch as a student or mentor: shows the Batches item.
+  inCohort?: boolean;
 }
 
 function UserAvatar({ email }: { email: string }): React.ReactElement {
@@ -138,6 +141,14 @@ export function DashboardNav(): React.ReactElement {
                 Docs
               </Link>
             </DropdownMenuItem>
+            {session.inCohort && (
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/batches" className="cursor-pointer">
+                  <GraduationCap />
+                  Batches
+                </Link>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem asChild>
               <Link href="/settings" className="cursor-pointer">
                 <Settings />

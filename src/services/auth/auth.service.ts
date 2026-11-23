@@ -67,6 +67,7 @@ export class AuthService {
     const { defaultProjectQuota, defaultDomainQuota } = await this.settings.get();
     const user = await this.userRepo.create({
       email: dto.email,
+      name: dto.name,
       passwordHash,
       projectQuota: defaultProjectQuota,
       domainQuota: defaultDomainQuota,

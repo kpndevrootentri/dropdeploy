@@ -5,7 +5,7 @@ export interface CreateAdminActionData {
   actorId: string;
   actorEmail: string;
   action: string;
-  targetType: 'USER' | 'PROJECT';
+  targetType: 'USER' | 'PROJECT' | 'COHORT';
   targetId: string | null;
   targetLabel: string;
   meta?: Prisma.InputJsonValue;

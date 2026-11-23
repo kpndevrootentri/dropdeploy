@@ -16,6 +16,7 @@ interface Settings {
   signupOpen: boolean;
   bannerMessage: string | null;
   proxyHitRetentionDays: number;
+  cohortsEnabled: boolean;
   publicRegistrationAllowed: boolean;
 }
 
@@ -24,7 +25,7 @@ export default function AdminSettingsPage(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // Number inputs are edited as text so a half-typed value is not coerced to 0.
-  const [form, setForm] = useState({ projectQuota: '', domainQuota: '', retentionDays: '', banner: '', signupOpen: true });
+  const [form, setForm] = useState({ projectQuota: '', domainQuota: '', retentionDays: '', banner: '', signupOpen: true, cohortsEnabled: false });
 
   const apply = (s: Settings): void => {
     setSettings(s);
@@ -34,6 +35,7 @@ export default function AdminSettingsPage(): React.ReactElement {
       retentionDays: String(s.proxyHitRetentionDays),
       banner: s.bannerMessage ?? '',
       signupOpen: s.signupOpen,
+      cohortsEnabled: s.cohortsEnabled,
     });
   };
 
@@ -51,6 +53,7 @@ export default function AdminSettingsPage(): React.ReactElement {
       // The server stores a blank banner as null.
       bannerMessage: form.banner.trim() || null,
       signupOpen: form.signupOpen,
+      cohortsEnabled: form.cohortsEnabled,
     };
     // Only the fields changed here, so another admin's concurrent change to a different field survives.
     const body = Object.fromEntries(Object.entries(edited).filter(([key, value]) => value !== settings[key as keyof typeof edited]));
@@ -105,6 +108,26 @@ export default function AdminSettingsPage(): React.ReactElement {
                   : 'Closed by the server: ALLOW_PUBLIC_REGISTRATION is off. Only whoever runs the server can open sign-up, because emails are not verified.'}
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Batches</CardTitle>
+            <CardDescription>Students join a batch with its link; mentors see their batch&apos;s projects and build logs.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.cohortsEnabled}
+                onChange={(e) => setForm({ ...form, cohortsEnabled: e.target.checked })}
+              />
+              Enable batches
+            </label>
+            <p className="text-xs text-muted-foreground">
+              When off, join links stop working, new projects are not tagged with a batch and mentors lose access. The Batches tab and its data stay.
+            </p>
           </CardContent>
         </Card>
 

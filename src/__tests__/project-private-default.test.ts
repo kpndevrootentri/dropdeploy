@@ -5,11 +5,11 @@ import type { IProjectRepository } from '@/repositories/project.repository';
 import type { IUserRepository } from '@/repositories/user.repository';
 import type { IDockerOps } from '@/lib/docker-ops';
 
-function setup(existingType = 'NODEJS') {
+function setup(existingType = 'NODEJS', cohortId: string | null = null) {
   const projectRepo = {
     findByUserId: jest.fn().mockResolvedValue([]),
     findById: jest.fn().mockResolvedValue({ id: 'p1', userId: 'u1', type: existingType }),
-    create: jest.fn().mockResolvedValue({}),
+    create: jest.fn().mockResolvedValue({ id: 'new' }),
     update: jest.fn().mockResolvedValue({}),
   };
   const userRepo = { findById: jest.fn().mockResolvedValue({ id: 'u1', projectQuota: 5 }) };
@@ -17,6 +17,7 @@ function setup(existingType = 'NODEJS') {
     projectRepo as unknown as IProjectRepository,
     {} as IDockerOps,
     userRepo as unknown as IUserRepository,
+    { cohortForNewProject: jest.fn().mockResolvedValue(cohortId) },
   );
   return { service, projectRepo };
 }
@@ -27,13 +28,25 @@ describe('WordPress projects start private', () => {
   it('creates a WordPress project behind the private-URL gate', async () => {
     const { service, projectRepo } = setup();
     await service.create('u1', { ...base, type: 'WORDPRESS' });
-    expect(projectRepo.create).toHaveBeenCalledWith('u1', expect.objectContaining({ isPrivate: true }));
+    expect(projectRepo.create).toHaveBeenCalledWith('u1', expect.objectContaining({ isPrivate: true }), 5);
   });
 
   it('leaves other project types public', async () => {
     const { service, projectRepo } = setup();
     await service.create('u1', { ...base, type: 'NODEJS' });
-    expect(projectRepo.create).toHaveBeenCalledWith('u1', expect.objectContaining({ isPrivate: false }));
+    expect(projectRepo.create).toHaveBeenCalledWith('u1', expect.objectContaining({ isPrivate: false }), 5);
+  });
+
+  it("stamps the student's batch on the new project", async () => {
+    const { service, projectRepo } = setup('NODEJS', 'c1');
+    await service.create('u1', { ...base, type: 'NODEJS' });
+    expect(projectRepo.create).toHaveBeenCalledWith('u1', expect.objectContaining({ cohortId: 'c1' }), 5);
+  });
+
+  it('reports a full quota when the repository refuses the insert', async () => {
+    const { service, projectRepo } = setup();
+    projectRepo.create.mockResolvedValue(null);
+    await expect(service.create('u1', { ...base, type: 'NODEJS' })).rejects.toThrow('project limit of 5');
   });
 
   it('makes a project private when its type changes to WordPress', async () => {

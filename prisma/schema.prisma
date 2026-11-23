@@ -16,14 +16,14 @@ enum UserRole {
 }
 
 model User {
-  id                String   @id @default(cuid())
-  email             String   @unique
-  passwordHash      String   @map("password_hash")
-  role              UserRole @default(USER)
-  mustResetPassword Boolean  @default(false) @map("must_reset_password")
+  id                String    @id @default(cuid())
+  email             String    @unique
+  passwordHash      String    @map("password_hash")
+  role              UserRole  @default(USER)
+  mustResetPassword Boolean   @default(false) @map("must_reset_password")
   // Embedded in every JWT and checked on every authenticated request. Bumping
   // it revokes all of the user's outstanding sessions and CLI tokens.
-  tokenVersion      Int      @default(0) @map("token_version")
+  tokenVersion      Int       @default(0) @map("token_version")
   // Set by an admin. A suspended user cannot sign in and every session is
   // rejected; their deployed sites keep running.
   suspendedAt       DateTime? @map("suspended_at")
@@ -35,22 +35,75 @@ model User {
   // When the dashboard product tour was offered and answered — declined,
   // skipped or completed. Null means it is still to be offered.
   // Existing accounts: scripts/backfill-tour-seen.sql, once, after db:push.
-  tourSeenAt DateTime? @map("tour_seen_at")
+  tourSeenAt    DateTime? @map("tour_seen_at")
   // When the welcome modal was closed. It is shown only to accounts with no
   // projects. Existing accounts: the same backfill script.
   welcomeSeenAt DateTime? @map("welcome_seen_at")
 
-  projects      Project[]
-  auditLogs     AuditLog[]
-  adminActions  AdminAction[]
-  gitProviders  GitProvider[]
-  projectAccess ProjectAccess[]
-  inviteTokens  InviteToken[]
+  // Display name. Optional: older accounts only have an email.
+  name String?
+
+  projects          Project[]
+  auditLogs         AuditLog[]
+  adminActions      AdminAction[]
+  gitProviders      GitProvider[]
+  projectAccess     ProjectAccess[]
+  inviteTokens      InviteToken[]
+  cohortMemberships CohortMember[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("users")
+}
+
+/// A batch of one course ("FSD Jan 2027"). Students join with its code; mentors
+/// are added by an admin. Being a student or mentor is a membership, not a UserRole.
+/// Everything that reads this is listed at the top of src/services/cohort/cohort.service.ts.
+model Cohort {
+  id         String    @id @default(cuid())
+  name       String
+  slug       String    @unique
+  /// The course, as plain text until a report needs more than its name.
+  program    String
+  startsAt   DateTime  @map("starts_at")
+  endsAt     DateTime  @map("ends_at")
+  /// Random and long, so the join link cannot be guessed. Rotating it kills old links.
+  joinCode   String    @unique @map("join_code")
+  joinOpen   Boolean   @default(true) @map("join_open")
+  /// Archived batches take no new members, stamp no new projects and give mentors no access.
+  archivedAt DateTime? @map("archived_at")
+
+  members  CohortMember[]
+  projects Project[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("cohorts")
+}
+
+enum CohortRole {
+  STUDENT
+  MENTOR
+}
+
+/// One row per person per batch. Leaving sets endedAt instead of deleting the
+/// row, so reports keep the history.
+model CohortMember {
+  id       String     @id @default(cuid())
+  cohortId String     @map("cohort_id")
+  userId   String     @map("user_id")
+  role     CohortRole
+  joinedAt DateTime   @default(now()) @map("joined_at")
+  endedAt  DateTime?  @map("ended_at")
+
+  cohort Cohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([cohortId, userId])
+  @@index([userId])
+  @@map("cohort_members")
 }
 
 /// A one-time link an admin hands a new user so they can choose their own
@@ -96,6 +149,11 @@ model Project {
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // The batch the owner was a student in when the project was created. Kept when
+  // they leave, so the batch's reports do not change; cleared if the batch is deleted.
+  cohortId String? @map("cohort_id")
+  cohort   Cohort? @relation(fields: [cohortId], references: [id], onDelete: SetNull)
+
   deployments          Deployment[]
   environmentVariables EnvironmentVariable[]
   auditLogs            AuditLog[]
@@ -108,6 +166,7 @@ model Project {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([userId])
+  @@index([cohortId])
   @@map("projects")
 }
 
@@ -390,6 +449,9 @@ model PlatformSetting {
   bannerMessage         String?  @map("banner_message") @db.Text
   /// Age past which the admin cleanup deletes proxy hits. At least 7.
   proxyHitRetentionDays Int      @default(90) @map("proxy_hit_retention_days")
+  // Batches (cohorts): joining, the mentor access rule and batch stamping on new
+  // projects. Off by default; the admin batch pages work either way.
+  cohortsEnabled        Boolean  @default(false) @map("cohorts_enabled")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
   @@map("platform_settings")
