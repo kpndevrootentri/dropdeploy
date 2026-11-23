@@ -37,6 +37,15 @@ interface Detail {
 
 type MemberFilter = 'all' | 'students' | 'mentors' | 'left';
 
+/** The fields of GET /api/admin/users the mentor picker uses. */
+interface PlatformUser {
+  id: string;
+  email: string;
+  name: string | null;
+  mustResetPassword: boolean;
+  suspendedAt: string | null;
+}
+
 const DAY_MS = 86_400_000;
 // Further out than this, a date reads better than a day count.
 const COUNTDOWN_MAX_DAYS = 60;
@@ -77,6 +86,8 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
   const [mentorEmail, setMentorEmail] = useState('');
   const [filter, setFilter] = useState<MemberFilter>('all');
   const [dialog, setDialog] = useState<'join' | 'mentor' | null>(null);
+  // Null until loaded, and left null if loading fails: the email field still works on its own.
+  const [platformUsers, setPlatformUsers] = useState<PlatformUser[] | null>(null);
 
   const load = useCallback(() => {
     adminRequest<Detail>(`/api/admin/cohorts/${cohortId}`)
@@ -112,6 +123,17 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
   const shown = members.filter(MEMBER_FILTERS.find((f) => f.key === filter)!.match);
   const projects = members.reduce((sum, m) => sum + m.projectCount, 0);
   const when = timeline(cohort);
+  const activeIds = new Set(members.filter((m) => !m.endedAt).map((m) => m.userId));
+  // Same rule the server enforces: a password they chose, not suspended, and not already in this batch.
+  const candidates = (platformUsers ?? []).filter((u) => !u.mustResetPassword && !u.suspendedAt && !activeIds.has(u.id));
+  const noCandidates = platformUsers !== null && candidates.length === 0;
+
+  const openMentorDialog = (): void => {
+    setDialog('mentor');
+    if (platformUsers === null) {
+      adminRequest<PlatformUser[]>('/api/admin/users').then(setPlatformUsers).catch(() => { /* fall back to typing an email */ });
+    }
+  };
 
   const toggleArchive = (): void => {
     if (!cohort.archivedAt && !confirm(`Archive ${cohort.name}? Nobody can join, new projects are not added to it, and mentors lose access. Sites keep running.`)) return;
@@ -164,7 +186,7 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
               {/* A quiet reminder that the link currently works. */}
               {joinable && <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-green-500" aria-label="open" />}
             </Button>
-            <Button size="sm" onClick={() => setDialog('mentor')}>
+            <Button size="sm" onClick={openMentorDialog}>
               <UserPlus className="mr-1 h-4 w-4" aria-hidden />Add mentor
             </Button>
           </div>
@@ -283,7 +305,7 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
         <DialogContent className="sm:max-w-md">
           <DialogHeader className="mb-4">
             <DialogTitle>Add a mentor</DialogTitle>
-            <DialogDescription>Mentors see this batch&apos;s projects, private sites and build logs, read-only. They need an Entrify account.</DialogDescription>
+            <DialogDescription>Mentors see this batch&apos;s projects, private sites and build logs, read-only. Pick someone with an Entrify account who has set their own password.</DialogDescription>
           </DialogHeader>
           <form
             className="space-y-4"
@@ -295,7 +317,26 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
           >
             <div className="space-y-2">
               <Label htmlFor="mentor-email">Email</Label>
-              <Input id="mentor-email" type="email" required autoFocus placeholder="mentor@entri.me" value={mentorEmail} onChange={(e) => setMentorEmail(e.target.value)} />
+              <Input
+                id="mentor-email"
+                type="email"
+                required
+                autoFocus
+                autoComplete="off"
+                list="mentor-candidates"
+                aria-describedby={noCandidates ? 'mentor-email-hint' : undefined}
+                placeholder="Start typing a name or email"
+                value={mentorEmail}
+                onChange={(e) => setMentorEmail(e.target.value)}
+              />
+              <datalist id="mentor-candidates">
+                {candidates.map((u) => <option key={u.id} value={u.email} label={u.name ?? undefined} />)}
+              </datalist>
+              {noCandidates && (
+                <p id="mentor-email-hint" className="text-xs text-muted-foreground">
+                  Nobody else can be added right now: invited people appear here once they&apos;ve set their password.
+                </p>
+              )}
             </div>
             <DialogFooter className="gap-2">
               <Button type="button" variant="outline" onClick={() => setDialog(null)}>Cancel</Button>

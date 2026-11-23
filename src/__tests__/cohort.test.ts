@@ -23,7 +23,14 @@ const cohort = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function setup(opts: { enabled?: boolean; cohort?: ReturnType<typeof cohort> | null; member?: unknown; mentor?: boolean } = {}) {
+// Every row keeps id and email: error messages interpolate the email.
+const MENTOR_ACCOUNTS: Record<string, { id: string; email: string; mustResetPassword: boolean; suspendedAt: Date | null }> = {
+  'mentor@entri.me': { id: 'm1', email: 'mentor@entri.me', mustResetPassword: false, suspendedAt: null },
+  'invited@entri.me': { id: 'm2', email: 'invited@entri.me', mustResetPassword: true, suspendedAt: null },
+  'suspended@entri.me': { id: 'm3', email: 'suspended@entri.me', mustResetPassword: false, suspendedAt: new Date() },
+};
+
+function setup(opts:{ enabled?: boolean; cohort?: ReturnType<typeof cohort> | null; member?: unknown; mentor?: boolean } = {}) {
   const repo = {
     create: jest.fn(async (data: Record<string, unknown>) => ({ ...cohort(), ...data })),
     update: jest.fn(async (_id: string, data: Record<string, unknown>) => ({ ...cohort(), ...data })),
@@ -42,7 +49,7 @@ function setup(opts: { enabled?: boolean; cohort?: ReturnType<typeof cohort> | n
   };
   const users = {
     findById: jest.fn(async () => ({ id: 'admin', email: 'admin@entri.me' })),
-    findByEmail: jest.fn(async (email: string) => (email === 'mentor@entri.me' ? { id: 'm1', email } : null)),
+    findByEmail: jest.fn(async (email: string) => MENTOR_ACCOUNTS[email] ?? null),
   };
   const projects = { findById: jest.fn(async (id: string) => ({ id, cohortId: id === 'p-other' ? 'c2' : 'c1' })) };
   const deployments = {
@@ -147,6 +154,16 @@ describe('managing batches', () => {
     await expect(studentNow.service.addMentor('c1', 'mentor@entri.me', 'admin')).rejects.toThrow('student in this batch');
 
     await expect(setup().service.addMentor('c1', 'nobody@entri.me', 'admin')).rejects.toThrow('User not found');
+  });
+
+  it.each([
+    ['an invited account that never chose a password', 'invited@entri.me', 'invited@entri.me has not set their own password yet'],
+    ['a suspended account', 'suspended@entri.me', 'suspended@entri.me is suspended'],
+  ])('refuses %s as a mentor', async (_case, email, message) => {
+    const { service, repo, adminActions } = setup();
+    await expect(service.addMentor('c1', email, 'admin')).rejects.toThrow(message);
+    expect(repo.upsertMember).not.toHaveBeenCalled();
+    expect(adminActions.create).not.toHaveBeenCalled();
   });
 
   it('ends a membership instead of deleting it', async () => {
