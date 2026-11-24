@@ -1,4 +1,3 @@
-import type { EmailLog } from '@prisma/client';
 import { emailLogRepository, type IEmailLogRepository } from '@/repositories/email-log.repository';
 import {
   DEFAULT_PLATFORM_SETTINGS,
@@ -12,6 +11,32 @@ import { createLogger } from '@/lib/logger';
 const log = createLogger('email');
 
 export type EmailKind = 'invite' | 'reset' | 'test';
+
+export interface OutgoingEmail {
+  to: string;
+  subject: string;
+  text: string;
+  kind: EmailKind;
+}
+
+export interface TestEmailResult {
+  sent: boolean;
+  error: string | null;
+}
+
+/** A failed attempt as the admin Email page receives it: JSON turns the date into a string. */
+export interface EmailFailure {
+  id: string;
+  kind: string;
+  recipient: string;
+  error: string | null;
+  createdAt: string;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Over a month, so the monthly count stays right; older attempts are deleted. */
+const LOG_RETENTION_DAYS = 90;
+const RECENT_FAILURES_SHOWN = 20;
 
 /** Midnight UTC today and on the 1st of this month: quotas are counted per UTC day and month. */
 function periodStarts(now: Date): { day: Date; month: Date } {
@@ -33,10 +58,12 @@ export interface EmailUsage {
   sent: { today: number; thisMonth: number; dailyLimit: number; monthlyLimit: number };
   resets: { today: number; dailyLimit: number };
   failedToday: number;
-  recentFailures: EmailLog[];
+  recentFailures: EmailFailure[];
 }
 
 export class EmailService {
+  private lastPruned = 0;
+
   constructor(
     private readonly logs: IEmailLogRepository,
     private readonly settings: { get(): Promise<PlatformSettings> },
@@ -50,26 +77,26 @@ export class EmailService {
    * used up, and logs the attempt. Never throws: returns false when it was not
    * sent, so callers can show the link instead.
    */
-  async send(to: string, subject: string, text: string, kind: EmailKind): Promise<boolean> {
+  async send(email: OutgoingEmail): Promise<boolean> {
     if (!isEmailConfigured()) {
-      log.warn('Email is not configured; nothing sent', { missing: missingEmailSettings(), subject });
+      log.warn('Email is not configured; nothing sent', { missing: missingEmailSettings(), subject: email.subject });
       return false;
     }
     const quotaReached = await this.quotaReached();
     if (quotaReached) {
-      log.warn('Email quota reached; nothing sent', { quotaReached, subject });
+      log.warn('Email quota reached; nothing sent', { quotaReached, subject: email.subject });
       // Logged as a failure so the admin Email page shows why the email did not arrive.
-      await this.record({ kind, recipient: to, status: 'failed', error: `${quotaReached} (Admin → Email)` });
+      await this.record({ kind: email.kind, recipient: email.to, status: 'failed', error: `${quotaReached} (Admin → Email)` });
       return false;
     }
-    return (await this.attempt(to, subject, text, kind)) === null;
+    return (await this.attempt(email)) === null;
   }
 
   /** A test email to `to`, whatever the quotas. Returns SES's error when it refuses. */
-  async sendTest(to: string): Promise<{ sent: boolean; error: string | null }> {
+  async sendTest(to: string): Promise<TestEmailResult> {
     if (!isEmailConfigured()) return { sent: false, error: `Not set: ${missingEmailSettings().join(', ')}` };
     const text = `This is a test email from Entrify, sent through Amazon SES (${getConfig().SES_REGION}). Email is working.\n`;
-    const error = await this.attempt(to, 'Entrify test email', text, 'test');
+    const error = await this.attempt({ to, subject: 'Entrify test email', text, kind: 'test' });
     return { sent: error === null, error };
   }
 
@@ -90,7 +117,7 @@ export class EmailService {
       this.logs.count({ status: 'sent', since: month }),
       this.logs.count({ status: 'sent', kind: 'reset', since: day }),
       this.logs.count({ status: 'failed', since: day }),
-      this.logs.recentFailures(20),
+      this.logs.recentFailures(RECENT_FAILURES_SHOWN),
       SES_REGION
         ? this.readSesAccount().then(
             (account) => ({ account, error: null }),
@@ -107,12 +134,18 @@ export class EmailService {
       sent: { today, thisMonth, dailyLimit: settings.emailDailyLimit, monthlyLimit: settings.emailMonthlyLimit },
       resets: { today: resetsToday, dailyLimit: settings.resetEmailsPerDay },
       failedToday,
-      recentFailures,
+      recentFailures: recentFailures.map(({ id, kind, recipient, error, createdAt }) => ({
+        id,
+        kind,
+        recipient,
+        error,
+        createdAt: createdAt.toISOString(),
+      })),
     };
   }
 
   /** Sends through SES and logs the attempt. Returns the error, or null when it was sent. */
-  private async attempt(to: string, subject: string, text: string, kind: EmailKind): Promise<string | null> {
+  private async attempt({ to, subject, text, kind }: OutgoingEmail): Promise<string | null> {
     let error: string | null = null;
     try {
       await this.deliver(to, subject, text);
@@ -124,9 +157,18 @@ export class EmailService {
     return error;
   }
 
-  /** A failed log write is only logged: the email itself was already sent or refused. */
+  /**
+   * A failed log write is only logged: the email itself was already sent or refused.
+   * Also deletes old attempts, at most once a day per process, so email_logs stays small.
+   */
   private async record(entry: Parameters<IEmailLogRepository['create']>[0]): Promise<void> {
     await this.logs.create(entry).catch((err) => log.error('Could not record an email attempt', { error: String(err) }));
+    const now = this.now().getTime();
+    if (now - this.lastPruned < DAY_MS) return;
+    this.lastPruned = now;
+    await this.logs
+      .deleteOlderThan(new Date(now - LOG_RETENTION_DAYS * DAY_MS))
+      .catch((err) => log.error('Could not delete old email attempts', { error: String(err) }));
   }
 
   /** The settings, or the defaults when they cannot be read: sending matters more than the quotas. */

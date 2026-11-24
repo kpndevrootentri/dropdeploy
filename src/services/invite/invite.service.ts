@@ -80,7 +80,7 @@ export class InviteService {
       return false;
     }
     const { subject, body } = EMAILS[kind];
-    return this.email.send(email, subject, body(`${base}${invitePath(token)}`), kind);
+    return this.email.send({ to: email, subject, text: body(`${base}${invitePath(token)}`), kind });
   }
 
   /**

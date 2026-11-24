@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { adminRequest } from '@/components/admin/admin-request';
-import type { EmailUsage } from '@/services/email';
+import type { EmailUsage, TestEmailResult } from '@/services/email';
 import type { SesAccount } from '@/lib/email';
 
 /** The platform settings this page edits; 0 means no limit. */
@@ -36,7 +36,8 @@ function toForm(usage: EmailUsage): Record<QuotaKey, string> {
 const fetchUsage = (): Promise<EmailUsage> => adminRequest<EmailUsage>('/api/admin/email');
 
 function UsageBar({ label, used, limit }: { label: string; used: number; limit: number }): React.ReactElement {
-  const percent = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  // Floor, so the bar turns red only once the limit is actually reached.
+  const percent = limit > 0 ? Math.min(100, Math.floor((used / limit) * 100)) : 0;
   const color = percent >= 100 ? 'bg-destructive' : percent >= 80 ? 'bg-amber-500' : 'bg-primary';
   return (
     <div className="space-y-1">
@@ -146,7 +147,7 @@ export default function AdminEmailPage(): React.ReactElement {
   const sendTest = async (): Promise<void> => {
     setTesting(true);
     try {
-      const result = await adminRequest<{ sent: boolean; error: string | null }>('/api/admin/email/test', { method: 'POST' });
+      const result = await adminRequest<TestEmailResult>('/api/admin/email/test', { method: 'POST' });
       if (result.sent) toast.success('Test email sent. Check your inbox.');
       else toast.error(`Not sent: ${result.error}`);
       await load(false);
@@ -264,7 +265,7 @@ export default function AdminEmailPage(): React.ReactElement {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Recent failures</CardTitle>
-          <CardDescription>The last 20 emails that were not sent: refused by SES, or held back by a quota.</CardDescription>
+          <CardDescription>The latest emails that were not sent: refused by SES, or held back by a quota.</CardDescription>
         </CardHeader>
         <CardContent>
           {usage.recentFailures.length === 0 ? (

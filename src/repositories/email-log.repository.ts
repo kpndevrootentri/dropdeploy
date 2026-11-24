@@ -16,6 +16,8 @@ export interface IEmailLogRepository {
   count(filter: { status: EmailStatus; since: Date; kind?: string }): Promise<number>;
   /** The newest failed attempts, newest first. */
   recentFailures(take: number): Promise<EmailLog[]>;
+  /** Deletes attempts older than the cutoff; returns how many. */
+  deleteOlderThan(cutoff: Date): Promise<number>;
 }
 
 export class EmailLogRepository implements IEmailLogRepository {
@@ -29,6 +31,11 @@ export class EmailLogRepository implements IEmailLogRepository {
 
   async recentFailures(take: number): Promise<EmailLog[]> {
     return prisma.emailLog.findMany({ where: { status: 'failed' }, orderBy: { createdAt: 'desc' }, take });
+  }
+
+  async deleteOlderThan(cutoff: Date): Promise<number> {
+    const { count } = await prisma.emailLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
+    return count;
   }
 }
 

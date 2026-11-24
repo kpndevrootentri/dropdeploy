@@ -4,6 +4,7 @@ jest.mock('@/lib/config', () => ({ getConfig: () => ({ NEXT_PUBLIC_APP_URL: 'htt
 import { InviteService, RESET_TTL_MS, hashInviteToken } from '@/services/invite/invite.service';
 import type { IInviteRepository } from '@/repositories/invite.repository';
 import type { IUserRepository } from '@/repositories/user.repository';
+import type { OutgoingEmail } from '@/services/email';
 
 function setup(user: { id: string; email: string; suspendedAt: Date | null } | null, canSendReset = true) {
   const invites = {
@@ -12,7 +13,7 @@ function setup(user: { id: string; email: string; suspendedAt: Date | null } | n
   };
   const users = { findByEmail: jest.fn(async () => user) };
   const email = {
-    send: jest.fn<Promise<boolean>, [string, string, string, string]>(async () => true),
+    send: jest.fn<Promise<boolean>, [OutgoingEmail]>(async () => true),
     canSendReset: jest.fn(async () => canSendReset),
   };
   const service = new InviteService(invites as unknown as IInviteRepository, users as unknown as IUserRepository, email);
@@ -32,7 +33,7 @@ describe('InviteService.requestReset', () => {
     expect(expiresAt.getTime() - before).toBeGreaterThanOrEqual(RESET_TTL_MS);
     expect(expiresAt.getTime() - before).toBeLessThan(RESET_TTL_MS + 5_000);
 
-    const [to, , text, kind] = email.send.mock.calls[0];
+    const { to, text, kind } = email.send.mock.calls[0][0];
     expect(to).toBe('dev@entri.me');
     expect(kind).toBe('reset');
     const token = /https:\/\/app\.example\.com\/invite\/(\S+)/.exec(text)?.[1];
