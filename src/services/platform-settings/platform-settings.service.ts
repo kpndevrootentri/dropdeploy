@@ -16,6 +16,9 @@ export const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
   bannerMessage: null,
   proxyHitRetentionDays: 90,
   cohortsEnabled: false,
+  emailDailyLimit: 1000,
+  emailMonthlyLimit: 20000,
+  resetEmailsPerDay: 200,
 };
 
 function toSettings(row: PlatformSetting | null): PlatformSettings {

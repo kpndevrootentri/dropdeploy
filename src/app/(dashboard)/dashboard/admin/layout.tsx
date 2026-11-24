@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, FolderGit2, Users, GraduationCap, BarChart2, ScrollText, HeartPulse, Globe, Sparkles, Settings } from 'lucide-react';
+import { LayoutDashboard, FolderGit2, Users, GraduationCap, BarChart2, ScrollText, HeartPulse, Globe, Sparkles, Settings, Mail } from 'lucide-react';
 
 const tabs = [
   { href: '/dashboard/admin',            label: 'Overview',  icon: LayoutDashboard, exact: true  },
@@ -14,6 +14,7 @@ const tabs = [
   { href: '/dashboard/admin/showcase',   label: 'Showcase',  icon: Sparkles,        exact: false },
   { href: '/dashboard/admin/system',     label: 'System',    icon: HeartPulse,      exact: false },
   { href: '/dashboard/admin/audit',      label: 'Audit',     icon: ScrollText,      exact: false },
+  { href: '/dashboard/admin/email',      label: 'Email',     icon: Mail,            exact: false },
   { href: '/dashboard/admin/settings',   label: 'Settings',  icon: Settings,        exact: false },
 ];
 

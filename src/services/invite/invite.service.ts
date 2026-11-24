@@ -4,10 +4,9 @@ import { inviteRepository, type IInviteRepository } from '@/repositories/invite.
 import { userRepository, type IUserRepository } from '@/repositories/user.repository';
 import { ValidationError } from '@/lib/errors';
 import { getConfig } from '@/lib/config';
-import { sendEmail } from '@/lib/email';
 import { createLogger } from '@/lib/logger';
-import { checkRateLimit } from '@/lib/rate-limit';
 import { SALT_ROUNDS } from '@/services/auth/auth.service';
+import { emailService, type EmailService } from '@/services/email';
 
 const log = createLogger('invite');
 
@@ -15,12 +14,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const INVITE_TTL_MS = 7 * DAY_MS;
 /** Short, because anyone can ask for a reset link for any address. */
 export const RESET_TTL_MS = 60 * 60 * 1000;
-
-/**
- * Forgot-password emails a day, across all addresses: caps what a flood from many
- * IPs can send, because SES may pause sending for an account that gets too many complaints.
- */
-const RESET_EMAILS_PER_DAY = 200;
 
 /** One message for every bad token — unknown, expired or used — so the link reveals nothing. */
 export const INVALID_INVITE_MESSAGE = 'This link is invalid, has expired or was already used';
@@ -62,6 +55,7 @@ export class InviteService {
   constructor(
     private readonly invites: IInviteRepository,
     private readonly users: IUserRepository,
+    private readonly email: Pick<EmailService, 'send' | 'canSendReset'> = emailService,
   ) {}
 
   /**
@@ -86,7 +80,7 @@ export class InviteService {
       return false;
     }
     const { subject, body } = EMAILS[kind];
-    return sendEmail(email, subject, body(`${base}${invitePath(token)}`));
+    return this.email.send({ to: email, subject, text: body(`${base}${invitePath(token)}`), kind });
   }
 
   /**
@@ -96,10 +90,11 @@ export class InviteService {
   async requestReset(email: string): Promise<void> {
     const user = await this.users.findByEmail(email.trim());
     if (!user || user.suspendedAt) return;
-    // Counted after the lookup, so only real sends use up the day's allowance.
-    // ponytail: per process, like every limiter in rate-limit.ts; share it (Redis) if Entrify runs more than one instance.
-    if (checkRateLimit('reset-emails-daily', { windowMs: DAY_MS, max: RESET_EMAILS_PER_DAY })) {
-      log.warn('Daily forgot-password email limit reached; nothing sent', { max: RESET_EMAILS_PER_DAY });
+    // A daily cap across all addresses (Admin → Email): a flood from many IPs must not use up the
+    // quota invites need, and SES may pause an account that gets too many complaints.
+    // Checked after the lookup, so only real sends count.
+    if (!(await this.email.canSendReset())) {
+      log.warn('Daily forgot-password email limit reached; nothing sent');
       return;
     }
     // Added, not replacing: anyone can ask for this, so it must not cancel a pending invite or

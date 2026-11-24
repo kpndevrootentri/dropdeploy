@@ -453,9 +453,31 @@ model PlatformSetting {
   // Batches (cohorts): joining, the mentor access rule and batch stamping on new
   // projects. Off by default; the admin batch pages work either way.
   cohortsEnabled        Boolean  @default(false) @map("cohorts_enabled")
+  /// Email quotas, per UTC day and month; 0 means no limit. Entrify's own budget,
+  /// kept below the SES account's quota. Once one is reached nothing more is emailed.
+  emailDailyLimit       Int      @default(1000) @map("email_daily_limit")
+  emailMonthlyLimit     Int      @default(20000) @map("email_monthly_limit")
+  /// Forgot-password emails a UTC day, across all addresses.
+  resetEmailsPerDay     Int      @default(200) @map("reset_emails_per_day")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
   @@map("platform_settings")
+}
+
+/// One attempt to send an email through Amazon SES. Sent rows count against the
+/// email quotas; failed rows are listed on the admin Email page.
+model EmailLog {
+  id        String   @id @default(cuid())
+  /// "invite", "reset" or "test".
+  kind      String
+  recipient String
+  /// "sent" or "failed".
+  status    String
+  error     String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([status, createdAt])
+  @@map("email_logs")
 }
 
 model ProxyHit {

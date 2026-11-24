@@ -17,6 +17,7 @@ import { Eye, EyeOff, KeyRound, Gauge, ShieldCheck, ShieldOff, Trash2, Loader2, 
 import { UserBulkQuotaBar, SelectAllCheckbox, RowCheckbox } from '@/components/admin/bulk-actions';
 import { CopyValue } from '@/components/ui/copy-value';
 import { adminRequest } from '@/components/admin/admin-request';
+import type { PasswordLinkKind } from '@/services/invite';
 
 interface BulkResult {
   created: { email: string; invitePath: string }[];
@@ -32,7 +33,7 @@ interface PasswordLink {
 }
 
 /** Issues a one-time password link and emails it; the link also comes back, once. */
-function issuePasswordLink(userId: string, kind: 'invite' | 'reset'): Promise<{ invitePath: string; emailed: boolean }> {
+function issuePasswordLink(userId: string, kind: PasswordLinkKind): Promise<{ invitePath: string; emailed: boolean }> {
   return adminRequest(`/api/admin/users/${userId}/invite`, { method: 'POST', body: { kind } });
 }
 
@@ -797,7 +798,7 @@ export default function AdminUsersPage(): React.ReactElement {
                 <div className="space-y-1">
                   <p className="text-muted-foreground">
                     {importResult.emailing
-                      ? 'Invite emails are on their way. These links are a backup: shown once, valid for 7 days.'
+                      ? "Invite emails are on their way, as far as today's email quota allows; Admin → Email lists any held back. These links are a backup: shown once, valid for 7 days."
                       : 'Not emailed (email is off). Send each person their own link: shown once, valid for 7 days.'}
                   </p>
                   <CopyValue
