@@ -4,7 +4,7 @@ import { requireContributor } from '@/lib/require-contributor';
 import { adminService } from '@/services/admin';
 import { handleApiError } from '@/lib/api-error';
 import { z } from 'zod';
-import { invitePath } from '@/services/invite';
+import { invitePath, inviteService } from '@/services/invite';
 
 const inviteUserSchema = z.object({
   email: z.string().email(),
@@ -25,8 +25,9 @@ export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
 }
 
 /**
- * POST /api/admin/users – invite a user (contributor only). Returns their
- * one-time invite link path; it is not stored and cannot be fetched again.
+ * POST /api/admin/users – invite a user (contributor only) and email them their
+ * one-time invite link. The link path is also returned once, as a fallback; it
+ * is not stored and cannot be fetched again.
  */
 export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
   try {
@@ -35,7 +36,11 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
     const body = await req.json();
     const { email } = inviteUserSchema.parse(body);
     const { user, inviteToken } = await adminService.inviteUser(email, session.userId);
-    return NextResponse.json({ success: true, data: { user, invitePath: invitePath(inviteToken) } }, { status: 201 });
+    const emailed = await inviteService.sendLink(user.email, inviteToken, 'invite');
+    return NextResponse.json(
+      { success: true, data: { user, invitePath: invitePath(inviteToken), emailed } },
+      { status: 201 },
+    );
   } catch (error) {
     return handleApiError(error);
   }

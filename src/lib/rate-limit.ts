@@ -158,6 +158,29 @@ export function checkLoginRateLimit(ip: string, email: string): NextResponse | n
   );
 }
 
+const FORGOT_PASSWORD_IP_WINDOW_MS = 60 * 60_000; // 1 hour
+const FORGOT_PASSWORD_IP_MAX = 10; // 10 requests per hour per IP
+// Per day, not per hour: hourly, one inbox could get 72 a day, and a few known
+// addresses could use up the global daily cap and stop reset emails for everyone.
+const FORGOT_PASSWORD_ACCOUNT_WINDOW_MS = 24 * 60 * 60_000; // 1 day
+const FORGOT_PASSWORD_ACCOUNT_MAX = 5; // 5 reset emails per day per address
+
+/**
+ * Rate limit forgot-password requests — per IP, and per address so nobody can
+ * flood one inbox. The per-address count includes unknown addresses, so a 429
+ * says nothing about which accounts exist. A separate, global daily count in
+ * InviteService.requestReset caps the total.
+ */
+export function checkForgotPasswordRateLimit(ip: string, email: string): NextResponse | null {
+  return (
+    checkRateLimit(`forgot-ip:${ip}`, { windowMs: FORGOT_PASSWORD_IP_WINDOW_MS, max: FORGOT_PASSWORD_IP_MAX }) ??
+    checkRateLimit(`forgot-account:${email.trim().toLowerCase()}`, {
+      windowMs: FORGOT_PASSWORD_ACCOUNT_WINDOW_MS,
+      max: FORGOT_PASSWORD_ACCOUNT_MAX,
+    })
+  );
+}
+
 /** Rate limit account registration — 5 per hour per IP. */
 export function checkRegisterRateLimit(ip: string): NextResponse | null {
   return checkRateLimit(`register:${ip}`, { windowMs: REGISTER_WINDOW_MS, max: REGISTER_MAX });
