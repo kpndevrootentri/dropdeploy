@@ -13,14 +13,27 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Eye, EyeOff, KeyRound, Gauge, ShieldCheck, ShieldOff, Trash2, Loader2, UserX, UserCheck, LogOut, MailPlus } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Gauge, ShieldCheck, ShieldOff, Trash2, Loader2, UserX, UserCheck, LogOut, Mail, MailPlus } from 'lucide-react';
 import { UserBulkQuotaBar, SelectAllCheckbox, RowCheckbox } from '@/components/admin/bulk-actions';
 import { CopyValue } from '@/components/ui/copy-value';
+import { adminRequest } from '@/components/admin/admin-request';
 
 interface BulkResult {
   created: { email: string; invitePath: string }[];
   skipped: string[];
   invalid: string[];
+  emailing: boolean;
+}
+
+/** A reset link an admin just issued. */
+interface PasswordLink {
+  url: string;
+  emailed: boolean;
+}
+
+/** Issues a one-time password link and emails it; the link also comes back, once. */
+function issuePasswordLink(userId: string, kind: 'invite' | 'reset'): Promise<{ invitePath: string; emailed: boolean }> {
+  return adminRequest(`/api/admin/users/${userId}/invite`, { method: 'POST', body: { kind } });
 }
 
 /** Invite links are returned as paths; the admin shares the full URL. */
@@ -59,6 +72,7 @@ export default function AdminUsersPage(): React.ReactElement {
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteEmailed, setInviteEmailed] = useState(false);
 
   // Bulk import modal
   const [importOpen, setImportOpen] = useState(false);
@@ -75,6 +89,7 @@ export default function AdminUsersPage(): React.ReactElement {
   const [resetting, setResetting] = useState(false);
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
+  const [resetLink, setResetLink] = useState<PasswordLink | null>(null);
 
   // Quota modal
   const [quotaOpen, setQuotaOpen] = useState(false);
@@ -111,7 +126,23 @@ export default function AdminUsersPage(): React.ReactElement {
     setResetError(null);
     setShowResetPassword(false);
     setGeneratedPassword(null);
+    setResetLink(null);
     setResetOpen(true);
+  };
+
+  /** Emails the user a one-time link to choose their own password, and shows it as a fallback. */
+  const handleSendResetLink = async (): Promise<void> => {
+    if (!resetTarget) return;
+    setResetError(null);
+    setResetting(true);
+    try {
+      const { invitePath, emailed } = await issuePasswordLink(resetTarget.id, 'reset');
+      setResetLink({ url: inviteUrl(invitePath), emailed });
+    } catch (err) {
+      setResetError(err instanceof Error ? err.message : 'Failed to create a reset link');
+    } finally {
+      setResetting(false);
+    }
   };
 
   /** Lets the server pick the password, then shows it once so the admin can copy it. */
@@ -229,21 +260,17 @@ export default function AdminUsersPage(): React.ReactElement {
 
   /** Replaces the user's invite link and shows the new one once, in the create dialog. */
   const handleNewInviteLink = async (user: AdminUser): Promise<void> => {
-    if (!confirm(`Create a new invite link for ${user.email}? Any earlier unused link stops working.`)) return;
+    if (!confirm(`Email ${user.email} a new invite link? Any earlier unused link stops working.`)) return;
     setActing(`${user.id}:invite`);
     try {
-      const res = await fetch(`/api/admin/users/${user.id}/invite`, { method: 'POST' });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(body?.error?.message ?? body?.error ?? 'Failed to create an invite link');
-        return;
-      }
+      const { invitePath, emailed } = await issuePasswordLink(user.id, 'invite');
       setInviteEmail(user.email);
       setInviteError(null);
-      setInviteLink(inviteUrl(body.data.invitePath));
+      setInviteLink(inviteUrl(invitePath));
+      setInviteEmailed(emailed);
       setOpen(true);
-    } catch {
-      toast.error('Network error');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create an invite link');
     } finally {
       setActing(null);
     }
@@ -384,6 +411,7 @@ export default function AdminUsersPage(): React.ReactElement {
         return;
       }
       setInviteLink(inviteUrl(body.data.invitePath));
+      setInviteEmailed(!!body.data.emailed);
       load();
     } catch {
       setInviteError('Network error');
@@ -507,7 +535,7 @@ export default function AdminUsersPage(): React.ReactElement {
                         {/* New invite link: only while they have not chosen their own password */}
                         {u.mustResetPassword && (
                           <button
-                            title="New invite link — replaces any earlier unused link"
+                            title="Email a new invite link — replaces any earlier unused link"
                             disabled={!!isActing}
                             onClick={() => void handleNewInviteLink(u)}
                             className="inline-flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-md border border-transparent text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
@@ -611,7 +639,27 @@ export default function AdminUsersPage(): React.ReactElement {
                   session they had is signed out.
                 </p>
               </div>
+            ) : resetLink ? (
+              <div className="space-y-2">
+                <CopyValue label="Password link" value={resetLink.url} emphasis />
+                <p className="text-xs text-muted-foreground">
+                  {resetLink.emailed
+                    ? `Emailed to ${resetTarget?.email}. `
+                    : 'Not emailed (email is off or the send failed), so send it to them yourself. '}
+                  Works once and expires in 1 hour. Any password they have keeps working until they use it.
+                </p>
+              </div>
             ) : (
+            <>
+            <div className="space-y-2">
+              <Button className="w-full" onClick={() => void handleSendResetLink()} disabled={resetting}>
+                <Mail className="w-4 h-4" />
+                Email them a reset link
+              </Button>
+              <p className="text-xs text-muted-foreground text-center">
+                They choose their own password. Or set one for them below.
+              </p>
+            </div>
             <form id="reset-password-form" onSubmit={handleResetPassword} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="reset-password">New password</Label>
@@ -644,10 +692,11 @@ export default function AdminUsersPage(): React.ReactElement {
                 </p>
               )}
             </form>
+            </>
             )}
           </div>
           <DialogFooter className="pt-2 border-t border-border">
-            {generatedPassword ? (
+            {generatedPassword || resetLink ? (
               <Button onClick={() => setResetOpen(false)}>Done</Button>
             ) : (
               <>
@@ -747,7 +796,9 @@ export default function AdminUsersPage(): React.ReactElement {
               {importResult.created.length > 0 && (
                 <div className="space-y-1">
                   <p className="text-muted-foreground">
-                    Invite links — shown once, valid for 7 days. Send each person their own link.
+                    {importResult.emailing
+                      ? 'Invite emails are on their way. These links are a backup: shown once, valid for 7 days.'
+                      : 'Not emailed (email is off). Send each person their own link: shown once, valid for 7 days.'}
                   </p>
                   <CopyValue
                     label="All links (email, link per line)"
@@ -839,7 +890,10 @@ export default function AdminUsersPage(): React.ReactElement {
             <div className="space-y-2">
               <CopyValue label={`Invite link for ${inviteEmail}`} value={inviteLink} emphasis />
               <p className="text-xs text-muted-foreground">
-                Shown once, valid for 7 days, works once, and replaces any earlier link. Send it to them; they choose their own password.
+                {inviteEmailed
+                  ? `Emailed to ${inviteEmail}. `
+                  : 'Not emailed (email is off or the send failed), so send it to them yourself. '}
+                Shown once, valid for 7 days, works once, and replaces any earlier link. They choose their own password.
               </p>
             </div>
           ) : (
@@ -856,7 +910,7 @@ export default function AdminUsersPage(): React.ReactElement {
                   autoComplete="off"
                 />
                 <p className="text-xs text-muted-foreground">
-                  You get a one-time invite link to send them. They can&apos;t sign in until they open it and choose a password.
+                  We email them a one-time invite link, and you get a copy. They can&apos;t sign in until they open it and choose a password.
                 </p>
               </div>
               {inviteError && (

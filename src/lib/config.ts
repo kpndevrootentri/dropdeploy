@@ -66,6 +66,10 @@ const envSchema = z.object({
   GITLAB_CLIENT_ID: z.string().optional(),
   GITLAB_CLIENT_SECRET: z.string().optional(),
   APP_URL: z.string().url().optional(),
+  // Invite and password-reset emails, sent through the Amazon SES API from
+  // noreply@entrify.site. Off while unset; admins still get a copyable link either
+  // way. No keys: the SDK uses the server's IAM role. Empty counts as unset.
+  SES_REGION: z.union([z.literal(''), z.string().regex(/^[a-z]{2}(-[a-z]+)+-\d$/, 'SES_REGION must be an AWS region like ap-south-1')]).optional(),
 
   // Self-service sign-up. Off by default: accounts are created by admins, and
   // emails are never verified, so with this on anyone can register

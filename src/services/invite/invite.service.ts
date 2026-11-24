@@ -3,24 +3,57 @@ import * as bcrypt from 'bcryptjs';
 import { inviteRepository, type IInviteRepository } from '@/repositories/invite.repository';
 import { userRepository, type IUserRepository } from '@/repositories/user.repository';
 import { ValidationError } from '@/lib/errors';
+import { getConfig } from '@/lib/config';
+import { sendEmail } from '@/lib/email';
+import { createLogger } from '@/lib/logger';
+import { checkRateLimit } from '@/lib/rate-limit';
 import { SALT_ROUNDS } from '@/services/auth/auth.service';
 
-export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const log = createLogger('invite');
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const INVITE_TTL_MS = 7 * DAY_MS;
+/** Short, because anyone can ask for a reset link for any address. */
+export const RESET_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * Forgot-password emails a day, across all addresses: caps what a flood from many
+ * IPs can send, because SES may pause sending for an account that gets too many complaints.
+ */
+const RESET_EMAILS_PER_DAY = 200;
 
 /** One message for every bad token — unknown, expired or used — so the link reveals nothing. */
-export const INVALID_INVITE_MESSAGE = 'This invite link is invalid, has expired or was already used';
+export const INVALID_INVITE_MESSAGE = 'This link is invalid, has expired or was already used';
+
+/** An invite (new user, 7 days) or a password reset (1 hour); both open the same page. */
+export type PasswordLinkKind = 'invite' | 'reset';
+
+const EMAILS: Record<PasswordLinkKind, { subject: string; body: (url: string) => string }> = {
+  invite: {
+    subject: 'You are invited to Entrify',
+    body: (url) =>
+      `You have been invited to Entrify.\n\nChoose your password here. The link works once and expires in ${INVITE_TTL_MS / DAY_MS} days:\n${url}\n`,
+  },
+  reset: {
+    subject: 'Reset your Entrify password',
+    body: (url) =>
+      `We got a request to reset the password for your Entrify account.\n\n` +
+      `Choose a new password here. The link works once and expires in ${RESET_TTL_MS / 60_000} minutes:\n${url}\n\n` +
+      `If you did not ask for this, ignore this email. Your password stays the same.\n`,
+  },
+};
 
 export function hashInviteToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
 /** A fresh token: the raw value is shown to the admin once; only its hash and expiry are stored. */
-export function newInviteToken(): { token: string; tokenHash: string; expiresAt: Date } {
+export function newInviteToken(ttlMs = INVITE_TTL_MS): { token: string; tokenHash: string; expiresAt: Date } {
   const token = randomBytes(32).toString('base64url');
-  return { token, tokenHash: hashInviteToken(token), expiresAt: new Date(Date.now() + INVITE_TTL_MS) };
+  return { token, tokenHash: hashInviteToken(token), expiresAt: new Date(Date.now() + ttlMs) };
 }
 
-/** The page a new user opens to choose their password. */
+/** The page a user opens to choose their password, from an invite or a reset link. */
 export function invitePath(token: string): string {
   return `/invite/${token}`;
 }
@@ -35,14 +68,50 @@ export class InviteService {
    * A new link for an existing user; any earlier unused link stops working.
    * Returns the raw token. Only its hash is stored, so it cannot be shown again.
    */
-  async issue(userId: string): Promise<string> {
-    const { token, tokenHash, expiresAt } = newInviteToken();
+  async issue(userId: string, ttlMs = INVITE_TTL_MS): Promise<string> {
+    const { token, tokenHash, expiresAt } = newInviteToken(ttlMs);
     await this.invites.replaceUnused({ userId, tokenHash, expiresAt });
     return token;
   }
 
   /**
-   * Sets the invited user's password, once. setPassword also clears
+   * Emails a password link. Never throws: returns whether it was sent. The URL
+   * comes from NEXT_PUBLIC_APP_URL, never from the request, so a forged Host
+   * header cannot point the link at another site.
+   */
+  async sendLink(email: string, token: string, kind: PasswordLinkKind): Promise<boolean> {
+    const base = getConfig().NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '');
+    if (!base) {
+      log.warn('NEXT_PUBLIC_APP_URL is not set, so no link can be built; nothing sent');
+      return false;
+    }
+    const { subject, body } = EMAILS[kind];
+    return sendEmail(email, subject, body(`${base}${invitePath(token)}`));
+  }
+
+  /**
+   * Forgot password: emails a 1-hour reset link when the address belongs to an
+   * account that is not suspended, and quietly does nothing otherwise.
+   */
+  async requestReset(email: string): Promise<void> {
+    const user = await this.users.findByEmail(email.trim());
+    if (!user || user.suspendedAt) return;
+    // Counted after the lookup, so only real sends use up the day's allowance.
+    // ponytail: per process, like every limiter in rate-limit.ts; share it (Redis) if Entrify runs more than one instance.
+    if (checkRateLimit('reset-emails-daily', { windowMs: DAY_MS, max: RESET_EMAILS_PER_DAY })) {
+      log.warn('Daily forgot-password email limit reached; nothing sent', { max: RESET_EMAILS_PER_DAY });
+      return;
+    }
+    // Stored only once the email is sent: storing cancels the user's other unused links,
+    // so a failed send must leave a pending invite working.
+    const { token, tokenHash, expiresAt } = newInviteToken(RESET_TTL_MS);
+    if (await this.sendLink(user.email, token, 'reset')) {
+      await this.invites.replaceUnused({ userId: user.id, tokenHash, expiresAt });
+    }
+  }
+
+  /**
+   * Sets the user's password from an invite or reset link, once. setPassword also clears
    * mustResetPassword and signs out any other session.
    */
   async accept(token: string, password: string): Promise<void> {

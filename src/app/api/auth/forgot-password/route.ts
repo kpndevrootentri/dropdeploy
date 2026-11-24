@@ -1,0 +1,31 @@
+import { NextRequest, NextResponse, after } from 'next/server';
+import { z } from 'zod';
+import { inviteService } from '@/services/invite';
+import { handleApiError } from '@/lib/api-error';
+import { checkForgotPasswordRateLimit, getClientIp } from '@/lib/rate-limit';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('forgot-password');
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email().max(254),
+});
+
+/**
+ * POST /api/auth/forgot-password – email a 1-hour password reset link. Public.
+ * Answers the same for every address, and does the lookup and the send after
+ * the response, so neither the reply nor its timing reveals which accounts exist.
+ */
+export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
+  try {
+    const { email } = forgotPasswordSchema.parse(await req.json());
+    const limited = checkForgotPasswordRateLimit(getClientIp(req), email);
+    if (limited) return limited;
+    after(() =>
+      inviteService.requestReset(email).catch((err) => log.error('Password reset request failed', { error: String(err) })),
+    );
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
