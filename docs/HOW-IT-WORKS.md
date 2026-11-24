@@ -246,6 +246,16 @@ The project detail page has **four tabs**:
 
 The page is indexed by search engines via the dynamic `/sitemap.xml` (Next.js `sitemap.ts`). `/robots.txt` allows `/` and `/explore` while blocking `/api/`, `/dashboard/`, and auth routes.
 
+### 4.6 Batches: adding students
+
+Students join a batch with its join link, or an admin or a mentor of the batch adds them by email (Admin → Batches → a batch, or the mentor's batch page; up to 100 emails a request, 20 requests an hour). Each mentor may also invite at most 200 people a day, whether or not email is on, which also caps the accounts they create: invite emails share the platform's daily email quota (Admin → Email) with password resets and admin invites, so one mentor must not be able to use it up. Only people actually invited count, not existing accounts or invalid entries; a request is refused only once the 200 are used up, so one request can go over by up to 99. Admins have no such limit.
+
+- **No account:** an invited account is created and added as a student, in one transaction. Admins always get the invite links; mentors get them only while email is off, because whoever opens a link first sets the password. When email is on, the invites are also emailed after the response.
+- **Existing account:** admins add it (or bring back an ended membership). Mentors cannot: they would read that person's future projects, so the reply says to send the join link (while joining is open) or ask an admin.
+- **Skipped:** invalid emails, current students and mentors of the batch, and (admins) suspended accounts. An account that someone else registers or changes while the request runs is skipped too; only real changes are listed as added. Archived batches refuse the whole request.
+
+Mentors also see the join link while joining is open, and their students, marked "Hasn't set a password" until they accept their invite or replace a password an admin set. Every add is in the audit log as `COHORT_STUDENTS_ADDED`, with emails only.
+
 ---
 
 ## 5. Deployment Pipeline
@@ -617,6 +627,8 @@ flowchart LR
 | `GET` | `/api/projects/:id/analytics` | Project traffic analytics (14-day hits, device breakdown) |
 | `GET` | `/api/projects/:id/showcase` | Get showcase config |
 | `POST` | `/api/projects/:id/showcase` | Create / update showcase |
+| `GET` | `/api/cohorts/:cohortId` | Mentors of the batch and admins: the batch, its join link while open, and its students |
+| `POST` | `/api/cohorts/:cohortId/students` | Mentors of the batch and admins: add students by email (`{ emails }`, up to 100); see 4.6 |
 | `POST` | `/api/analytics/event` | Fire-and-forget platform event (signup, deploy_triggered, etc.) |
 | `GET` | `/api/onboarding/tour` | Whether the dashboard tour was already offered and answered |
 | `POST` | `/api/onboarding/tour` | Record how the tour ended (saves "seen"); 10/min per user |

@@ -3,14 +3,15 @@
 import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { Archive, ArchiveRestore, ArrowLeft, FolderGit2, Link2, RefreshCw, UserPlus } from 'lucide-react';
+import { Archive, ArchiveRestore, ArrowLeft, FolderGit2, Link2, RefreshCw, UserPlus, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CopyValue } from '@/components/ui/copy-value';
 import { adminRequest } from '@/components/admin/admin-request';
-import { JoiningPill, RolePill, StagePill, batchStage, formatDay, isJoinable } from '@/components/admin/batch-status';
+import { JoiningPill, NoPasswordPill, RolePill, StagePill, batchStage, formatDay, isJoinable } from '@/components/admin/batch-status';
+import { AddStudentsDialog } from '@/components/features/add-students-dialog';
 
 interface Member {
   userId: string;
@@ -18,6 +19,7 @@ interface Member {
   joinedAt: string;
   endedAt: string | null;
   projectCount: number;
+  passwordSet: boolean;
   user: { email: string; name: string | null };
 }
 
@@ -86,17 +88,20 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
   const [acting, setActing] = useState(false);
   const [mentorEmail, setMentorEmail] = useState('');
   const [filter, setFilter] = useState<MemberFilter>('all');
-  const [dialog, setDialog] = useState<'join' | 'mentor' | null>(null);
+  const [dialog, setDialog] = useState<'join' | 'mentor' | 'students' | null>(null);
   // Null until loaded, and left null if loading fails: the email field still works on its own.
   const [platformUsers, setPlatformUsers] = useState<PlatformUser[] | null>(null);
 
-  const load = useCallback(() => {
-    adminRequest<Detail>(`/api/admin/cohorts/${cohortId}`)
-      .then((d) => { setDetail(d); setError(null); })
-      .catch((e: Error) => setError(e.message));
-  }, [cohortId]);
+  const load = useCallback(() => adminRequest<Detail>(`/api/admin/cohorts/${cohortId}`).then(setDetail), [cohortId]);
 
-  useEffect(load, [load]);
+  useEffect(() => {
+    load().catch((e: Error) => setError(e.message));
+  }, [load]);
+
+  // After an action the page stays, with any open dialog (and its one-time links); a failed reload is only reported.
+  const reload = (): void => {
+    load().catch((e: Error) => toast.error(e.message));
+  };
 
   // Resolves to whether the action worked; errors are shown as a toast.
   const run = async (fn: () => Promise<unknown>, done: string): Promise<boolean> => {
@@ -104,7 +109,7 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
     try {
       await fn();
       toast.success(done);
-      load();
+      reload();
       return true;
     } catch (e) {
       toast.error((e as Error).message);
@@ -186,9 +191,14 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
               {/* A quiet reminder that the link currently works. */}
               {joinable && <span className="ml-1.5 h-1.5 w-1.5 rounded-full bg-green-500" aria-label="open" />}
             </Button>
-            <Button size="sm" onClick={openMentorDialog}>
+            <Button variant="outline" size="sm" onClick={openMentorDialog}>
               <UserPlus className="mr-1 h-4 w-4" aria-hidden />Add mentor
             </Button>
+            {!cohort.archivedAt && (
+              <Button size="sm" onClick={() => setDialog('students')}>
+                <Users className="mr-1 h-4 w-4" aria-hidden />Add students
+              </Button>
+            )}
           </div>
         </div>
 
@@ -223,7 +233,10 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
               {shown.map((m) => (
                 <tr key={m.userId} className={`border-b last:border-0 ${m.endedAt ? 'text-muted-foreground' : ''}`}>
                   <td className="min-w-48 px-4 py-3">
-                    <div className="font-medium">{m.user.name ?? m.user.email}</div>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="font-medium">{m.user.name ?? m.user.email}</span>
+                      {!m.passwordSet && <NoPasswordPill />}
+                    </div>
                     {m.user.name && <div className="text-xs text-muted-foreground">{m.user.email}</div>}
                   </td>
                   <td className="px-4 py-3"><RolePill role={m.role} /></td>
@@ -255,7 +268,12 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
                     {members.length === 0 ? (
                       <div className="space-y-3">
                         <p>Nobody has joined yet.</p>
-                        <Button variant="outline" size="sm" onClick={() => setDialog('join')}><Link2 className="mr-1 h-4 w-4" aria-hidden />Share join link</Button>
+                        <div className="flex flex-wrap justify-center gap-2">
+                          <Button variant="outline" size="sm" onClick={() => setDialog('join')}><Link2 className="mr-1 h-4 w-4" aria-hidden />Share join link</Button>
+                          {!cohort.archivedAt && (
+                            <Button variant="outline" size="sm" onClick={() => setDialog('students')}><Users className="mr-1 h-4 w-4" aria-hidden />Add students</Button>
+                          )}
+                        </div>
                       </div>
                     ) : 'Nobody here.'}
                   </td>
@@ -347,6 +365,13 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AddStudentsDialog
+        cohortId={cohortId}
+        open={dialog === 'students'}
+        onOpenChange={(open) => setDialog(open ? 'students' : null)}
+        onDone={reload}
+      />
 
       <Dialog open={dialog === 'mentor'} onOpenChange={(open) => setDialog(open ? 'mentor' : null)}>
         <DialogContent className="sm:max-w-md">

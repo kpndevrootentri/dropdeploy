@@ -1,10 +1,11 @@
 import type { Cohort, CohortMember, CohortRole, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { userRepository, type NewInvite, type NewUserQuotas } from '@/repositories/user.repository';
 
 export type CohortWithCounts = Cohort & { _count: { members: number; projects: number } };
 
 export type CohortMemberRow = CohortMember & {
-  user: { id: string; email: string; name: string | null };
+  user: { id: string; email: string; name: string | null; mustResetPassword: boolean };
   /** This person's projects in this batch, made in it or added later. */
   projectCount: number;
 };
@@ -19,6 +20,31 @@ export interface CohortProjectRow {
   isPrivate: boolean;
   user: { id: string; email: string; name: string | null };
   deployments: Array<{ id: string; status: string; subdomain: string | null; containerPort: number | null; createdAt: Date }>;
+}
+
+/** An account, and its membership in one batch: active, ended, or null if never in it. */
+export interface CohortAccount {
+  id: string;
+  email: string;
+  suspendedAt: Date | null;
+  membership: { role: CohortRole; endedAt: Date | null } | null;
+}
+
+export interface NewStudents {
+  /** Accounts that exist and are not active members: added, or brought back if their membership ended. */
+  existingUserIds: string[];
+  /** Emails with no account: each gets an invited account. */
+  invites: (NewInvite & { email: string })[];
+  /** Used only when there are invites. */
+  passwordHash: string;
+  quotas: NewUserQuotas;
+}
+
+export interface AddedStudents {
+  /** Accounts created for invites; an email registered by someone else meanwhile is missing. */
+  created: { id: string; email: string }[];
+  /** Everyone whose membership this call inserted or brought back. */
+  addedUserIds: string[];
 }
 
 export interface ICohortRepository {
@@ -44,6 +70,13 @@ export interface ICohortRepository {
   addProject(projectId: string, userId: string, cohortId: string): Promise<boolean>;
   /** Takes the project out of this batch. False if it was not in it. */
   removeProject(cohortId: string, projectId: string): Promise<boolean>;
+  /** The accounts with these (lowercase) emails, each with its membership in this batch. */
+  findAccounts(cohortId: string, emails: string[]): Promise<CohortAccount[]>;
+  /**
+   * In one transaction: creates the invited accounts with their invites, and makes them and the
+   * existing accounts students. Active memberships are never changed.
+   */
+  addStudents(cohortId: string, students: NewStudents): Promise<AddedStudents>;
 }
 
 /** Membership that still counts: not ended, and the batch is not archived. */
@@ -81,7 +114,7 @@ export class CohortRepository implements ICohortRepository {
     const [members, counts] = await Promise.all([
       prisma.cohortMember.findMany({
         where: { cohortId },
-        include: { user: { select: { id: true, email: true, name: true } } },
+        include: { user: { select: { id: true, email: true, name: true, mustResetPassword: true } } },
         orderBy: [{ endedAt: { sort: 'asc', nulls: 'first' } }, { role: 'desc' }, { joinedAt: 'asc' }],
       }),
       prisma.project.groupBy({ by: ['userId'], where: { cohortId }, _count: { _all: true } }),
@@ -147,6 +180,34 @@ export class CohortRepository implements ICohortRepository {
   async removeProject(cohortId: string, projectId: string): Promise<boolean> {
     const { count } = await prisma.project.updateMany({ where: { id: projectId, cohortId }, data: { cohortId: null } });
     return count > 0;
+  }
+
+  async findAccounts(cohortId: string, emails: string[]): Promise<CohortAccount[]> {
+    const users = await prisma.user.findMany({
+      where: { email: { in: emails } },
+      select: { id: true, email: true, suspendedAt: true, cohortMemberships: { where: { cohortId }, select: { role: true, endedAt: true } } },
+    });
+    return users.map(({ cohortMemberships, ...user }) => ({ ...user, membership: cohortMemberships[0] ?? null }));
+  }
+
+  async addStudents(cohortId: string, { existingUserIds, invites, passwordHash, quotas }: NewStudents): Promise<AddedStudents> {
+    return prisma.$transaction(async (tx) => {
+      const created = invites.length ? await userRepository.createMany(invites, passwordHash, quotas, tx) : [];
+      const inserted = await tx.cohortMember.createManyAndReturn({
+        data: [...existingUserIds, ...created.map((u) => u.id)].map((userId) => ({ cohortId, userId, role: 'STUDENT' as const })),
+        skipDuplicates: true,
+        select: { userId: true },
+      });
+      // Only ended rows: someone made a mentor a moment ago must not be turned into a student.
+      const ended = { cohortId, endedAt: { not: null } } satisfies Prisma.CohortMemberWhereInput;
+      // ponytail: a row someone else revives between this read and the update below is still reported as added; switch to a raw UPDATE … RETURNING if audit rows must be exact.
+      const revived = await tx.cohortMember.findMany({ where: { ...ended, userId: { in: existingUserIds } }, select: { userId: true } });
+      await tx.cohortMember.updateMany({
+        where: { ...ended, userId: { in: revived.map((r) => r.userId) } },
+        data: { role: 'STUDENT', endedAt: null },
+      });
+      return { created, addedUserIds: [...inserted, ...revived].map((r) => r.userId) };
+    });
   }
 }
 

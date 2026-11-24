@@ -1,6 +1,5 @@
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcryptjs';
-import { z } from 'zod';
 import type { User, UserRole, Project, Prisma, AdminAction } from '@prisma/client';
 import type { IUserRepository, NewUserQuotas } from '@/repositories/user.repository';
 import { userRepository } from '@/repositories/user.repository';
@@ -19,6 +18,7 @@ import { createLogger } from '@/lib/logger';
 import {
   inviteService,
   newInviteToken,
+  unusablePasswordHash,
   INVITE_TTL_MS,
   RESET_TTL_MS,
   type InviteService,
@@ -28,7 +28,8 @@ import { getConfig } from '@/lib/config';
 import { planRedeployAll, type RedeployCandidate, type RedeployFilters } from './redeploy-plan';
 
 import { SALT_ROUNDS } from '@/services/auth/auth.service';
-import { platformSettingsService, type PlatformSettingsService } from '@/services/platform-settings/platform-settings.service';
+import { newUserQuotas, platformSettingsService, type PlatformSettingsService } from '@/services/platform-settings/platform-settings.service';
+import { splitEmails } from '@/validators/auth.validator';
 
 const log = createLogger('admin');
 
@@ -85,11 +86,6 @@ export interface BulkInviteResult {
   invalid: string[];
 }
 
-/** A hash of random bytes nobody ever sees: the account cannot sign in until its invite is accepted. */
-async function unusablePasswordHash(): Promise<string> {
-  return bcrypt.hash(randomBytes(32).toString('hex'), SALT_ROUNDS);
-}
-
 /** A password for an admin to hand over once; the user must replace it at next sign-in. */
 export function generatePassword(): string {
   return randomBytes(12).toString('base64url');
@@ -108,8 +104,7 @@ export class AdminService {
 
   /** Quotas for accounts created now, from the admin-editable platform settings. */
   private async newUserQuotas(): Promise<NewUserQuotas> {
-    const { defaultProjectQuota, defaultDomainQuota } = await this.settings.get();
-    return { projectQuota: defaultProjectQuota, domainQuota: defaultDomainQuota };
+    return newUserQuotas(await this.settings.get());
   }
 
   /**
@@ -326,10 +321,7 @@ export class AdminService {
    * accounts are skipped, never changed.
    */
   async bulkInviteUsers(input: string[], actorId: string): Promise<BulkInviteResult> {
-    const emails = [...new Set(input.map((e) => e.trim().toLowerCase()).filter(Boolean))];
-    const isEmail = (e: string): boolean => z.string().email().safeParse(e).success;
-    const valid = emails.filter(isEmail);
-    const invalid = emails.filter((e) => !isEmail(e));
+    const { valid, invalid } = splitEmails(input);
     // Tokens for emails that turn out to be registered are simply never stored.
     const tokens = new Map(valid.map((email) => [email, newInviteToken()]));
     const users = valid.length

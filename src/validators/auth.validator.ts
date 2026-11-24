@@ -17,5 +17,15 @@ export const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+/**
+ * Trims, lowercases and de-duplicates a list of emails, drops blanks, and splits it into
+ * valid and invalid addresses.
+ */
+export function splitEmails(input: string[]): { valid: string[]; invalid: string[] } {
+  const emails = [...new Set(input.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+  const isEmail = (e: string): boolean => z.string().email().safeParse(e).success;
+  return { valid: emails.filter(isEmail), invalid: emails.filter((e) => !isEmail(e)) };
+}
+
 export type RegisterDto = z.infer<typeof registerSchema>;
 export type LoginDto = z.infer<typeof loginSchema>;

@@ -31,12 +31,13 @@ export interface IUserRepository {
   /**
    * Creates USER accounts that must reset their password, each with its
    * invite, in one transaction; skips emails already registered. Returns the
-   * accounts created.
+   * accounts created. `tx`, when given, runs the writes inside that transaction instead.
    */
   createMany(
     invited: (NewInvite & { email: string })[],
     passwordHash: string,
     quotas?: NewUserQuotas,
+    tx?: Prisma.TransactionClient,
   ): Promise<{ id: string; email: string }[]>;
   /** `tx`, when given, runs the write inside that transaction (see AdminService's last-admin lock). */
   updateRole(id: string, role: UserRole, tx?: Prisma.TransactionClient): Promise<User>;
@@ -91,19 +92,21 @@ export class UserRepository implements IUserRepository {
     invited: (NewInvite & { email: string })[],
     passwordHash: string,
     quotas?: NewUserQuotas,
+    tx?: Prisma.TransactionClient,
   ): Promise<{ id: string; email: string }[]> {
     const invites = new Map(invited.map((i) => [i.email.toLowerCase(), i]));
-    return prisma.$transaction(async (tx) => {
-      const users = await tx.user.createManyAndReturn({
+    const write = async (db: Prisma.TransactionClient): Promise<{ id: string; email: string }[]> => {
+      const users = await db.user.createManyAndReturn({
         data: [...invites.keys()].map((email) => ({ email, passwordHash, mustResetPassword: true, ...quotas })),
         skipDuplicates: true,
         select: { id: true, email: true },
       });
-      await tx.inviteToken.createMany({
+      await db.inviteToken.createMany({
         data: users.map((u) => ({ userId: u.id, tokenHash: invites.get(u.email)!.tokenHash, expiresAt: invites.get(u.email)!.expiresAt })),
       });
       return users;
-    });
+    };
+    return tx ? write(tx) : prisma.$transaction(write);
   }
 
   /** Also revokes the user's sessions, so a demotion takes effect at once. */

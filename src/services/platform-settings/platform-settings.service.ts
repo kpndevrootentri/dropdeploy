@@ -3,6 +3,7 @@ import {
   platformSettingRepository,
   type IPlatformSettingRepository,
 } from '@/repositories/platform-setting.repository';
+import type { NewUserQuotas } from '@/repositories/user.repository';
 import { getConfig } from '@/lib/config';
 import type { UpdatePlatformSettingsDto } from '@/validators/platform-settings.validator';
 
@@ -26,6 +27,11 @@ function toSettings(row: PlatformSetting | null): PlatformSettings {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { id, updatedAt, ...settings } = row;
   return settings;
+}
+
+/** Quotas for accounts created now, from the admin-editable platform settings. */
+export function newUserQuotas(settings: Pick<PlatformSettings, 'defaultProjectQuota' | 'defaultDomainQuota'>): NewUserQuotas {
+  return { projectQuota: settings.defaultProjectQuota, domainQuota: settings.defaultDomainQuota };
 }
 
 export class PlatformSettingsService {

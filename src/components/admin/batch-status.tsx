@@ -1,4 +1,4 @@
-/** Batch status shared by the admin Batches list and a batch's own page. */
+/** Batch status shared by the admin Batches list and a batch's admin and mentor pages. */
 
 export type BatchStage = 'Active' | 'Upcoming' | 'Ended' | 'Archived';
 
@@ -13,13 +13,14 @@ const PILL = 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-med
 const GREEN = 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
 const BLUE = 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
 const GREY = 'bg-muted text-muted-foreground';
+const AMBER = 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
 
 const STAGE_STYLE: Record<BatchStage, string> = { Active: GREEN, Upcoming: BLUE, Ended: GREY, Archived: GREY };
 
 export const formatDay = (iso: string): string =>
   new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
-export function batchStage(batch: BatchDates): BatchStage {
+export function batchStage(batch: Omit<BatchDates, 'joinOpen'>): BatchStage {
   if (batch.archivedAt) return 'Archived';
   const now = Date.now();
   if (new Date(batch.endsAt).getTime() <= now) return 'Ended';
@@ -44,4 +45,9 @@ export function JoiningPill({ open, long = false }: { open: boolean; long?: bool
 
 export function RolePill({ role }: { role: 'STUDENT' | 'MENTOR' }): React.ReactElement {
   return <span className={`${PILL} ${role === 'MENTOR' ? BLUE : GREY}`}>{role === 'MENTOR' ? 'Mentor' : 'Student'}</span>;
+}
+
+/** For an invite nobody accepted yet, and after an admin reset the password. */
+export function NoPasswordPill(): React.ReactElement {
+  return <span className={`${PILL} ${AMBER}`}>Hasn&apos;t set a password</span>;
 }
