@@ -12,6 +12,10 @@ export const updatePlatformSettingsSchema = z
     bannerMessage: z.string().trim().max(500).nullable().transform((v) => v || null),
     proxyHitRetentionDays: z.number().int().min(MIN_PROXY_HIT_RETENTION_DAYS).max(3650),
     cohortsEnabled: z.boolean(),
+    // Email quotas: 0 means no limit.
+    emailDailyLimit: z.number().int().min(0).max(1_000_000),
+    emailMonthlyLimit: z.number().int().min(0).max(10_000_000),
+    resetEmailsPerDay: z.number().int().min(0).max(1_000_000),
   })
   .partial();
 

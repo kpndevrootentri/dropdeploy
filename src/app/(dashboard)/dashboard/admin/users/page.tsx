@@ -797,7 +797,7 @@ export default function AdminUsersPage(): React.ReactElement {
                 <div className="space-y-1">
                   <p className="text-muted-foreground">
                     {importResult.emailing
-                      ? 'Invite emails are on their way. These links are a backup: shown once, valid for 7 days.'
+                      ? "Invite emails are on their way, as far as today's email quota allows; Admin → Email lists any held back. These links are a backup: shown once, valid for 7 days."
                       : 'Not emailed (email is off). Send each person their own link: shown once, valid for 7 days.'}
                   </p>
                   <CopyValue
