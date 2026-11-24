@@ -773,7 +773,7 @@ npm run worker         # Terminal 2: BullMQ deployment worker
 
 > GitHub/GitLab OAuth variables are optional — private repo support is disabled if they are absent.
 
-> Email is optional too: without `SES_REGION` and `NEXT_PUBLIC_APP_URL` (links in emails are built from it, so set it to the public URL) nothing is emailed, "Forgot password?" sends nothing and leaves existing links alone, and admins copy invite and reset links by hand. Emails come from `noreply@entrify.site` through the SES API. No keys are stored: the AWS SDK uses the EC2 instance's IAM role, which needs `ses:SendEmail`, and `entrify.site` must be a verified identity in that region. A new SES account is in the sandbox and can only email verified addresses, so request production access before going live. Forgot-password emails stop for the day after 200.
+> Email is optional too: without `SES_REGION` and `NEXT_PUBLIC_APP_URL` (links in emails are built from it, so set it to the public URL) nothing is emailed, "Forgot password?" answers that reset by email is not available, and admins copy invite and reset links by hand. Emails come from `noreply@entrify.site` through the SES API. No keys are stored: the AWS SDK uses the EC2 instance's IAM role, which needs `ses:SendEmail`, and `entrify.site` must be a verified identity in that region. A new SES account is in the sandbox and can only email verified addresses, so request production access before going live. Forgot-password emails stop for the day after 200, and after 5 to one address.
 
 ---
 

@@ -102,11 +102,11 @@ export class InviteService {
       log.warn('Daily forgot-password email limit reached; nothing sent', { max: RESET_EMAILS_PER_DAY });
       return;
     }
-    // Stored only once the email is sent: storing cancels the user's other unused links,
-    // so a failed send must leave a pending invite working.
+    // Added, not replacing: anyone can ask for this, so it must not cancel a pending invite or
+    // an admin's link. Stored only once sent, so a failed send stores nothing.
     const { token, tokenHash, expiresAt } = newInviteToken(RESET_TTL_MS);
     if (await this.sendLink(user.email, token, 'reset')) {
-      await this.invites.replaceUnused({ userId: user.id, tokenHash, expiresAt });
+      await this.invites.add({ userId: user.id, tokenHash, expiresAt });
     }
   }
 

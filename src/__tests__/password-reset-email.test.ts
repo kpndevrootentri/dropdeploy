@@ -9,7 +9,8 @@ import type { IUserRepository } from '@/repositories/user.repository';
 
 function setup(user: { id: string; email: string; suspendedAt: Date | null } | null) {
   const invites = {
-    replaceUnused: jest.fn<Promise<void>, [{ userId: string; tokenHash: string; expiresAt: Date }]>(async () => {}),
+    add: jest.fn<Promise<void>, [{ userId: string; tokenHash: string; expiresAt: Date }]>(async () => {}),
+    replaceUnused: jest.fn(async () => {}),
   };
   const users = { findByEmail: jest.fn(async () => user) };
   const service = new InviteService(invites as unknown as IInviteRepository, users as unknown as IUserRepository);
@@ -26,7 +27,9 @@ describe('InviteService.requestReset', () => {
     const before = Date.now();
     await service.requestReset(' dev@entri.me ');
 
-    const { userId, tokenHash, expiresAt } = invites.replaceUnused.mock.calls[0][0];
+    // Added, never replacing, so a stranger's request cannot cancel a pending invite.
+    expect(invites.replaceUnused).not.toHaveBeenCalled();
+    const { userId, tokenHash, expiresAt } = invites.add.mock.calls[0][0];
     expect(userId).toBe('u1');
     expect(expiresAt.getTime() - before).toBeGreaterThanOrEqual(RESET_TTL_MS);
     expect(expiresAt.getTime() - before).toBeLessThan(RESET_TTL_MS + 5_000);
@@ -41,7 +44,7 @@ describe('InviteService.requestReset', () => {
     for (const user of [null, { id: 'u2', email: 'gone@entri.me', suspendedAt: new Date() }]) {
       const { service, invites } = setup(user);
       await service.requestReset('gone@entri.me');
-      expect(invites.replaceUnused).not.toHaveBeenCalled();
+      expect(invites.add).not.toHaveBeenCalled();
     }
     expect(sendEmail).not.toHaveBeenCalled();
   });
@@ -51,6 +54,6 @@ describe('InviteService.requestReset', () => {
     const { service, invites } = setup({ id: 'u3', email: 'new@entri.me', suspendedAt: null });
     await service.requestReset('new@entri.me');
     expect(sendEmail).toHaveBeenCalledTimes(1);
-    expect(invites.replaceUnused).not.toHaveBeenCalled();
+    expect(invites.add).not.toHaveBeenCalled();
   });
 });

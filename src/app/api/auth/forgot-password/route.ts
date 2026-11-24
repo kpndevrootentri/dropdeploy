@@ -2,6 +2,8 @@ import { NextRequest, NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import { inviteService } from '@/services/invite';
 import { handleApiError } from '@/lib/api-error';
+import { AppError } from '@/lib/errors';
+import { isEmailConfigured } from '@/lib/email';
 import { checkForgotPasswordRateLimit, getClientIp } from '@/lib/rate-limit';
 import { createLogger } from '@/lib/logger';
 
@@ -19,6 +21,10 @@ const forgotPasswordSchema = z.object({
 export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
   try {
     const { email } = forgotPasswordSchema.parse(await req.json());
+    // The same answer for every address, so it reveals nothing; better than a "check your email" that never arrives.
+    if (!isEmailConfigured()) {
+      throw new AppError('EMAIL_OFF', "Password reset by email isn't available yet. Ask an admin for a reset link.", 503);
+    }
     const limited = checkForgotPasswordRateLimit(getClientIp(req), email);
     if (limited) return limited;
     after(() =>

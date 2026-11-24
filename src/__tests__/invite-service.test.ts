@@ -12,6 +12,9 @@ function setup() {
       rows.splice(0, rows.length, ...rows.filter((r) => r.userId !== data.userId || r.usedAt));
       rows.push({ ...data, usedAt: null });
     },
+    add: async (data) => {
+      rows.push({ ...data, usedAt: null });
+    },
     isLive: async (tokenHash, now) => rows.some((r) => r.tokenHash === tokenHash && !r.usedAt && r.expiresAt > now),
     consume: async (tokenHash, now) => {
       const row = rows.find((r) => r.tokenHash === tokenHash && !r.usedAt && r.expiresAt > now);

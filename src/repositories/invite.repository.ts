@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 export interface IInviteRepository {
   /** Deletes the user's unused invites and stores this one, atomically, so only the newest link works. */
   replaceUnused(data: { userId: string; tokenHash: string; expiresAt: Date }): Promise<void>;
+  /** Stores this link and keeps the user's other unused ones; setting a password revokes them all. */
+  add(data: { userId: string; tokenHash: string; expiresAt: Date }): Promise<void>;
   /** Whether the invite exists, is unused and has not expired. A read only: {@link consume} is the single-use guard. */
   isLive(tokenHash: string, now: Date): Promise<boolean>;
   /**
@@ -18,6 +20,10 @@ export class InviteRepository implements IInviteRepository {
       prisma.inviteToken.deleteMany({ where: { userId: data.userId, usedAt: null } }),
       prisma.inviteToken.create({ data }),
     ]);
+  }
+
+  async add(data: { userId: string; tokenHash: string; expiresAt: Date }): Promise<void> {
+    await prisma.inviteToken.create({ data });
   }
 
   async isLive(tokenHash: string, now: Date): Promise<boolean> {
