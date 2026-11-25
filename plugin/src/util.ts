@@ -86,13 +86,17 @@ export function normaliseRepoUrl(url: string): string {
     .replace(/\.git$/, '');
 }
 
-/** The message from an API error body: `{ error: { message } }`, `{ error }` or `{ message }`. */
+/**
+ * The message from an API error body: `{ error: { message } }`, `{ error }` or `{ message }`.
+ * A validation error's first detail is appended: `Validation failed: <what is wrong>`.
+ */
 export function apiErrorMessage(body: unknown, fallback: string): string {
   if (typeof body !== 'object' || body === null) return fallback;
   const { error, message } = body as { error?: unknown; message?: unknown };
   if (typeof error === 'object' && error !== null) {
-    const nested = (error as { message?: unknown }).message;
-    if (typeof nested === 'string' && nested) return nested;
+    const { message: nested, details } = error as { message?: unknown; details?: unknown };
+    const detail = Array.isArray(details) ? (details[0] as { message?: unknown } | null)?.message : undefined;
+    if (typeof nested === 'string' && nested) return typeof detail === 'string' && detail ? `${nested}: ${detail}` : nested;
   }
   if (typeof error === 'string' && error) return error;
   if (typeof message === 'string' && message) return message;
@@ -113,7 +117,7 @@ export function buildDeployUrl(apiUrl: string, subdomain: string): string {
 }
 
 /** On/off flags: they never take the next word as a value, so `--json env list` keeps `env` a command. */
-const BOOLEAN_FLAGS = new Set(['json', 'create', 'follow', 'help', 'version']);
+const BOOLEAN_FLAGS = new Set(['json', 'create', 'follow', 'help', 'version', 'dry-run']);
 
 /** Splits argv into positional words and `--flag value` / `--flag=value` / bare `--flag` flags. */
 export function parseArgs(argv: string[]): { command: string[]; flags: Record<string, string> } {

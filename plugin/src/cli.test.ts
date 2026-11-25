@@ -3,11 +3,12 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { execFile } from 'node:child_process';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { readForm } from './test-helpers.js';
 
 const run = promisify(execFile);
 const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
@@ -16,7 +17,7 @@ const TOKEN = 'test-token';
 
 interface Dep { id: string; status: string; subdomain: string | null; createdAt: string; buildLog: string }
 const state = {
-  projects: [] as Array<{ id: string; name: string; slug: string; type: string; source: string; githubUrl: string | null; branch: string }>,
+  projects: [] as Array<{ id: string; name: string; slug: string; type: string; source: string; githubUrl: string | null; branch?: string }>,
   deployments: new Map<string, Dep[]>(),
   env: new Map<string, Array<{ id: string; key: string; value: string; environment: string }>>(),
   nextDeployStatus: 'DEPLOYED',
@@ -53,6 +54,13 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const project = { id: `p${state.projects.length + 1}`, name: dto.name, slug: dto.name, type: dto.type ?? 'STATIC', source: dto.source, githubUrl: dto.githubUrl, branch: dto.branch ?? 'main' };
     state.projects.push(project);
     return ok(project);
+  }
+  if (url.pathname === '/api/projects/upload' && req.method === 'POST') {
+    const form = await readForm(req);
+    const name = String(form.get('name'));
+    const project = { id: `p${state.projects.length + 1}`, name, slug: name.toLowerCase(), type: 'STATIC', source: 'UPLOAD', githubUrl: null };
+    state.projects.push(project);
+    return ok({ project, deployment: { id: 'u1', status: 'DEPLOYED' }, url: `${baseUrl}/api/proxy/${project.slug}` });
   }
 
   const [, , projectId, section, deploymentId, action] = parts;
@@ -111,7 +119,12 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 
 /** Runs the CLI with --json; resolves to the exit code and the parsed JSON stdout (exactly one line). */
 async function cli(...args: string[]): Promise<{ code: number; out: Record<string, unknown> }> {
-  const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, ENTRIFY_TOKEN: TOKEN, ENTRIFY_URL: baseUrl };
+  return cliWithEnv({}, ...args);
+}
+
+async function cliWithEnv(extraEnv: NodeJS.ProcessEnv, ...args: string[]): Promise<{ code: number; out: Record<string, unknown> }> {
+  // A temp HOME and APPDATA, so the real saved login is never read or written.
+  const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, APPDATA: home, ENTRIFY_TOKEN: TOKEN, ENTRIFY_URL: baseUrl, ...extraEnv };
   delete env.DROPDEPLOY_TOKEN;
   delete env.DROPDEPLOY_URL;
   if (args[0] === '--logged-out') {
@@ -240,4 +253,44 @@ test('unknown commands exit 2 with a usage error', async () => {
   const { code, out } = await cli('frobnicate');
   assert.equal(code, 2);
   assert.equal((out.error as { code: string }).code, 'USAGE');
+});
+
+test('upload publishes an HTML file as a new site and returns its URL', async () => {
+  await writeFile(join(repo, 'landing.html'), '<h1>Launch</h1>');
+  const { code, out } = await cli('upload', 'landing.html');
+  assert.equal(code, 0);
+  assert.equal(out.url, `${baseUrl}/api/proxy/landing`);
+  assert.equal(out.created, true);
+  assert.deepEqual(out.files, ['landing.html']);
+});
+
+test('an unreachable server is a NETWORK error, not a stack trace', async () => {
+  const closed = createServer();
+  await new Promise<void>((r) => closed.listen(0, '127.0.0.1', r));
+  const address = closed.address();
+  await new Promise((r) => closed.close(r));
+  const url = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
+  const { code, out } = await cliWithEnv({ ENTRIFY_URL: url }, 'projects');
+  assert.equal(code, 1);
+  assert.equal((out.error as { code: string }).code, 'NETWORK');
+  assert.match((out.error as { message: string }).message, /Could not reach .*ECONNREFUSED/);
+});
+
+test('an empty ENTRIFY_URL means the default URL, not an invalid one', async () => {
+  const { code, out } = await cliWithEnv({ ENTRIFY_URL: '' }, 'auth', 'status');
+  assert.equal(code, 0);
+  assert.equal(out.apiUrl, 'https://entrify.site');
+});
+
+test('auth token prints only the saved token, never the one in the environment', async () => {
+  const none = await cli('auth', 'token');
+  assert.equal(none.code, 3);
+  assert.equal((none.out.error as { code: string }).code, 'NOT_LOGGED_IN');
+
+  const dir = process.platform === 'win32' ? join(home, 'dropdeploy') : join(home, '.config', 'dropdeploy');
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'credentials.json'), JSON.stringify({ token: 'saved-token', email: 'me@x.io', apiUrl: baseUrl }));
+  const env = { ...process.env, HOME: home, APPDATA: home, ENTRIFY_TOKEN: TOKEN };
+  const { stdout } = await run(process.execPath, ['--import', TSX, CLI, 'auth', 'token'], { cwd: repo, env });
+  assert.equal(stdout, 'saved-token\n');
 });

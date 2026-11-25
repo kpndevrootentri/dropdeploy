@@ -3,9 +3,10 @@ import { createInterface } from 'node:readline';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { cwd as processCwd } from 'node:process';
-import { readCredentials, clearCredentials, login, PRODUCTION_URL, type Credentials } from './auth.js';
+import { readCredentials, readSavedCredentials, clearCredentials, login, PRODUCTION_URL, type Credentials } from './auth.js';
 import { EntrifyApi, type Project } from './api.js';
 import { getGitInfo, validateLocal } from './detector.js';
+import { bundlePath, defaultSiteName, deploySite } from './upload.js';
 import {
   CliError,
   EXIT,
@@ -454,6 +455,14 @@ async function cmdAuthStatus(): Promise<void> {
   emit({ email: creds.email, apiUrl: creds.apiUrl });
 }
 
+/** For ENTRIFY_TOKEN: the saved login only, so a stale token in the environment is never echoed back. */
+async function cmdAuthToken(): Promise<void> {
+  const creds = await readSavedCredentials();
+  if (!creds) throw new CliError(`No saved login. Run: ${BIN} auth login`, 'NOT_LOGGED_IN', EXIT.AUTH);
+  if (jsonMode) emit({ token: creds.token });
+  else process.stdout.write(creds.token + '\n');
+}
+
 async function cmdAuthLogout(): Promise<void> {
   await clearCredentials();
   say(`${c.green('✓')} Logged out`);
@@ -529,7 +538,7 @@ async function cmdDeploy(flags: Record<string, string>): Promise<void> {
   say(`${c.green('✓')}  ${c.bold(project.name)} ${c.dim(`(${project.slug})`)}${created ? c.dim('  (new project)') : ''}`);
   if (project.source === 'UPLOAD') {
     throw new CliError(
-      `"${project.slug}" was created by uploading files, so there is no repository to build. Upload a new version from the dashboard: ${creds.apiUrl}/projects/${project.id}`,
+      `"${project.slug}" was created by uploading files, so there is no repository to build. Upload a new version with: ${BIN} upload <path> --project-id ${project.slug}`,
       'UPLOAD_PROJECT',
       EXIT.NEEDS_INPUT,
     );
@@ -546,6 +555,33 @@ async function cmdDeploy(flags: Record<string, string>): Promise<void> {
 
   const outcome = await followDeployment(api, project.id, deploymentId);
   reportDeployment({ creds, project, deploymentId, outcome, details: { created, warnings } });
+}
+
+async function cmdUpload(path: string | undefined, flags: Record<string, string>): Promise<void> {
+  if (!path) throw new CliError(`Use: ${BIN} upload <file.html | folder | site.zip> [--name <name>]`, 'USAGE', EXIT.NEEDS_INPUT);
+  const bundle = await bundlePath(path);
+  // With --project-id the name is unused, so a path that makes no valid name must not block the upload.
+  const name = flags['name'] ?? (flags['project-id'] ? '' : defaultSiteName(path));
+  const dryRun = flags['dry-run'] === 'true';
+  const creds = await requireCreds();
+
+  say(`\n${c.bold('▶ Entrify')}\n`);
+  say(`  ${dryRun ? 'Would upload' : 'Uploading'} ${bundle.files.length} file(s):`);
+  for (const f of bundle.files) say(`    ${c.dim(f)}`);
+  if (bundle.skipped.length) {
+    say(`  ${c.yellow('⚠')}  Not published (Entrify serves only web file types):`);
+    for (const f of bundle.skipped) say(`    ${c.dim(f)}`);
+  }
+  say();
+
+  const outcome = await deploySite(new EntrifyApi(creds), bundle, { name, projectId: flags['project-id'], dryRun });
+  if (dryRun) {
+    say(`${c.yellow('Dry run:')} nothing uploaded. ${outcome.project ? `Would upload a new version of ${c.bold(outcome.project.slug)}.` : `Would create a new site "${name}".`}`);
+  } else {
+    say(c.bold(c.green(outcome.created ? `✓ Created site ${outcome.project?.slug}` : `✓ Uploaded a new version of ${outcome.project?.slug}`)));
+    say(`\n  ${c.bold('Live URL')}  →  ${c.cyan(outcome.url ?? '')}`);
+  }
+  emit({ url: outcome.url, project: outcome.project, created: outcome.created, dryRun: outcome.dryRun, files: outcome.files, skipped: outcome.skipped });
 }
 
 async function cmdStatus(flags: Record<string, string>): Promise<void> {
@@ -717,6 +753,10 @@ ${c.bold('COMMANDS')}
     ${c.dim('--project-id <id|slug>')}      Skip project selection and deploy to a specific project
     ${c.dim('--create')}                    Create a project from this repository if none matches
     ${c.dim('--dir <path>')}                Use a different working directory
+  ${c.cyan('upload <path>')}                Publish an .html file, a folder with index.html, or a .zip as a static site
+    ${c.dim('--name <name>')}               Site name  ${c.dim('(default: from the file or folder name)')}
+    ${c.dim('--project-id <id|slug>')}      Upload a new version of an existing uploaded site
+    ${c.dim('--dry-run')}                   List the files and check the name without uploading
   ${c.cyan('status')}                       Latest deployment and live URL of the current project
   ${c.cyan('logs')}                         Build log of the latest deployment
     ${c.dim('--deployment <id>')}           A specific deployment instead of the latest
@@ -730,12 +770,14 @@ ${c.bold('COMMANDS')}
     ${c.dim('--to <deployment-id>')}        A specific earlier deployment
   ${c.cyan('cancel')}                       Cancel the deployment that is queued or building
   ${c.cyan('projects')}                     List all your projects and their status
+  ${c.cyan('mcp')}                          Run an MCP server so Claude Desktop can publish HTML pages
 
   ${c.cyan('auth login')}                   Log in to Entrify  ${c.dim('(default: entrify.site)')}
     ${c.dim('--api-url <url>')}             Override the default URL (e.g. for local dev)
     ${c.dim('--email <email>')}             Your email
     ${c.dim('(password is always prompted interactively)')}
   ${c.cyan('auth status')}                  Show current login status
+  ${c.cyan('auth token')}                   Print the saved login token  ${c.dim('(for ENTRIFY_TOKEN; expires after 7 days)')}
   ${c.cyan('auth logout')}                  Clear saved credentials
 
   ${c.cyan('help')}                         Show this help message
@@ -751,13 +793,14 @@ ${c.bold('FOR SCRIPTS AND AI AGENTS')}
 
 ${c.bold('ENVIRONMENT')}  ${c.dim('(the DROPDEPLOY_* names still work)')}
   ${c.dim('ENTRIFY_TOKEN')}                 Bearer token  ${c.dim('(skips auth login in CI)')}
-  ${c.dim('ENTRIFY_URL')}                   Entrify URL, e.g. https://entrify.site
+  ${c.dim('ENTRIFY_URL')}                   Entrify URL  ${c.dim('(default https://entrify.site)')}
   ${c.dim('ENTRIFY_EMAIL')}                 Email  ${c.dim('(optional, cosmetic)')}
 
 ${c.bold('EXAMPLES')}
   ${c.dim('$')} ${BIN} auth login
   ${c.dim('$')} ${BIN} deploy
   ${c.dim('$')} ${BIN} deploy --create --json
+  ${c.dim('$')} ${BIN} upload ./site --name "My Site"
   ${c.dim('$')} ${BIN} logs --follow
   ${c.dim('$')} ${BIN} env push .env.production
   ${c.dim('$')} ${BIN} rollback
@@ -789,16 +832,19 @@ async function main(): Promise<void> {
     if (sub === 'login')  return cmdAuthLogin(flags);
     if (sub === 'status') return cmdAuthStatus();
     if (sub === 'logout') return cmdAuthLogout();
-    throw new CliError('Unknown auth subcommand. Use: login | status | logout', 'USAGE', EXIT.NEEDS_INPUT);
+    if (sub === 'token')  return cmdAuthToken();
+    throw new CliError('Unknown auth subcommand. Use: login | status | logout | token', 'USAGE', EXIT.NEEDS_INPUT);
   }
 
   if (cmd === 'projects') return cmdProjects();
   if (cmd === 'deploy' || cmd === undefined) return cmdDeploy(flags);
+  if (cmd === 'upload') return cmdUpload(sub, flags);
   if (cmd === 'status') return cmdStatus(flags);
   if (cmd === 'logs') return cmdLogs(flags);
   if (cmd === 'env') return cmdEnv(sub, rest, flags);
   if (cmd === 'rollback') return cmdRollback(flags);
   if (cmd === 'cancel') return cmdCancel(flags);
+  if (cmd === 'mcp') return (await import('./mcp.js')).runMcpServer();
   if (cmd === 'help' || cmd === '--help' || cmd === '-h') return cmdHelp();
 
   throw new CliError(`Unknown command: ${cmd}. Run ${BIN} help for usage.`, 'USAGE', EXIT.NEEDS_INPUT);
