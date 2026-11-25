@@ -157,6 +157,13 @@ npx tsx scripts/repoint-github-webhooks.ts
 A `FAIL` line usually means the owner disconnected GitHub. That owner can
 turn auto-deploy off and on again once they reconnect.
 
+Explore pages store each project's Live URL as text, so published showcases
+still link to `<slug>.app.en3.wtf`. Move them to the new `BASE_DOMAIN`:
+
+```bash
+npx tsx scripts/repoint-showcase-urls.ts app.en3.wtf
+```
+
 ## Rollback
 
 The code runs on either domain, so rolling back needs no revert. Use the
