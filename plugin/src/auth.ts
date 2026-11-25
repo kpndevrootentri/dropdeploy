@@ -40,14 +40,23 @@ export async function readCredentials(): Promise<Credentials | null> {
   // Allow overriding via environment variable (useful in CI). The DROPDEPLOY_* names still work.
   const env = process.env;
   const token = env.ENTRIFY_TOKEN ?? env.DROPDEPLOY_TOKEN;
-  const url = env.ENTRIFY_URL ?? env.DROPDEPLOY_URL;
-  if (token && url) {
+  // `||`, not `??`: a config template often leaves ENTRIFY_URL set to "".
+  const url = env.ENTRIFY_URL || env.DROPDEPLOY_URL || PRODUCTION_URL;
+  if (token) {
     return {
       token,
       email: env.ENTRIFY_EMAIL ?? env.DROPDEPLOY_EMAIL ?? 'env',
       apiUrl: currentUrl(url),
     };
   }
+  return readSavedCredentials();
+}
+
+/**
+ * The login saved by `entrify auth login`, ignoring the environment.
+ * `readSavedCredentials()` → `{ token, email: 'you@example.com', apiUrl: 'https://entrify.site' }`, or null when not logged in.
+ */
+export async function readSavedCredentials(): Promise<Credentials | null> {
   try {
     const raw = await readFile(credsPath(), 'utf8');
     const creds = JSON.parse(raw) as Credentials;

@@ -35,6 +35,8 @@ test('apiErrorMessage reads the API error shape, then the older ones', () => {
   assert.equal(apiErrorMessage({ message: 'Top' }, 'fb'), 'Top');
   assert.equal(apiErrorMessage(null, 'fb'), 'fb');
   assert.equal(apiErrorMessage({ error: {} }, 'fb'), 'fb');
+  const invalid = { success: false, error: { code: 'VALIDATION_ERROR', message: 'Validation failed', details: [{ message: 'Name is too short', path: ['name'] }] } };
+  assert.equal(apiErrorMessage(invalid, 'fb'), 'Validation failed: Name is too short');
 });
 
 test('buildDeployUrl uses the subdomain in production and the proxy route locally', () => {

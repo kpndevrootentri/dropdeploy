@@ -19,6 +19,13 @@ export interface Project {
   }>;
 }
 
+/** How many projects the user may have, from GET /api/projects. */
+export interface Quota {
+  used: number;
+  limit: number;
+  available: number;
+}
+
 export interface DeployResult {
   deploymentId: string;
   message: string;
@@ -79,20 +86,35 @@ export class EntrifyApi {
     };
   }
 
-  private async json<T>(method: string, path: string, body?: unknown): Promise<T> {
+  /** The `data` of an API response: `{ success: true, data: [...] }` → `[...]`. */
+  private async json<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
+    return (await this.request<{ data: T }>(method, path, body, timeoutMs)).data;
+  }
+
+  /** The whole parsed response body, for the few endpoints that return more than `data`. */
+  private async request<P>(method: string, path: string, body?: unknown, timeoutMs = 30_000): Promise<P> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30_000);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const isForm = body instanceof FormData;
     try {
       const res = await fetch(`${this.base}${path}`, {
         method,
-        headers: this.authHeaders(),
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+        // fetch sets the multipart Content-Type (with its boundary) for FormData.
+        headers: isForm ? { Authorization: `Bearer ${this.token}` } : this.authHeaders(),
+        body: isForm ? body : body !== undefined ? JSON.stringify(body) : undefined,
         signal: controller.signal,
+      }).catch((err: unknown) => {
+        const cause = (err as { cause?: { code?: unknown; message?: unknown } }).cause;
+        const reason = String(cause?.code ?? cause?.message ?? (err instanceof Error ? err.message : err));
+        // A token holding CR/LF/NUL makes fetch quote the whole Authorization header; keep it out of the message.
+        throw new CliError(`Could not reach ${this.base}: ${this.token ? reason.split(this.token).join('<token>') : reason}`, 'NETWORK');
       });
       if (res.status === 401) {
         // CLI logins are JWTs that expire (7 days by default).
         throw new CliError(
-          `Your login has expired or is no longer valid. Run: ${cliName()} auth login`,
+          process.env.ENTRIFY_TOKEN ?? process.env.DROPDEPLOY_TOKEN
+            ? `ENTRIFY_TOKEN has expired or is not valid. Set a new one: run ${cliName()} auth login, then export ENTRIFY_TOKEN=$(${cliName()} auth token). If it is in Claude Desktop's config, update it there and restart Claude Desktop.`
+            : `Your login has expired or is no longer valid. Run: ${cliName()} auth login`,
           'AUTH_EXPIRED',
           EXIT.AUTH,
         );
@@ -101,15 +123,42 @@ export class EntrifyApi {
         const body: unknown = await res.json().catch(() => null);
         throw new CliError(apiErrorMessage(body, `API ${res.status} on ${method} ${path}`), `HTTP_${res.status}`);
       }
-      const payload = (await res.json()) as { data: T };
-      return payload.data;
+      return (await res.json()) as P;
+    } catch (err) {
+      // The timer can also fire while the response body is still arriving.
+      if (controller.signal.aborted) throw new CliError(`Request to ${this.base} timed out after ${timeoutMs / 1000} s`, 'TIMEOUT');
+      throw err;
     } finally {
       clearTimeout(timer);
     }
   }
 
+  /**
+   * Publishes an .html or .zip file as a new static site, or as a new version of an uploaded one.
+   * `upload(bytes, 'site.zip', { name: 'My Site' })` → `{ project, deployment, url: 'https://my-site.entrify.site' }`
+   */
+  async upload(
+    file: Uint8Array,
+    filename: string,
+    target: { name: string } | { projectId: string },
+  ): Promise<{ project: Project; deployment: { id: string; status: string }; url: string }> {
+    const form = new FormData();
+    // Type-only cast: the bytes never live in a SharedArrayBuffer.
+    form.append('file', new Blob([file as Uint8Array<ArrayBuffer>]), filename);
+    if ('name' in target) form.append('name', target.name);
+    const path = 'projectId' in target ? `/api/projects/${target.projectId}/upload` : '/api/projects/upload';
+    // 2 minutes plus 1 s per 100 KB (about 0.8 Mbit/s), so a 50 MB upload gets about 11 minutes.
+    return this.json('POST', path, form, 120_000 + Math.ceil(file.length / 100_000) * 1000);
+  }
+
   async listProjects(): Promise<Project[]> {
     return this.json<Project[]>('GET', '/api/projects');
+  }
+
+  /** Your projects and how many more you may create: `{ projects: [...], quota: { used: 4, limit: 5, available: 1 } }`. */
+  async listProjectsWithQuota(): Promise<{ projects: Project[]; quota: Quota | null }> {
+    const { data, quota } = await this.request<{ data: Project[]; quota?: Quota }>('GET', '/api/projects');
+    return { projects: data, quota: quota ?? null };
   }
 
   async detectType(repoUrl: string, branch: string): Promise<DetectResult> {
