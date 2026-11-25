@@ -5,6 +5,7 @@ import { userRepository, type IUserRepository } from '@/repositories/user.reposi
 import { ValidationError } from '@/lib/errors';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
+import { sleep } from '@/lib/utils';
 import { SALT_ROUNDS } from '@/services/auth/auth.service';
 import { emailService, type EmailService } from '@/services/email';
 
@@ -14,6 +15,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const INVITE_TTL_MS = 7 * DAY_MS;
 /** Short, because anyone can ask for a reset link for any address. */
 export const RESET_TTL_MS = 60 * 60 * 1000;
+
+// Keeps invite sends under 10 a second, below SES's per-second send rate (14/s on a new account).
+const SEND_GAP_MS = 100;
 
 /** One message for every bad token — unknown, expired or used — so the link reveals nothing. */
 export const INVALID_INVITE_MESSAGE = 'This link is invalid, has expired or was already used';
@@ -44,6 +48,11 @@ export function hashInviteToken(token: string): string {
 export function newInviteToken(ttlMs = INVITE_TTL_MS): { token: string; tokenHash: string; expiresAt: Date } {
   const token = randomBytes(32).toString('base64url');
   return { token, tokenHash: hashInviteToken(token), expiresAt: new Date(Date.now() + ttlMs) };
+}
+
+/** A hash of random bytes nobody ever sees: the account cannot sign in until its invite is accepted. */
+export async function unusablePasswordHash(): Promise<string> {
+  return bcrypt.hash(randomBytes(32).toString('hex'), SALT_ROUNDS);
 }
 
 /** The page a user opens to choose their password, from an invite or a reset link. */
@@ -81,6 +90,18 @@ export class InviteService {
     }
     const { subject, body } = EMAILS[kind];
     return this.email.send({ to: email, subject, text: body(`${base}${invitePath(token)}`), kind });
+  }
+
+  /**
+   * Emails each new account its invite link, one at a time. Callers run it in after():
+   * hundreds of SES sends would outlast the request.
+   */
+  async sendInvites(invited: { email: string; inviteToken: string }[]): Promise<void> {
+    // ponytail: not queued; links not yet sent when the process restarts are never emailed (admins still have them, or can issue new ones).
+    for (const { email, inviteToken } of invited) {
+      await this.sendLink(email, inviteToken, 'invite');
+      await sleep(SEND_GAP_MS);
+    }
   }
 
   /**

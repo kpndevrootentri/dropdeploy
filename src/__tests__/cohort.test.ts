@@ -1,7 +1,8 @@
-import { CohortService, INVALID_JOIN_MESSAGE } from '@/services/cohort/cohort.service';
+import { CohortService, INVALID_JOIN_MESSAGE, isJoinOpen } from '@/services/cohort/cohort.service';
+import { hashInviteToken } from '@/services/invite/invite.service';
 import { ProjectAccessService } from '@/services/project-access/project-access.service';
 import { DEFAULT_PLATFORM_SETTINGS } from '@/services/platform-settings/platform-settings.service';
-import type { ICohortRepository } from '@/repositories/cohort.repository';
+import type { CohortAccount, ICohortRepository, NewStudents } from '@/repositories/cohort.repository';
 import type { IProjectAccessRepository } from '@/repositories/project-access.repository';
 import type { IUserRepository } from '@/repositories/user.repository';
 import type { IProjectRepository } from '@/repositories/project.repository';
@@ -32,7 +33,11 @@ const MENTOR_ACCOUNTS: Record<string, { id: string; email: string; mustResetPass
 
 function setup(opts: {
   enabled?: boolean; cohort?: ReturnType<typeof cohort> | null; member?: unknown; mentor?: boolean;
-  added?: boolean; removed?: boolean; memberships?: unknown[];
+  added?: boolean; removed?: boolean; memberships?: unknown[]; accounts?: CohortAccount[]; members?: unknown[];
+  /** Emails someone else registers between the lookup and the write. */
+  raced?: string[];
+  /** Existing users whose membership someone else changes between the lookup and the write. */
+  changed?: string[];
 } = {}) {
   const repo = {
     create: jest.fn(async (data: Record<string, unknown>) => ({ ...cohort(), ...data })),
@@ -41,7 +46,7 @@ function setup(opts: {
     findByJoinCode: jest.fn(async () => (opts.cohort === undefined ? cohort() : opts.cohort)),
     slugExists: jest.fn(async () => false),
     findAll: jest.fn(),
-    listMembers: jest.fn(async () => []),
+    listMembers: jest.fn(async () => opts.members ?? []),
     findMember: jest.fn(async () => opts.member ?? null),
     upsertMember: jest.fn(async () => ({})),
     endMember: jest.fn(async () => undefined),
@@ -50,6 +55,12 @@ function setup(opts: {
     listProjects: jest.fn(async () => []),
     addProject: jest.fn(async () => opts.added ?? true),
     removeProject: jest.fn(async () => opts.removed ?? true),
+    findAccounts: jest.fn(async () => opts.accounts ?? []),
+    addStudents: jest.fn(async (_cohortId: string, s: NewStudents) => {
+      const created = s.invites.filter((i) => !opts.raced?.includes(i.email)).map(({ email }) => ({ id: `id-${email}`, email }));
+      const unchanged = s.existingUserIds.filter((id) => opts.changed?.includes(id));
+      return { created, addedUserIds: [...s.existingUserIds.filter((id) => !unchanged.includes(id)), ...created.map((u) => u.id)] };
+    }),
   };
   const users = {
     findById: jest.fn(async (id: string) => ({ id, email: `${id}@entri.me` })),
@@ -331,5 +342,171 @@ describe('private sites and mentors', () => {
     expect(await listed.access.canView({ id: 'p1', userId: 's1', cohortId: 'c1' }, viewer)).toBe(true);
     expect(owner.canMentorView).not.toHaveBeenCalled();
     expect(listed.canMentorView).not.toHaveBeenCalled();
+  });
+});
+
+describe('adding students by email', () => {
+  const account = (email: string, over: Partial<CohortAccount> = {}): CohortAccount =>
+    ({ id: `id-${email}`, email, suspendedAt: null, membership: null, ...over });
+  const accounts = [
+    account('old@entri.me'),
+    account('left@entri.me', { membership: { role: 'STUDENT', endedAt: new Date() } }),
+    account('here@entri.me', { membership: { role: 'STUDENT', endedAt: null } }),
+    account('mentor@entri.me', { membership: { role: 'MENTOR', endedAt: null } }),
+    account('banned@entri.me', { suspendedAt: new Date() }),
+  ];
+  const mentor = { userId: 'm1', role: 'USER' };
+
+  it('lets an admin invite new emails, add existing accounts and bring back ended memberships', async () => {
+    const { service, repo } = setup({ accounts });
+    const result = await service.addStudents('c1', [
+      ' New@Entri.me ', 'new@entri.me', 'old@entri.me', 'left@entri.me', 'here@entri.me', 'mentor@entri.me',
+      'banned@entri.me', 'not-an-email', '',
+    ], admin);
+
+    expect(repo.findAccounts).toHaveBeenCalledWith('c1', expect.arrayContaining(['new@entri.me', 'old@entri.me']));
+    const [, written] = repo.addStudents.mock.calls[0];
+    expect(written.existingUserIds).toEqual(['id-old@entri.me', 'id-left@entri.me']);
+    expect(written.invites.map((i) => i.email)).toEqual(['new@entri.me']);
+    expect(written.invites[0].tokenHash).toBe(hashInviteToken(result.invited[0].inviteToken));
+    expect(written.passwordHash).toMatch(/^\$2[aby]\$/);
+    expect(result).toEqual({
+      invited: [{ email: 'new@entri.me', inviteToken: expect.any(String) }],
+      added: ['old@entri.me', 'left@entri.me'],
+      skipped: [
+        { email: 'not-an-email', reason: 'not an email address' },
+        { email: 'here@entri.me', reason: 'already in this batch' },
+        { email: 'mentor@entri.me', reason: 'a mentor in this batch' },
+        { email: 'banned@entri.me', reason: 'suspended' },
+      ],
+    });
+  });
+
+  it('lets a mentor invite new emails, but never add an existing account', async () => {
+    const { service, repo } = setup({ mentor: true, accounts });
+    const result = await service.addStudents('c1', ['new@entri.me', 'old@entri.me', 'banned@entri.me', 'here@entri.me'], mentor);
+    expect(repo.addStudents.mock.calls[0][1].existingUserIds).toEqual([]);
+    expect(result.invited.map((i) => i.email)).toEqual(['new@entri.me']);
+    expect(result.skipped).toEqual([
+      // Suspended accounts read the same, so mentors learn nothing more.
+      { email: 'old@entri.me', reason: 'already has an account: send them the join link' },
+      { email: 'banned@entri.me', reason: 'already has an account: send them the join link' },
+      { email: 'here@entri.me', reason: 'already in this batch' },
+    ]);
+  });
+
+  it('tells a mentor to ask an admin when the join link does not work', async () => {
+    const { service } = setup({ mentor: true, accounts, cohort: cohort({ joinOpen: false }) });
+    const { skipped } = await service.addStudents('c1', ['old@entri.me'], mentor);
+    expect(skipped).toEqual([{ email: 'old@entri.me', reason: 'already has an account: ask an admin to add them' }]);
+  });
+
+  it.each<[string, Parameters<typeof setup>[0] & {}, { userId: string; role: string }]>([
+    ['a mentor of another batch', { mentor: false }, mentor],
+    ['a plain user', {}, student],
+    ['a mentor while batches are off', { mentor: true, enabled: false }, mentor],
+  ])('answers %s with Batch not found and writes nothing', async (_who, opts, viewer) => {
+    const { service, repo } = setup(opts);
+    await expect(service.addStudents('c1', ['new@entri.me'], viewer)).rejects.toThrow('Batch not found');
+    expect(repo.addStudents).not.toHaveBeenCalled();
+  });
+
+  it('refuses an archived batch and writes nothing', async () => {
+    const { service, repo, adminActions } = setup({ cohort: cohort({ archivedAt: new Date() }) });
+    await expect(service.addStudents('c1', ['new@entri.me'], admin)).rejects.toMatchObject({ statusCode: 409 });
+    expect(repo.addStudents).not.toHaveBeenCalled();
+    expect(adminActions.create).not.toHaveBeenCalled();
+  });
+
+  it('reports an email registered by someone else meanwhile as skipped', async () => {
+    const { service } = setup({ raced: ['b@entri.me'] });
+    const result = await service.addStudents('c1', ['a@entri.me', 'b@entri.me'], admin);
+    expect(result.invited.map((i) => i.email)).toEqual(['a@entri.me']);
+    expect(result.skipped).toEqual([{ email: 'b@entri.me', reason: 'was just registered, add again' }]);
+  });
+
+  it('gives a mentor the account reason for a race, since adding again can never work for them', async () => {
+    const { service } = setup({ mentor: true, raced: ['b@entri.me'] });
+    const { skipped } = await service.addStudents('c1', ['b@entri.me'], mentor);
+    expect(skipped).toEqual([{ email: 'b@entri.me', reason: 'already has an account: send them the join link' }]);
+  });
+
+  it('lists as added only the accounts the write actually changed', async () => {
+    const { service, adminActions } = setup({ accounts, changed: ['id-old@entri.me'] });
+    const result = await service.addStudents('c1', ['old@entri.me', 'left@entri.me'], admin);
+    expect(result.added).toEqual(['left@entri.me']);
+    expect(result.skipped).toEqual([{ email: 'old@entri.me', reason: 'changed meanwhile: reload and check the batch' }]);
+    expect(adminActions.create).toHaveBeenCalledWith(expect.objectContaining({ meta: { invited: [], added: ['left@entri.me'], skipped: 1 } }));
+  });
+
+  it('hashes a password only when someone is invited, because bcrypt is slow', async () => {
+    const { service, repo } = setup({ accounts });
+    await service.addStudents('c1', ['old@entri.me'], admin);
+    expect(repo.addStudents.mock.calls[0][1].passwordHash).toBe('');
+  });
+
+  it('records the emails with the adder as actor, never an invite token', async () => {
+    const { service, adminActions } = setup({ mentor: true });
+    const { invited } = await service.addStudents('c1', ['a@entri.me'], mentor);
+    const entry = (adminActions.create.mock.calls[0] as unknown[])[0];
+    expect(entry).toMatchObject({
+      actorId: 'm1', action: 'COHORT_STUDENTS_ADDED', targetId: 'c1', meta: { invited: ['a@entri.me'], added: [], skipped: 0 },
+    });
+    expect(JSON.stringify(entry)).not.toContain(invited[0].inviteToken);
+  });
+
+  it('writes nothing when every email is skipped', async () => {
+    const { service, repo, adminActions } = setup({ accounts });
+    expect(await service.addStudents('c1', ['here@entri.me', 'nope'], admin)).toMatchObject({ invited: [], added: [] });
+    expect(repo.addStudents).not.toHaveBeenCalled();
+    expect(adminActions.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("a mentor's batch page", () => {
+  const member = (userId: string, over: Record<string, unknown> = {}) => ({
+    userId, role: 'STUDENT', joinedAt: new Date('2027-01-05'), endedAt: null, projectCount: 2,
+    user: { id: userId, email: `${userId}@entri.me`, name: null, mustResetPassword: false }, ...over,
+  });
+  const members = [
+    member('s1'),
+    member('s2', { user: { id: 's2', email: 's2@entri.me', name: 'Asha', mustResetPassword: true } }),
+    member('gone', { endedAt: new Date() }),
+    member('m1', { role: 'MENTOR' }),
+  ];
+
+  it('lists only current students, with whether each has set a password, and the join link while it works', async () => {
+    const view = await setup({ mentor: true, members }).service.mentorView('c1', { userId: 'm1', role: 'USER' });
+    expect(view.joinLink).toBe(`/join/${'x'.repeat(24)}`);
+    expect(view.cohort).toEqual({
+      id: 'c1', name: 'FSD Jan 2027', program: 'Full Stack', startsAt: expect.any(Date), endsAt: expect.any(Date), archivedAt: null,
+    });
+    expect(view.students).toEqual([
+      { userId: 's1', email: 's1@entri.me', name: null, joinedAt: new Date('2027-01-05'), passwordSet: true, projectCount: 2 },
+      { userId: 's2', email: 's2@entri.me', name: 'Asha', joinedAt: new Date('2027-01-05'), passwordSet: false, projectCount: 2 },
+    ]);
+  });
+
+  it('hides the join link once joining is closed, and refuses anyone but mentors and admins', async () => {
+    const closed = await setup({ cohort: cohort({ joinOpen: false }) }).service.mentorView('c1', admin);
+    expect(closed.joinLink).toBeNull();
+    const archivedAt = new Date();
+    const archived = await setup({ cohort: cohort({ archivedAt }) }).service.mentorView('c1', admin);
+    expect(archived).toMatchObject({ cohort: { archivedAt }, joinLink: null });
+    await expect(setup().service.mentorView('c1', student)).rejects.toThrow('Batch not found');
+  });
+
+  it('shows admins whether each member has set a password', async () => {
+    const { members: rows } = await setup({ members }).service.get('c1');
+    expect(rows.map((m) => m.passwordSet)).toEqual([true, false, true, true]);
+  });
+});
+
+describe('isJoinOpen', () => {
+  it('is true only while joining is open, the batch is not archived and it has not ended', () => {
+    expect(isJoinOpen(cohort())).toBe(true);
+    expect(isJoinOpen(cohort({ joinOpen: false }))).toBe(false);
+    expect(isJoinOpen(cohort({ archivedAt: new Date() }))).toBe(false);
+    expect(isJoinOpen(cohort({ endsAt: new Date(Date.now() - DAY) }))).toBe(false);
   });
 });

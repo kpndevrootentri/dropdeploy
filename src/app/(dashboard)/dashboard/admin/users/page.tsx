@@ -17,6 +17,7 @@ import { Eye, EyeOff, KeyRound, Gauge, ShieldCheck, ShieldOff, Trash2, Loader2, 
 import { UserBulkQuotaBar, SelectAllCheckbox, RowCheckbox } from '@/components/admin/bulk-actions';
 import { CopyValue } from '@/components/ui/copy-value';
 import { adminRequest } from '@/components/admin/admin-request';
+import { extractEmails } from '@/lib/utils';
 import type { PasswordLinkKind } from '@/services/invite';
 
 interface BulkResult {
@@ -40,11 +41,6 @@ function issuePasswordLink(userId: string, kind: PasswordLinkKind): Promise<{ in
 /** Invite links are returned as paths; the admin shares the full URL. */
 function inviteUrl(path: string): string {
   return `${window.location.origin}${path}`;
-}
-
-/** Pulls every email-looking token out of pasted text or a CSV, ignoring headers and names. */
-function extractEmails(text: string): string[] {
-  return [...new Set((text.match(/[^\s,;"'<>()]+@[^\s,;"'<>()]+/g) ?? []).map((e) => e.toLowerCase()))];
 }
 
 interface AdminUser {

@@ -31,28 +31,32 @@ const sweep = setInterval(() => {
 sweep.unref?.();
 
 /**
- * Generic in-memory fixed-window rate limiter.
- * Returns a 429 NextResponse if the limit is exceeded, or null if allowed.
+ * Generic in-memory fixed-window rate limiter. An allowed request adds `cost` to the window's
+ * count (1 by default, so `max` counts requests); once the count reaches `max`, requests are
+ * refused and add nothing. So a request costing more than 1 can take the count past `max`.
+ * Returns a 429 NextResponse (with `message`, if given) when refused, or null if allowed.
  */
-export function checkRateLimit(key: string, opts: { windowMs: number; max: number }): NextResponse | null {
+export function checkRateLimit(
+  key: string,
+  opts: { windowMs: number; max: number; message?: string },
+  cost = 1,
+): NextResponse | null {
   const now = Date.now();
-  const entry = store.get(key);
+  let entry = store.get(key);
 
   if (!entry || now > entry.resetAt) {
-    store.set(key, { count: 1, resetAt: now + opts.windowMs });
-    return null;
+    entry = { count: 0, resetAt: now + opts.windowMs };
+    store.set(key, entry);
   }
 
-  entry.count++;
-
-  if (entry.count > opts.max) {
+  if (entry.count >= opts.max) {
     const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
     return NextResponse.json(
       {
         success: false,
         error: {
           code: 'RATE_LIMIT_EXCEEDED',
-          message: 'Too many requests. Please try again later.',
+          message: opts.message ?? 'Too many requests. Please try again later.',
         },
       },
       {
@@ -62,7 +66,23 @@ export function checkRateLimit(key: string, opts: { windowMs: number; max: numbe
     );
   }
 
+  entry.count += cost;
   return null;
+}
+
+/**
+ * checkRateLimit for a cost only known later: holds `cost` now, and `refund` gives back the unused
+ * part. A refund only ever reaches the window the hold was taken in: a later window is a new entry.
+ */
+export function holdRateLimit(
+  key: string,
+  opts: { windowMs: number; max: number; message?: string },
+  cost: number,
+): { refused: NextResponse } | { refused: null; refund: (amount: number) => void } {
+  const refused = checkRateLimit(key, opts, cost);
+  if (refused) return { refused };
+  const entry = store.get(key)!;
+  return { refused: null, refund: (amount) => { entry.count = Math.max(0, entry.count - amount); } };
 }
 
 /** Rate limit env var API endpoints — 60 req/min/user. */

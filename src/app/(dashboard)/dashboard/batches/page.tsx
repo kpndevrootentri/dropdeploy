@@ -48,7 +48,7 @@ export default function MyBatchesPage(): React.ReactElement {
           <CardContent className="text-sm">
             {role === 'MENTOR' ? (
               <Link href={`/dashboard/batches/${cohort.id}`} className="underline underline-offset-4">
-                See your students&apos; projects and build logs
+                See your students, add students and read build logs
               </Link>
             ) : (
               <p className="text-muted-foreground">New projects you create are added to this batch, so your mentors can follow your progress.</p>

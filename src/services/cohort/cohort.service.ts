@@ -1,5 +1,6 @@
 /**
- * Batches (cohorts): students join a batch with a link; admins add mentors.
+ * Batches (cohorts): students join a batch with a link, or admins and mentors add them by
+ * email; admins add mentors.
  * Being a student or a mentor is a membership, not a UserRole, so one person
  * can mentor one batch and study in another.
  *
@@ -12,6 +13,7 @@
  *   - POST /api/auth/register: a join code opens sign-up even when it is closed
  *   - GET /api/auth/session: `inCohort`, which shows the Batches menu item
  *   - admin settings (the switch) and the admin layout (the Batches tab)
+ *   - UserRepository.createMany's `tx` argument: addStudents creates invited accounts inside its transaction
  *
  * The switch (PlatformSetting.cohortsEnabled) turns off joining, stamping, adding
  * projects and mentor access. Admins can still see and edit batches, and remove
@@ -24,9 +26,11 @@ import { userRepository, type IUserRepository } from '@/repositories/user.reposi
 import { projectRepository, type IProjectRepository } from '@/repositories/project.repository';
 import { deploymentRepository, type IDeploymentRepository, type DeploymentSummary } from '@/repositories/deployment.repository';
 import { adminActionRepository, type IAdminActionRepository } from '@/repositories/admin-action.repository';
-import { platformSettingsService, type PlatformSettingsService } from '@/services/platform-settings/platform-settings.service';
+import { newUserQuotas, platformSettingsService, type PlatformSettingsService } from '@/services/platform-settings/platform-settings.service';
+import { newInviteToken, unusablePasswordHash } from '@/services/invite';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors';
 import { slugify } from '@/lib/utils';
+import { splitEmails } from '@/validators/auth.validator';
 import { createLogger } from '@/lib/logger';
 import type { CreateCohortDto, UpdateCohortDto } from '@/validators/cohort.validator';
 
@@ -44,17 +48,42 @@ export function joinPath(code: string): string {
   return `/join/${code}`;
 }
 
+/** Whether the join link works right now, ignoring the batches switch. */
+export function isJoinOpen(cohort: Pick<Cohort, 'joinOpen' | 'archivedAt' | 'endsAt'>, now = new Date()): boolean {
+  return cohort.joinOpen && !cohort.archivedAt && cohort.endsAt > now;
+}
+
 /** Who is asking: enough to tell an admin from a mentor. */
 export interface CohortViewer {
   userId: string;
   role: string;
 }
 
+/** passwordSet is false for an invite nobody accepted yet and after an admin password reset. */
+export type CohortMemberView = CohortMemberRow & { passwordSet: boolean };
+
 export interface CohortDetail {
   cohort: Cohort;
-  members: CohortMemberRow[];
+  members: CohortMemberView[];
   projects: CohortProjectRow[];
 }
+
+export interface AddStudentsResult {
+  /** New accounts, each with the one-time token for its invite link. */
+  invited: { email: string; inviteToken: string }[];
+  added: string[];
+  skipped: { email: string; reason: string }[];
+}
+
+/** What a batch's mentors see: never the join code once joining is closed. */
+export interface MentorBatchView {
+  /** archivedAt: only admins can still open an archived batch's page, and nobody can add to it. */
+  cohort: Pick<Cohort, 'id' | 'name' | 'program' | 'startsAt' | 'endsAt' | 'archivedAt'>;
+  joinLink: string | null;
+  students: { userId: string; email: string; name: string | null; joinedAt: Date; passwordSet: boolean; projectCount: number }[];
+}
+
+const withPasswordSet = (m: CohortMemberRow): CohortMemberView => ({ ...m, passwordSet: !m.user.mustResetPassword });
 
 export interface BuildLogView {
   id: string;
@@ -88,7 +117,7 @@ export class CohortService {
     const cohort = await this.repo.findById(id);
     if (!cohort) throw new NotFoundError('Batch');
     const [members, projects] = await Promise.all([this.repo.listMembers(id), this.repo.listProjects(id)]);
-    return { cohort, members, projects };
+    return { cohort, members: members.map(withPasswordSet), projects };
   }
 
   async create(dto: CreateCohortDto, actorId: string): Promise<Cohort> {
@@ -200,7 +229,7 @@ export class CohortService {
 
   private async joinable(code: string): Promise<Cohort> {
     const cohort = (await this.isEnabled()) ? await this.repo.findByJoinCode(code) : null;
-    if (!cohort || !cohort.joinOpen || cohort.archivedAt || cohort.endsAt <= new Date()) {
+    if (!cohort || !isJoinOpen(cohort)) {
       throw new ValidationError(INVALID_JOIN_MESSAGE);
     }
     return cohort;
@@ -246,6 +275,81 @@ export class CohortService {
     if (!(await this.repo.addProject(projectId, userId, cohort.id))) throw new ConflictError('This project is already in a batch');
     await this.record(userId, 'COHORT_PROJECT_ADDED', cohort, { projectId, project: project.name });
     return cohort;
+  }
+
+  /**
+   * Adds students by email (admins and mentors of the batch). An email with no account gets an
+   * invited account. Only admins add existing accounts: a mentor reads their students' work, so a
+   * mentor who could add anyone could read anyone's future projects.
+   */
+  async addStudents(cohortId: string, emails: string[], viewer: CohortViewer): Promise<AddStudentsResult> {
+    await this.assertCanOversee(cohortId, viewer);
+    const cohort = await this.repo.findById(cohortId);
+    if (!cohort) throw new NotFoundError('Batch');
+    if (cohort.archivedAt) throw new ConflictError('This batch is archived');
+
+    const isAdmin = viewer.role === 'CONTRIBUTOR';
+    const { valid, invalid } = splitEmails(emails);
+    const skipped = invalid.map((email) => ({ email, reason: 'not an email address' }));
+    const accounts = new Map((valid.length ? await this.repo.findAccounts(cohortId, valid) : []).map((a) => [a.email, a]));
+    // One reason for every existing account, suspended or not, so mentors learn nothing more.
+    const mentorReason = isJoinOpen(cohort)
+      ? 'already has an account: send them the join link'
+      : 'already has an account: ask an admin to add them';
+    const tokens = new Map<string, ReturnType<typeof newInviteToken>>();
+    const existing: { id: string; email: string }[] = [];
+    for (const email of valid) {
+      const account = accounts.get(email);
+      const activeRole = account?.membership && !account.membership.endedAt ? account.membership.role : null;
+      if (!account) tokens.set(email, newInviteToken());
+      else if (activeRole) skipped.push({ email, reason: activeRole === 'MENTOR' ? 'a mentor in this batch' : 'already in this batch' });
+      else if (!isAdmin) skipped.push({ email, reason: mentorReason });
+      else if (account.suspendedAt) skipped.push({ email, reason: 'suspended' });
+      else existing.push(account);
+    }
+    if (tokens.size === 0 && existing.length === 0) return { invited: [], added: [], skipped };
+
+    const { created, addedUserIds } = await this.repo.addStudents(cohortId, {
+      existingUserIds: existing.map((a) => a.id),
+      invites: [...tokens].map(([email, { tokenHash, expiresAt }]) => ({ email, tokenHash, expiresAt })),
+      // bcrypt is slow, and only new accounts need a hash.
+      passwordHash: tokens.size ? await unusablePasswordHash() : '',
+      quotas: newUserQuotas(await this.settings.get()),
+    });
+    const createdEmails = new Set(created.map((u) => u.email));
+    const invited = [...tokens].filter(([email]) => createdEmails.has(email)).map(([email, { token }]) => ({ email, inviteToken: token }));
+    for (const email of tokens.keys()) {
+      // A mentor can't add the account that now exists, so "add again" would only work for an admin.
+      if (!createdEmails.has(email)) skipped.push({ email, reason: isAdmin ? 'was just registered, add again' : mentorReason });
+    }
+    const addedIds = new Set(addedUserIds);
+    const added: string[] = [];
+    for (const { id, email } of existing) {
+      if (addedIds.has(id)) added.push(email);
+      else skipped.push({ email, reason: 'changed meanwhile: reload and check the batch' });
+    }
+    if (invited.length || added.length) {
+      // Emails only: the invite tokens must never reach the audit log.
+      await this.record(viewer.userId, 'COHORT_STUDENTS_ADDED', cohort, { invited: invited.map((i) => i.email), added, skipped: skipped.length });
+    }
+    return { invited, added, skipped };
+  }
+
+  /** The mentor page: the batch, its join link while it works, and its current students. */
+  async mentorView(cohortId: string, viewer: CohortViewer): Promise<MentorBatchView> {
+    await this.assertCanOversee(cohortId, viewer);
+    const cohort = await this.repo.findById(cohortId);
+    if (!cohort) throw new NotFoundError('Batch');
+    const { id, name, program, startsAt, endsAt, archivedAt } = cohort;
+    const members = await this.repo.listMembers(cohortId);
+    return {
+      cohort: { id, name, program, startsAt, endsAt, archivedAt },
+      joinLink: isJoinOpen(cohort) ? joinPath(cohort.joinCode) : null,
+      students: members
+        .filter((m) => m.role === 'STUDENT' && !m.endedAt)
+        .map(withPasswordSet)
+        .map(({ userId, user, joinedAt, passwordSet, projectCount }) => ({ userId, email: user.email, name: user.name, joinedAt, passwordSet, projectCount })),
+    };
   }
 
   /** Read-only views for mentors (and admins). Nothing here exposes env vars or the terminal. */

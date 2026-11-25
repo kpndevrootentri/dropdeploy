@@ -35,3 +35,8 @@ export function formatBytes(bytes: number): string {
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+/** Pulls every email-looking token out of pasted text or a CSV, ignoring headers and names. */
+export function extractEmails(text: string): string[] {
+  return [...new Set((text.match(/[^\s,;"'<>()]+@[^\s,;"'<>()]+/g) ?? []).map((e) => e.toLowerCase()))];
+}

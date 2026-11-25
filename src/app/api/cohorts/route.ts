@@ -15,7 +15,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
       data: memberships.map(({ role, joinedAt, cohort }) => ({
         role,
         joinedAt,
-        // Never the join code: only admins hand that out.
+        // No join code here; mentors get it from GET /api/cohorts/[cohortId] while joining is open.
         cohort: { id: cohort.id, name: cohort.name, program: cohort.program, startsAt: cohort.startsAt, endsAt: cohort.endsAt },
       })),
     });

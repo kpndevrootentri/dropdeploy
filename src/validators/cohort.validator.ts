@@ -20,6 +20,9 @@ export const updateCohortSchema = z
 
 export const addMentorSchema = z.object({ email: z.string().trim().email() });
 
+/** Checked one by one in the service, so a bad entry is reported instead of failing the list. */
+export const addStudentsSchema = z.object({ emails: z.array(z.string().max(254)).min(1).max(100) });
+
 /** Join codes are 24 base64url characters; the bounds only reject junk early. */
 export const joinCodeSchema = z.string().trim().min(16).max(64).regex(/^[A-Za-z0-9_-]+$/, 'Invalid join code');
 
