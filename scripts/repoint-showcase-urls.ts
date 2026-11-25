@@ -31,6 +31,10 @@ async function main(): Promise<void> {
   const { getConfig } = await import('@/lib/config');
 
   const newDomain = getConfig().BASE_DOMAIN;
+  if (newDomain === oldDomain) {
+    console.error(`BASE_DOMAIN is still ${oldDomain}; put the new domain in .env first`);
+    process.exit(1);
+  }
   const rows = await prisma.projectShowcase.findMany({
     where: { liveUrl: { contains: oldDomain, mode: 'insensitive' } },
     select: { id: true, liveUrl: true },
@@ -41,8 +45,10 @@ async function main(): Promise<void> {
     const saved = row.liveUrl!;
     if (!URL.canParse(saved)) continue;
     const url = new URL(saved);
-    if (!url.hostname.endsWith(`.${oldDomain}`)) continue; // e.g. the old domain only in a path
-    url.hostname = url.hostname.slice(0, -oldDomain.length) + newDomain;
+    const label = url.hostname.slice(0, -oldDomain.length - 1);
+    // Tenant hosts are exactly <slug>.<old domain>; anything deeper (x.app.en3.wtf given "en3.wtf") is not ours.
+    if (!url.hostname.endsWith(`.${oldDomain}`) || label.includes('.')) continue;
+    url.hostname = `${label}.${newDomain}`;
     // URL adds "/" to a bare origin; keep the form that was saved.
     const liveUrl = saved.endsWith('/') ? url.toString() : url.toString().replace(/\/$/, '');
     await prisma.projectShowcase.update({ where: { id: row.id }, data: { liveUrl } });

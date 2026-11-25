@@ -145,7 +145,7 @@ curl -sS https://app.en3.wtf/api/auth/session                                   
 
 Sign in, connect GitHub (the callback from step 4), and deploy one project.
 
-## 9. Re-point GitHub webhooks
+## 9. Re-point GitHub webhooks and Explore links
 
 Existing hooks still post to `app.en3.wtf`. Step 7 keeps them working, but only
 until the old domain goes. Re-register each one against the new `APP_URL`:
@@ -178,7 +178,8 @@ cd caddy && docker compose -f docker-compose.caddy.yml up -d
 ```
 
 Then set the GitHub OAuth callback back to the old URL. If step 9 already ran,
-re-run the script with the old `APP_URL` in place.
+re-run both scripts with the old `.env` in place, passing `entrify.site` to
+`repoint-showcase-urls.ts`.
 
 ## 10. Afterwards
 
