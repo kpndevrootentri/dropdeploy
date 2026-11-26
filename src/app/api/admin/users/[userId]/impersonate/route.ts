@@ -37,7 +37,7 @@ export async function POST(
 
     const res = NextResponse.json({ success: true });
     setAdminRestoreCookie(res, adminToken, Math.max(0, exp - Math.floor(Date.now() / 1000)));
-    setAuthCookie(res, accessToken, IMPERSONATION_TTL_SECONDS);
+    setAuthCookie(res, accessToken, await authService.siteTokenFor(accessToken), IMPERSONATION_TTL_SECONDS);
     return res;
   } catch (error) {
     return handleApiError(error);

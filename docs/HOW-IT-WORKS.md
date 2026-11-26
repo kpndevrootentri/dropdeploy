@@ -184,7 +184,7 @@ sequenceDiagram
     P->>P: redirect to /dashboard
 ```
 
-Login follows the same flow but verifies the password instead of creating a user. Logout clears the `auth-token` cookie via `POST /api/auth/logout`.
+Login follows the same flow but verifies the password instead of creating a user. Logout clears the session and site-view cookies via `POST /api/auth/logout`.
 
 ### 4.2 Project Creation
 
@@ -584,7 +584,10 @@ flowchart LR
 ```
 
 - **JWT-based** using `jose` (HS256 algorithm).
-- Token stored in `auth-token` httpOnly, secure cookie.
+- The dashboard session lives in `__Host-auth-token` (httpOnly, Secure, host-only, `Path=/`, `SameSite=Lax`). Browsers refuse a `__Host-` cookie from any other host, so a tenant page on `{slug}.BASE_DOMAIN` cannot plant a session for the dashboard. In development (plain http) it is `auth-token`, host-only and not Secure.
+- Private sites are gated by a second cookie, `site-view`, shared across `.BASE_DOMAIN` and holding a JWT signed with a key derived from `JWT_SECRET` (HMAC-SHA256 of `"entrify-site-view"`). It names the same user as the session and is set and cleared with it; it never passes as a session or Bearer token, and a session never passes as it. The gate re-checks it like `verifySession` (user exists, `tokenVersion`, not suspended, no pending reset) and calls `canView` on every request. Private sites on custom domains do not get this cookie, so they always deny.
+- The old parent-domain `auth-token` is no longer read, is expired on every sign-in and logout, and is stripped, with both cookies above, from requests forwarded to tenant apps; a tenant's `Set-Cookie` for any of them is dropped (each header line split the way Next splits it on the way out, and a nameless `=site-view=…` counted as `site-view`). A tenant's `Clear-Site-Data` header is stripped, since `"cookies"` would wipe the dashboard session along with every other tenant's cookies.
+- Private sites, static or container, are served `Cache-Control: private, no-cache`, overriding the tenant's own caching headers. Every load revalidates through the gate, which runs before any 304, so nothing is served from a cache past it, and unchanged files are still not downloaded again.
 - **Middleware** (`src/middleware.ts`) protects `/dashboard/*` routes.
 - Session endpoint: `GET /api/auth/session`.
 - Logout: `POST /api/auth/logout` clears the cookie.
@@ -670,7 +673,8 @@ An admin can open the dashboard as a non-admin user to see what they see. The se
 - **Read-only:** `getSession` — which every authenticated API route calls — refuses anything but GET/HEAD, plus `/api/admin/*`, the GitHub/GitLab OAuth routes and repo listing even for GET. The proxy keeps the session off `/dashboard/admin`.
 - **Ends early** when the admin is demoted or signed out everywhere, or the user becomes an admin (`verifySession` re-checks both users).
 - **Never** for another admin or yourself.
-- **Exit** restores the saved session only if it is a live admin session and the current view (if still valid) belongs to that admin; otherwise both cookies are cleared.
+- **Exit** restores the saved session only if it is a live admin session and the current view is still valid and belongs to that admin; otherwise the admin is signed out and signs in again. A tenant site can plant or evict parent-domain cookies but not the host-only session, so the view is what vouches for the restore cookie.
+- Start and exit set the `site-view` cookie with the session, so private sites are always viewed as the same user the dashboard shows.
 - Start and exit are recorded as `admin.impersonate.start` / `admin.impersonate.exit` platform events.
 
 ---

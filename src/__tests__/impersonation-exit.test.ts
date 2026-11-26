@@ -5,6 +5,7 @@ jest.mock('@/services/auth', () => ({
   authService: {
     verifySession: (t: string) => mockVerifySession(t),
     verifyToken: (t: string) => mockVerifyToken(t),
+    siteTokenFor: async (t: string) => `site-${t}`,
   },
 }));
 jest.mock('@/lib/prisma', () => ({ prisma: { platformEvent: { create: () => mockEventCreate() } } }));
@@ -41,13 +42,18 @@ describe('POST /api/auth/impersonation/exit', () => {
     const res = await exit('auth-token=view-token; admin-restore=admin-token');
     expect(res.status).toBe(200);
     expect(setCookie(res, 'auth-token')).toMatch(/^auth-token=admin-token;/);
+    expect(setCookie(res, 'site-view')).toMatch(/^site-view=site-admin-token;/);
     expect(setCookie(res, 'admin-restore')).toMatch(/Max-Age=0/);
     expect(mockEventCreate).toHaveBeenCalledTimes(1);
   });
 
-  it('still restores after the 30-minute view has expired', async () => {
+  // The session cookie cannot be planted, but it can be evicted; a restore cookie with no view to match is not trusted.
+  it('signs out when there is no current view to match the restore cookie against', async () => {
     const res = await exit('admin-restore=admin-token');
-    expect(setCookie(res, 'auth-token')).toMatch(/^auth-token=admin-token;/);
+    expect(res.status).toBe(401);
+    expect(setCookie(res, 'auth-token')).toMatch(/^auth-token=;/);
+    expect(setCookie(res, 'site-view')).toMatch(/^site-view=;/);
+    expect(mockEventCreate).not.toHaveBeenCalled();
   });
 
   it('signs out instead of trusting a restore cookie that does not match the current view', async () => {

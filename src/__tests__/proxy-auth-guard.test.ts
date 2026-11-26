@@ -58,6 +58,25 @@ describe('login guard on platform pages', () => {
   });
 });
 
+describe('a nameless cookie holding a valid session', () => {
+  it('signs no one in, in production', async () => {
+    const env = process.env as Record<string, string | undefined>;
+    const saved = env.NODE_ENV;
+    env.NODE_ENV = 'production';
+    try {
+      const token = await new jose.SignJWT({ sub: 'u1', role: 'USER' })
+        .setProtectedHeader({ alg: 'HS256' })
+        .setExpirationTime('5m')
+        .sign(new TextEncoder().encode(SECRET));
+      expect((await get('/dashboard', `=__Host-auth-token=${token}`)).status).toBe(307);
+      // Control: the same token under the real name is a session.
+      expect((await get('/dashboard', `__Host-auth-token=${token}`)).status).toBe(200);
+    } finally {
+      env.NODE_ENV = saved;
+    }
+  });
+});
+
 describe('admin pages while viewing as a user', () => {
   it('sends a view-as session away from admin pages, whatever role it claims', async () => {
     const token = await new jose.SignJWT({ sub: 'u1', role: 'CONTRIBUTOR', imp: 'admin' })

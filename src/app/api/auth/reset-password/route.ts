@@ -26,7 +26,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
       : await authService.changePassword(session.userId, currentPassword ?? '', newPassword);
     const res = NextResponse.json({ success: true });
     const maxAge = parseExpiresInToSeconds(getConfig().JWT_EXPIRES_IN);
-    setAuthCookie(res, tokens.accessToken, maxAge);
+    setAuthCookie(res, tokens.accessToken, await authService.siteTokenFor(tokens.accessToken), maxAge);
     return res;
   } catch (error) {
     return handleApiError(error);

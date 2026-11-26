@@ -19,8 +19,7 @@ function signedOut(message: string): NextResponse {
 
 /**
  * POST /api/auth/impersonation/exit – stop viewing as a user and restore the admin's own session.
- * Deliberately not behind getSession: it is the one write allowed while viewing,
- * and it must still work after the 30-minute view has expired.
+ * Deliberately not behind getSession: it is the one write allowed while viewing.
  */
 export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
   const restoreToken = getAdminRestoreToken(req);
@@ -31,24 +30,25 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
     const admin = await authService.verifySession(restoreToken);
     if (admin.role !== 'CONTRIBUTOR' || admin.impersonatorId) return signedOut('Sign in again.');
 
-    // A tenant site can plant cookies on the parent domain. If the current view is
-    // still valid it must belong to this admin, so a planted restore cookie cannot
-    // swap anyone into a different account.
+    // A tenant site can plant (and, by overflowing the cookie jar, evict) cookies
+    // on the parent domain, but cannot plant the host-only session cookie. So the
+    // restore cookie is only trusted for the live view of this same admin; once
+    // the view has expired the admin signs in again.
     const current = getTokenFromCookie(req);
     const viewing = current ? await authService.verifyToken(current).catch(() => null) : null;
-    if (viewing && viewing.impersonatorId !== admin.userId) return signedOut('Sign in again.');
+    if (viewing?.impersonatorId !== admin.userId) return signedOut('Sign in again.');
 
     const { exp } = await authService.verifyToken(restoreToken);
     await prisma.platformEvent.create({
       data: {
         event: 'admin.impersonate.exit',
         userId: admin.userId,
-        meta: { targetId: viewing?.sub ?? null, targetEmail: viewing?.email ?? null },
+        meta: { targetId: viewing.sub, targetEmail: viewing.email },
       },
     });
 
     const res = NextResponse.json({ success: true });
-    setAuthCookie(res, restoreToken, Math.max(0, exp - Math.floor(Date.now() / 1000)));
+    setAuthCookie(res, restoreToken, await authService.siteTokenFor(restoreToken), Math.max(0, exp - Math.floor(Date.now() / 1000)));
     clearAdminRestoreCookie(res);
     return res;
   } catch {
