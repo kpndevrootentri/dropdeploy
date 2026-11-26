@@ -227,22 +227,27 @@ dropDeploy/
 ├── docker/
 │   ├── templates/                     # Dockerfile templates per project type
 │   └── nginx/                         # Reverse-proxy config
-├── plugin/                            # entrify-deploy npm package
+├── plugin/                            # entrify-deploy npm package — see docs/cli-and-claude.md
 │   ├── src/
-│   │   ├── cli.ts                     # Entry point — commands: deploy, projects, auth, help
-│   │   ├── api.ts                     # API client — listProjects, triggerDeploy, streamLogs, detectType
-│   │   ├── auth.ts                    # Credential storage (JSON file) + login via /api/auth/token
-│   │   └── detector.ts                # Local git info (remote URL, branch, dirty check) + framework hint
-│   ├── package.json                   # Published as entrify-deploy on npm (binary: dropdeploy)
+│   │   ├── cli.ts                     # Entry point — deploy, upload, status, logs, env, rollback, cancel, projects, mcp, auth
+│   │   ├── api.ts                     # EntrifyApi HTTP client — error mapping, timeouts, uploads
+│   │   ├── auth.ts                    # ENTRIFY_TOKEN/ENTRIFY_URL or the saved login file; login via /api/auth/token
+│   │   ├── upload.ts                  # Bundles an .html file, folder or .zip and picks the site (CLI + MCP)
+│   │   ├── mcp.ts                     # `entrify mcp` — stdio MCP server for Claude Desktop
+│   │   ├── detector.ts                # Local git info (remote URL, branch, dirty check) + framework hint
+│   │   └── util.ts                    # CliError, exit codes, arg parsing
+│   ├── plugins/entrify/               # Claude Code plugin — skills/deploy/SKILL.md
+│   ├── package.json                   # Published as entrify-deploy on npm (binaries: entrify, dropdeploy)
 │   └── README.md
 ├── public/
-│   └── deploy.md                      # Markdown rendered by the Claude Code /deploy command download page
+│   └── deploy.md                      # Copy of the Claude Code deploy skill, served at /deploy.md
 ├── scripts/
 │   └── setup-dev.sh
 └── docs/
     ├── PRD.md                         # Product requirements
     ├── ARCHITECTURE.md                # This file
     ├── HOW-IT-WORKS.md                # End-to-end runtime behavior
+    ├── cli-and-claude.md              # CLI, Claude Code plugin and Claude Desktop (MCP) integration
     ├── TODO.md                        # Improvement roadmap
     └── learn.md                       # Codebase learning guide
 ```
@@ -378,7 +383,7 @@ sequenceDiagram
 | 5.2 Git Providers | `GitProviderService`, `GitProviderRepository`, `/api/auth/github/*`, `/api/auth/gitlab/*`, `/api/git-providers/*` |
 | 5.3 Type Detection | `ProjectType` enum, `DOCKERFILE_TEMPLATES` in `services/docker/`, `detector.ts` in CLI |
 | 5.4 Build & Deploy | `DeploymentService`, `DockerService`, `GitService`, `deployment.worker.ts` |
-| 5.4a CLI Access | `plugin/` package (`entrify-deploy`), `/api/auth/token`, `DropDeployApi`, credential file |
+| 5.4a CLI Access | `plugin/` package (`entrify-deploy`), `/api/auth/token`, `EntrifyApi`, credential file — see [cli-and-claude.md](./cli-and-claude.md) |
 | 5.5 Status | `DeploymentStatus` enum, `buildStep` tracking (CLONING / BUILDING_IMAGE / STARTING) |
 | 5.6 URLs | Subdomain routing via Nginx, `BASE_DOMAIN` in config |
 | 5.7 Branches | `project.branch` field, `GitService.ensureRepo()` with branch switching |

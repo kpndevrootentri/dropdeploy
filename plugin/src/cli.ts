@@ -792,7 +792,7 @@ ${c.bold('FOR SCRIPTS AND AI AGENTS')}
   Commands never prompt without a terminal or with --json.
 
 ${c.bold('ENVIRONMENT')}  ${c.dim('(the DROPDEPLOY_* names still work)')}
-  ${c.dim('ENTRIFY_TOKEN')}                 Bearer token  ${c.dim('(skips auth login in CI)')}
+  ${c.dim('ENTRIFY_TOKEN')}                 An API token from entrify.site/settings, or ${BIN} auth token  ${c.dim('(skips auth login in CI)')}
   ${c.dim('ENTRIFY_URL')}                   Entrify URL  ${c.dim('(default https://entrify.site)')}
   ${c.dim('ENTRIFY_EMAIL')}                 Email  ${c.dim('(optional, cosmetic)')}
 

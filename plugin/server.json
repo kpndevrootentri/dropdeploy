@@ -1,0 +1,38 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.kpndevrootentri/entrify",
+  "title": "Entrify",
+  "description": "Publish HTML pages as live websites on Entrify and list your sites, from Claude or any MCP client.",
+  "websiteUrl": "https://entrify.site/docs/claude-desktop",
+  "repository": {
+    "url": "https://github.com/kpndevrootentri/entrify-cli",
+    "source": "github"
+  },
+  "version": "1.5.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "entrify-deploy",
+      "version": "1.5.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        { "type": "positional", "value": "mcp" }
+      ],
+      "environmentVariables": [
+        {
+          "name": "ENTRIFY_TOKEN",
+          "description": "Entrify API token: create one at https://entrify.site/settings under API tokens (Deploy only is enough).",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "ENTRIFY_URL",
+          "description": "Entrify URL. Leave unset for https://entrify.site.",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

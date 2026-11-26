@@ -1,6 +1,8 @@
 # entrify-deploy
 
-Official CLI for [Entrify](https://entrify.site): deploy any project or HTML page from the terminal, Claude Code or Claude Desktop in seconds.
+[Entrify](https://entrify.site) deploys websites, apps and HTML pages and gives you a live URL in seconds; `entrify-deploy` is its official CLI and MCP server.
+Publish an HTML page three ways: run `entrify upload page.html` in a terminal, say "deploy this page" in Claude Code, or ask Claude Desktop to "deploy this page to Entrify".
+Deploy a git repository (Next.js, React, Node.js, Django, FastAPI, Go, static HTML and more) with `entrify deploy`.
 
 Formerly `dropdeploy-cli`. To switch: `npm uninstall -g dropdeploy-cli && npm install -g entrify-deploy`. Your saved login carries over.
 
@@ -28,32 +30,38 @@ Claude installs the CLI if needed, deploys, and reads the build log when a deplo
 
 ## Use it from Claude Desktop
 
-`entrify mcp` runs an MCP server that gives Claude Desktop one tool, `deploy_to_entrify`. Ask Claude to make a page and deploy it to Entrify, and it replies with the live URL. Claude sends the page itself (`name`, `html`, optional text `files` such as `style.css`, and `project_id` to update an existing site), so it can't publish files from your disk. If a site with that name exists, Claude asks whether to update it or use another name.
+Install the Entrify extension and Claude Desktop can publish a page it made and reply with the live URL. No terminal or Node.js install needed.
 
-1. Install the CLI and log in in a terminal: `npm install -g entrify-deploy`, then `entrify auth login`.
-2. Find the full paths. Claude Desktop doesn't load your shell's `PATH`, so it needs them:
+1. Download [entrify.mcpb](https://entrify.site/downloads/entrify.mcpb), double-click it and click **Install**. If no install window opens, go to Claude Desktop's extension settings (**Settings > Extensions**, or on newer versions **Settings > Desktop app**, then **Manage** next to Extensions), open **Advanced settings**, click **Install Extension…** and choose the file.
+2. Create an API token at [entrify.site/settings](https://entrify.site/settings#api-tokens) under **API tokens**. **Deploy only** is enough.
+3. Paste the token when Claude Desktop asks for it. To change it later, click **Entrify** in the same extension settings.
 
-   ```bash
-   which node      # e.g. /opt/homebrew/bin/node
-   which entrify   # e.g. /opt/homebrew/bin/entrify
-   ```
+Then ask Claude to make a page and "deploy this page to Entrify". The extension gives Claude two tools:
 
-3. In Claude Desktop, open Settings → Developer → Edit Config (`claude_desktop_config.json`) and add:
+| Tool | What it does |
+|---|---|
+| `deploy_to_entrify` | Publishes a page as a site: `name`, `html`, optional text `files` (such as `style.css`), and `project_id` to publish a new version of an existing site. |
+| `list_my_sites` | Lists your sites (name, slug, URL, source) and how many new sites you can still create. Read-only. |
 
-   ```json
-   {
-     "mcpServers": {
-       "entrify": {
-         "command": "/opt/homebrew/bin/node",
-         "args": ["/opt/homebrew/bin/entrify", "mcp"]
-       }
-     }
-   }
-   ```
+Claude sends the page itself, so it can't publish files from your disk. A new name never overwrites a site: if the name is taken, Claude asks whether to update that site or use another name. When the token expires or you revoke it, create a new one and paste it into **Entrify** in Claude Desktop's extension settings.
 
-4. Restart Claude Desktop.
+### Advanced: set it up by hand
 
-With no `env`, the tool uses the login saved by `entrify auth login`. Logins expire after 7 days; log in again in a terminal, with no Desktop restart needed. To use a token instead, add `"env": { "ENTRIFY_TOKEN": "<token>" }` with the output of `entrify auth token` (and `ENTRIFY_URL` if you don't use https://entrify.site). When that token expires, put a new one in the config and restart Claude Desktop.
+For another MCP client, or without the extension: install the CLI (`npm install -g entrify-deploy`), then add the server to the client's config. In Claude Desktop that is **Settings > Developer > Edit Config** (`claude_desktop_config.json`). Claude Desktop doesn't load your shell's `PATH`, so use full paths from `which node` and `which entrify`:
+
+```json
+{
+  "mcpServers": {
+    "entrify": {
+      "command": "/opt/homebrew/bin/node",
+      "args": ["/opt/homebrew/bin/entrify", "mcp"],
+      "env": { "ENTRIFY_TOKEN": "ent_your_api_token" }
+    }
+  }
+}
+```
+
+Restart Claude Desktop after editing. Add `ENTRIFY_URL` to `env` if you don't use https://entrify.site. Without `env`, the server uses the login saved by `entrify auth login`, which expires after 7 days. The paths change when you update Node (for example with nvm); the extension has no such paths.
 
 ---
 
@@ -88,13 +96,13 @@ Password is always entered interactively; it is never passed as a flag. Logins l
 Show the currently logged-in account.
 
 ### `entrify auth token`
-Print the token saved by `entrify auth login`, for `ENTRIFY_TOKEN` in CI or Claude Desktop:
+Print the token saved by `entrify auth login`, for `ENTRIFY_TOKEN`:
 
 ```bash
 export ENTRIFY_TOKEN=$(entrify auth token)
 ```
 
-It ignores `ENTRIFY_TOKEN` in the environment, so it never echoes back an expired token. Tokens expire after 7 days.
+It ignores `ENTRIFY_TOKEN` in the environment, so it never echoes back an expired token. Login tokens expire after 7 days; for CI and Claude Desktop, an [API token](#ci--automation) lasts longer.
 
 ### `entrify auth logout`
 Clear saved credentials.
@@ -201,7 +209,7 @@ Cancel the deployment that is queued or building.
 ---
 
 ### `entrify mcp`
-Run the MCP server for Claude Desktop over stdio. Claude Desktop starts it; see [Use it from Claude Desktop](#use-it-from-claude-desktop).
+Run the MCP server (tools `deploy_to_entrify` and `list_my_sites`) over stdio. Claude Desktop's Entrify extension starts it; see [Use it from Claude Desktop](#use-it-from-claude-desktop).
 
 ### `entrify help`
 Print the full command reference.
@@ -216,11 +224,13 @@ Print the installed version.
 Skip interactive login by setting environment variables:
 
 ```bash
-export ENTRIFY_TOKEN=your-jwt-token     # from entrify auth token; expires after 7 days
+export ENTRIFY_TOKEN=ent_your_api_token  # an API token from https://entrify.site/settings
 export ENTRIFY_URL=https://entrify.site  # optional, this is the default
 
 entrify deploy --project-id my-app
 ```
+
+Create API tokens at [entrify.site/settings](https://entrify.site/settings#api-tokens). Creating one asks for your password. Each expires after 30, 90 or 365 days, or never, and you can revoke it there at any time; changing your password revokes them all. A **Deploy only** token can list projects, upload, deploy existing projects, show status and logs, roll back and cancel; `entrify deploy --create` and `entrify env` need a **Full access** token. The token is shown once, so store it as a CI secret. `$(entrify auth token)` also works, but that login expires after 7 days.
 
 `DROPDEPLOY_TOKEN`, `DROPDEPLOY_URL` and `DROPDEPLOY_EMAIL` still work. Without a terminal, the CLI never prompts. If it can't match the repository to a project, it exits with an error asking for `--project-id` or `--create`.
 
@@ -269,6 +279,14 @@ Verify the installation:
 ```bash
 entrify --version
 ```
+
+---
+
+## Publishing (maintainers)
+
+1. Bump `version` in `package.json`, `mcpb/manifest.json`, `server.json` (both places) and `plugins/entrify/.claude-plugin/plugin.json`.
+2. `npm run pack:mcpb` rebuilds the Claude Desktop extension at `../public/downloads/entrify.mcpb` in the Entrify app repository, served at https://entrify.site/downloads/entrify.mcpb. The app's tests fail when its version or manifest is out of date.
+3. `npm publish`, then publish `server.json` to the [MCP Registry](https://registry.modelcontextprotocol.io): `mcp-publisher login github`, then `mcp-publisher publish`. The registry checks that `mcpName` in the published `package.json` matches `name` in `server.json`.
 
 ---
 

@@ -69,3 +69,18 @@ describe('admin pages while viewing as a user', () => {
     expect(new URL(res.headers.get('location') ?? '').pathname).toBe('/dashboard');
   });
 });
+
+describe('cross-origin guard', () => {
+  async function post(path: string, origin: string) {
+    return proxy(new NextRequest(`http://localhost:3000${path}`, { method: 'POST', headers: { host: 'localhost:3000', origin } }));
+  }
+
+  // Next decodes the path before routing, so an encoded spelling still reaches the API route.
+  it.each(['/api/tokens', '/%61pi/tokens', '/%61pi/projects/upload'])('refuses a POST to %s from a tenant site', async (path) => {
+    expect((await post(path, 'http://evil.example.test')).status).toBe(403);
+  });
+
+  it('lets a same-origin POST through', async () => {
+    expect((await post('/api/tokens', 'http://localhost:3000')).status).toBe(200);
+  });
+});

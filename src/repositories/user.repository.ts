@@ -47,7 +47,7 @@ export interface IUserRepository {
   setPassword(id: string, passwordHash: string, mustResetPassword?: boolean): Promise<User>;
   /** Suspends or reinstates the user; both revoke every outstanding session. */
   setSuspended(id: string, suspended: boolean, tx?: Prisma.TransactionClient): Promise<User>;
-  /** Signs the user out of every browser and CLI. */
+  /** Signs the user out of every browser and CLI, and revokes their API tokens. */
   revokeSessions(id: string): Promise<void>;
   delete(id: string, tx?: Prisma.TransactionClient): Promise<void>;
   /** Whether the dashboard product tour has been offered and answered. */
@@ -123,10 +123,10 @@ export class UserRepository implements IUserRepository {
   }
 
   /**
-   * Also revokes every outstanding session, CLI token and unused invite link —
-   * a stolen token or a mis-sent link must not outlive the password change
-   * meant to lock its holder out. Accepting an invite marks it used first, so
-   * that one is kept as a record.
+   * Also revokes every outstanding session, CLI token, API token and unused
+   * invite link — a stolen token or a mis-sent link must not outlive the
+   * password change meant to lock its holder out. Accepting an invite marks it
+   * used first, so that one is kept as a record.
    */
   async setPassword(id: string, passwordHash: string, mustResetPassword = false): Promise<User> {
     const [user] = await prisma.$transaction([
@@ -135,19 +135,30 @@ export class UserRepository implements IUserRepository {
         data: { passwordHash, mustResetPassword, tokenVersion: { increment: 1 } },
       }),
       prisma.inviteToken.deleteMany({ where: { userId: id, usedAt: null } }),
+      prisma.apiToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } }),
     ]);
     return user;
   }
 
-  async setSuspended(id: string, suspended: boolean, tx: Prisma.TransactionClient = prisma): Promise<User> {
-    return tx.user.update({
+  async setSuspended(id: string, suspended: boolean, tx?: Prisma.TransactionClient): Promise<User> {
+    if (!tx) return prisma.$transaction((client) => this.setSuspended(id, suspended, client));
+    const user = await tx.user.update({
       where: { id },
       data: { suspendedAt: suspended ? new Date() : null, tokenVersion: { increment: 1 } },
     });
+    // Revoked, not just blocked, so reinstating the user does not bring their tokens back.
+    if (suspended) {
+      await tx.apiToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
+    }
+    return user;
   }
 
   async revokeSessions(id: string): Promise<void> {
-    await prisma.user.update({ where: { id }, data: { tokenVersion: { increment: 1 } } });
+    // API tokens are not tied to tokenVersion, so they are revoked explicitly.
+    await prisma.$transaction([
+      prisma.user.update({ where: { id }, data: { tokenVersion: { increment: 1 } } }),
+      prisma.apiToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } }),
+    ]);
   }
 
   async delete(id: string, tx: Prisma.TransactionClient = prisma): Promise<void> {

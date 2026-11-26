@@ -1,3 +1,5 @@
+import { AMBIGUOUS_PATH } from '@/lib/api-token-scope';
+
 /** Closed while viewing as a user, even for GET, because they act on more than what is on screen. */
 const CLOSED_WHILE_VIEWING = [
   // No admin powers from inside someone else's session.
@@ -14,7 +16,9 @@ const CLOSED_WHILE_VIEWING = [
  * route that ends the view never calls getSession, so it needs no exception.
  */
 export function impersonationBlockReason(method: string, pathname: string): string | null {
-  if (CLOSED_WHILE_VIEWING.some((pattern) => pattern.test(pathname))) {
+  // The lists match the raw path. Encoded or doubled-slash spellings (/%61pi/admin) are refused rather than
+  // trusted to miss a route, the same rule API tokens follow (lib/api-token-scope.ts).
+  if (AMBIGUOUS_PATH.test(pathname) || CLOSED_WHILE_VIEWING.some((pattern) => pattern.test(pathname))) {
     return 'Not available while viewing as another user';
   }
   if (method !== 'GET' && method !== 'HEAD') return 'Read-only while viewing as another user';

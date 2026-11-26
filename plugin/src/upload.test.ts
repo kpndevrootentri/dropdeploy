@@ -131,7 +131,7 @@ test('deploySite never overwrites a site unless asked to', async () => {
   await assert.rejects(deploySite(api, bundle, { name: ' portfolio ' }), (err: { code: string; message: string; details: unknown }) => {
     assert.equal(err.code, 'NAME_TAKEN');
     assert.match(err.message, /--project-id portfolio/);
-    assert.deepEqual(err.details, { project: { id: 'p1', slug: 'portfolio', name: 'Portfolio' } });
+    assert.deepEqual(err.details, { project: { id: 'p1', slug: 'portfolio', name: 'Portfolio' }, source: 'UPLOAD' });
     return true;
   });
   await assert.rejects(deploySite(api, bundle, { name: 'MY-APP' }), { code: 'NAME_TAKEN', message: /deployed from git/ });

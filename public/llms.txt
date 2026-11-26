@@ -1,27 +1,52 @@
 # Entrify
 
-> Instant web deployment platform — paste a GitHub or GitLab repository URL and get a live subdomain URL. Entrify clones, containerizes, and hosts your app automatically.
+> Entrify deploys websites, apps and single HTML pages to a live `<slug>.entrify.site` URL. Deploy a GitHub or GitLab repository, or publish an HTML file, folder or .zip, from the web dashboard, the `entrify` CLI, Claude Code or Claude Desktop.
 
-Entrify is a self-hosted deployment platform that supports static sites, Node.js, Next.js, and Django applications. Each deployment runs in an isolated Docker container (static sites are served as files) at its own `<slug>.entrify.site` subdomain. Projects can be deployed from the web dashboard, the `entrify` CLI (npm package `entrify-deploy`), or from Claude Code with the `entrify` plugin.
+Entrify supports static HTML, Node.js, Next.js, React, Vue, Svelte, Django, FastAPI, Flask, Go, Rust, Java (Spring Boot) and WordPress. Each deployment runs in an isolated Docker container (uploaded static sites are served as files) at its own subdomain, and the URL stays the same on every redeploy. Projects can be deployed from the web dashboard, the `entrify` CLI (npm package `entrify-deploy`), Claude Code with the `entrify` plugin, or Claude Desktop with the Entrify extension. There are no paid plans; each account has a project quota (5 by default) and a custom-domain quota (1 by default).
 
 Two processes run side by side: the Next.js web app (API + UI) and a BullMQ worker that processes build jobs asynchronously.
+
+## Publish an HTML page
+
+Four ways; each gives the page its own URL in seconds. Limits: 50 MB and 500 files per upload (a .zip unpacks to at most 100 MB), a folder or .zip needs `index.html` at its top level (a single .html file can have any name), and only web file types are published (.html .htm .css .js .mjs .cjs .json .svg .ico .png .jpg .jpeg .gif .webp .avif .woff .woff2 .ttf .eot .xml .txt .map .webmanifest; others in a dashboard, CLI folder or .zip upload are skipped, while Claude Desktop refuses the deploy). A site name that is already taken is never overwritten unless the user chooses that site.
+
+- [Dashboard](https://entrify.site/docs/deploy-html): Drag an .html file, a folder with index.html, or a .zip onto the dashboard, name it and click Publish. Drop a new version and choose "Replace" to update a site without changing its URL.
+- [CLI](https://entrify.site/docs/cli): `entrify upload <file|folder|zip> [--name <name>] [--project-id <slug>] [--dry-run]`. `--project-id` uploads a new version of an existing site. A folder with `package.json` at its top is refused as source code: upload its build output (such as `dist/`).
+- [Claude Desktop](https://entrify.site/docs/claude-desktop): Install the Entrify extension, paste an API token, and ask "deploy this page to Entrify".
+- [Claude Code](https://entrify.site/docs/claude-code): Install the plugin and say "deploy this page to Entrify"; it runs `entrify upload`.
+
+## Claude Desktop extension
+
+- [Install the extension](https://entrify.site/downloads/entrify.mcpb): One-click Claude Desktop extension (MCP Bundle). Double-click it and click Install (or, in Claude Desktop's extension settings — Settings > Extensions, or Settings > Desktop app > Manage on newer versions — use Advanced settings > Install Extension…), then paste an Entrify API token (Deploy only is enough). No terminal or Node.js install needed.
+- [Tools](https://entrify.site/docs/claude-desktop): `deploy_to_entrify` (inputs `name`, `html`, optional text `files`, `project_id` to update an existing site) publishes a page and returns its URL. `list_my_sites` (no inputs, read-only) lists the user's sites with URLs and how many new sites are left. The extension cannot read local files; it publishes only what Claude sends.
+
+## API tokens
+
+- [API tokens](https://entrify.site/docs/api-tokens): Created at https://entrify.site/settings#api-tokens. Creating one asks for the account password. Tokens start with `ent_`, are shown once, and expire after 30, 90 (default) or 365 days, or never. Revoking takes effect immediately; a password change or reset, a suspension, or an admin sign-out revokes every token. Up to 20 active tokens per account.
+- Scopes: **Deploy only** can list and read projects, upload sites, deploy existing projects, read deployments and build logs, roll back and cancel. **Full access** can also create projects from a git repository (using the user's linked GitHub/GitLab account, so any repository they can read), manage env vars, settings, domains and deletes. No token can use admin, auth, token, onboarding, batch, git-provider or terminal endpoints.
 
 ## Documentation
 
 - [Getting Started](https://entrify.site/docs/getting-started): Create a project, connect a git repository, and trigger your first deployment from the dashboard.
 - [Git Setup](https://entrify.site/docs/git-setup): Connect GitHub and GitLab OAuth apps for private repository access. Tokens are stored encrypted and auto-refreshed for GitLab.
 - [Local Dev](https://entrify.site/docs/local-dev): Run the Next.js dev server and BullMQ worker locally. Covers environment variables, Prisma setup, and Docker requirements.
+- [Publish an HTML page](https://entrify.site/docs/deploy-html): The four ways to publish an HTML file, folder or .zip, the limits, and updating a site without changing its URL.
+- [Claude Desktop](https://entrify.site/docs/claude-desktop): Install the extension, create a Deploy only token, paste it, and ask Claude to deploy. Safety and troubleshooting.
+- [Claude Code](https://entrify.site/docs/claude-code): Install the plugin with `/plugin install entrify --marketplace kpndevrootentri/entrify-cli`, then ask Claude to deploy. It deploys, reads the build log when a deploy fails, fixes the cause and redeploys (at most 3 attempts).
+- [CLI reference](https://entrify.site/docs/cli): Install `entrify-deploy` (`npm install -g entrify-deploy`); commands `deploy`, `upload`, `status`, `logs`, `env`, `rollback`, `cancel`, `projects`, `auth login|status|token|logout`, `mcp`. Add `--json` to any command for one machine-readable JSON object; exit codes are 0 ok, 1 failed, 2 needs input, 3 not logged in.
+- [API tokens](https://entrify.site/docs/api-tokens): Deploy only vs Full access, expiry, revoking, and using tokens in Claude Desktop and CI.
+- [FAQ](https://entrify.site/docs/faq): Pricing, frameworks, file types, upload limits, custom domains, updating a site, tokens and CI.
 - [Next.js](https://entrify.site/docs/frameworks/nextjs): Multi-stage Docker build (builder + runner stages). The config patcher adjusts `next.config.js` for standalone output automatically.
-- [React / Vue / Svelte](https://entrify.site/docs/frameworks/static): Compiled to static files and served via Nginx.
+- [Static HTML](https://entrify.site/docs/frameworks/static): Plain HTML, CSS and JavaScript served by Nginx.
+- [React](https://entrify.site/docs/frameworks/react), [Vue](https://entrify.site/docs/frameworks/vue), [Svelte](https://entrify.site/docs/frameworks/svelte): Built with Vite and served as static files by Nginx.
 - [Node.js](https://entrify.site/docs/frameworks/nodejs): `npm install --omit=dev` + `npm start`. Requires a `start` script in `package.json`.
 - [Django](https://entrify.site/docs/frameworks/django): `pip install -r requirements.txt` + `manage.py runserver 0.0.0.0:8000`.
-- [FastAPI / Flask](https://entrify.site/docs/frameworks/fastapi): Python ASGI/WSGI apps with pip-based installs.
-- [CLI Reference](https://github.com/kpndevrootentri/entrify-cli#readme): Install `entrify-deploy` (`npm install -g entrify-deploy`) and run `entrify deploy` in any git repo. Add `--json` to any command for one machine-readable JSON object; exit codes are 0 ok, 1 failed, 2 needs input, 3 not logged in.
-- [Claude Code Integration](https://github.com/kpndevrootentri/entrify-cli#use-it-from-claude-code): Install the plugin with `/plugin install entrify --marketplace kpndevrootentri/entrify-cli`, then ask Claude to deploy. It deploys, reads the build log when a deploy fails, fixes the cause and redeploys.
+- [FastAPI](https://entrify.site/docs/frameworks/fastapi) / [Flask](https://entrify.site/docs/frameworks/flask): Python ASGI/WSGI apps with pip-based installs.
+- [Go](https://entrify.site/docs/frameworks/go), [Rust](https://entrify.site/docs/frameworks/rust), [Java / Spring Boot](https://entrify.site/docs/frameworks/java), [WordPress](https://entrify.site/docs/frameworks/wordpress): Compiled or packaged in Docker; see each page for requirements.
 
 ## API
 
-All authenticated routes require a valid JWT. Browser clients use an httpOnly session cookie. CLI and CI clients send `Authorization: Bearer <token>`.
+Authenticated routes accept a browser session cookie or `Authorization: Bearer <token>`, where the token is either a login JWT (from `POST /api/auth/token`, expires after 7 days) or an `ent_` API token (subject to its scope).
 
 - `POST /api/auth/register` — Create an account `{ email, password }`. Sets httpOnly cookie on success.
 - `POST /api/auth/login` — Log in `{ email, password }`. Sets httpOnly cookie.
@@ -33,20 +58,24 @@ All authenticated routes require a valid JWT. Browser clients use an httpOnly se
 - `GET /api/git-providers` — List connected providers (username + avatar).
 - `DELETE /api/git-providers/:provider` — Disconnect a provider.
 - `GET /api/git-providers/:provider/repos?q=&page=` — Search user's repos (Redis-cached).
-- `GET /api/projects` — List all projects for the authenticated user.
-- `POST /api/projects` — Create a project `{ name, githubUrl, type, branch }`. `type` is one of `STATIC | NODEJS | NEXTJS | DJANGO`.
+- `GET /api/projects` — List all projects for the authenticated user, with `quota { used, limit, available }`.
+- `POST /api/projects` — Create a project `{ name, source, githubUrl, type, branch }`. `source` is `GITHUB | GITLAB`; `type` is one of `STATIC | NODEJS | NEXTJS | REACT | VUE | SVELTE | DJANGO | FASTAPI | FLASK | GO | RUST | JAVA | WORDPRESS`.
+- `POST /api/projects/upload` — Publish a static site from a multipart form: `file` (an .html or .zip, max 50 MB) and `name` (3–50 letters, digits, spaces, `-`, `_`). Returns `{ project, deployment, url }`.
+- `POST /api/projects/:id/upload` — Upload a new version of an uploaded site (multipart `file`). The URL stays the same.
 - `GET /api/projects/:id` — Get project details including latest deployment status.
 - `PATCH /api/projects/:id` — Update project settings.
 - `DELETE /api/projects/:id` — Delete project and its containers.
 - `POST /api/projects/:id/deploy` — Trigger a deployment. Returns `{ deploymentId }`. Build runs asynchronously.
-- `POST /api/projects/:id/terminal` — Execute a command inside the running container `{ command }`. Validated against an allowlist; 30-second timeout.
+- `POST /api/projects/:id/terminal` — Execute a command inside the running container `{ command }`. Validated against an allowlist; 30-second timeout. Not available to API tokens.
 - `GET /api/projects/:id/analytics` — 14-day traffic hits, device breakdown (mobile/desktop/bot).
 - `GET /api/projects/:id/showcase` — Get public showcase config.
 - `POST /api/projects/:id/showcase` — Publish or update the project's showcase listing.
+- `GET /api/tokens`, `POST /api/tokens`, `DELETE /api/tokens/:id` — List, create and revoke API tokens. Signed-in sessions only, never with an API token.
 - `GET /api/health` — Health check.
 
 ## Optional
 
 - [Explore](https://entrify.site/explore): Public showcase of deployed projects with SEO metadata and JSON-LD structured data.
-- [entrify-deploy on npm](https://www.npmjs.com/package/entrify-deploy): CLI package: `entrify deploy [--create]`, `status`, `logs [--follow]`, `env list|set|push|unset`, `rollback`, `cancel`, `projects`, `auth login`. Supports the `ENTRIFY_TOKEN` and `ENTRIFY_URL` env vars for CI.
-- [Claude Code /deploy skill](https://entrify.site/deploy.md): The `/deploy` skill as one file, for saving to `~/.claude/commands/`. It installs the CLI, checks the login, deploys with `--json`, and fixes failed deploys (at most 3 attempts).
+- [entrify-deploy on npm](https://www.npmjs.com/package/entrify-deploy): CLI package: `entrify deploy [--create]`, `upload`, `status`, `logs [--follow]`, `env list|set|push|unset`, `rollback`, `cancel`, `projects`, `auth login`, `mcp`. Supports the `ENTRIFY_TOKEN` (an `ent_` API token) and `ENTRIFY_URL` env vars for CI.
+- [CLI source and README](https://github.com/kpndevrootentri/entrify-cli#readme): Source of the CLI, the Claude Code plugin and the MCP server.
+- [Claude Code /deploy skill](https://entrify.site/deploy.md): The `/deploy` skill as one file, for saving to `~/.claude/commands/`. It installs the CLI, checks the login, deploys with `--json`, publishes HTML pages with `entrify upload`, and fixes failed deploys (at most 3 attempts).

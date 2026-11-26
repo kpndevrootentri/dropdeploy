@@ -50,6 +50,7 @@ model User {
   projectAccess     ProjectAccess[]
   inviteTokens      InviteToken[]
   cohortMemberships CohortMember[]
+  apiTokens         ApiToken[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -120,6 +121,33 @@ model InviteToken {
 
   @@index([userId])
   @@map("invite_tokens")
+}
+
+enum ApiTokenScope {
+  DEPLOY
+  FULL
+}
+
+/// A long-lived token for the Claude Desktop extension, CI or ENTRIFY_TOKEN. Only
+/// the token's sha256 is stored; the token itself is shown once, at creation.
+/// What each scope may call is in src/lib/api-token-scope.ts.
+model ApiToken {
+  id         String        @id @default(cuid())
+  userId     String        @map("user_id")
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  tokenHash  String        @unique @map("token_hash")
+  /// The first 12 characters ("ent_abcd1234"), so the user can tell tokens apart.
+  prefix     String
+  scope      ApiTokenScope @default(DEPLOY)
+  /// Null means the token never expires.
+  expiresAt  DateTime?     @map("expires_at")
+  lastUsedAt DateTime?     @map("last_used_at")
+  revokedAt  DateTime?     @map("revoked_at")
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("api_tokens")
 }
 
 model Project {

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { GitProviderPanel } from '@/components/features/git-provider-panel';
+import { ApiTokensCard } from '@/components/settings/api-tokens-card';
 import { AlertCircle, CheckCircle2, KeyRound, User } from 'lucide-react';
 
 interface Session {
@@ -173,6 +174,8 @@ export default function SettingsPage(): React.ReactElement {
 
       {/* Git Providers */}
       <GitProviderPanel />
+
+      <ApiTokensCard />
     </div>
   );
 }

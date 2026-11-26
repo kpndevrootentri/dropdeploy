@@ -1,12 +1,13 @@
 import type { MetadataRoute } from 'next';
+import { SITE_URL } from '@/lib/json-ld';
 
 export default function robots(): MetadataRoute.Robots {
-  const base = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3001').replace(/\/$/, '');
+  const base = SITE_URL;
   return {
     rules: [
       {
         userAgent: '*',
-        allow: ['/', '/explore', '/llms.txt', '/llms-full.txt', '/docs/'],
+        allow: ['/', '/explore', '/llms.txt', '/llms-full.txt', '/docs/', '/downloads/', '/deploy.md'],
         disallow: ['/api/', '/dashboard/', '/login', '/reset-password', '/invite/'],
       },
     ],

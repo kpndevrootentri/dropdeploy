@@ -12,6 +12,7 @@ export async function GET(): Promise<NextResponse> {
     { label: 'HOW-IT-WORKS.md', path: join(docsDir, 'HOW-IT-WORKS.md') },
     { label: 'ARCHITECTURE.md', path: join(docsDir, 'ARCHITECTURE.md') },
     { label: 'deploy.md (Claude Code skill)', path: join(process.cwd(), 'public', 'deploy.md') },
+    { label: 'entrify-deploy README (CLI reference)', path: join(process.cwd(), 'plugin', 'README.md') },
   ];
 
   const sections = await Promise.all(

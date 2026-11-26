@@ -11,6 +11,7 @@ export interface Project {
   githubUrl: string | null;
   /** The branch the server builds, whatever is checked out locally. */
   branch?: string;
+  updatedAt?: string;
   deployments?: Array<{
     id: string;
     status: string;
@@ -110,10 +111,10 @@ export class EntrifyApi {
         throw new CliError(`Could not reach ${this.base}: ${this.token ? reason.split(this.token).join('<token>') : reason}`, 'NETWORK');
       });
       if (res.status === 401) {
-        // CLI logins are JWTs that expire (7 days by default).
+        // CLI logins are JWTs that expire (7 days by default); API tokens expire when their creator chose.
         throw new CliError(
           process.env.ENTRIFY_TOKEN ?? process.env.DROPDEPLOY_TOKEN
-            ? `ENTRIFY_TOKEN has expired or is not valid. Set a new one: run ${cliName()} auth login, then export ENTRIFY_TOKEN=$(${cliName()} auth token). If it is in Claude Desktop's config, update it there and restart Claude Desktop.`
+            ? `ENTRIFY_TOKEN is not valid or has expired. Create a new API token at ${this.base}/settings (or run ${cliName()} auth login, then export ENTRIFY_TOKEN=$(${cliName()} auth token)). In Claude Desktop, paste it into the Entrify extension (Settings > Extensions, or Settings > Desktop app > Manage next to Extensions).`
             : `Your login has expired or is no longer valid. Run: ${cliName()} auth login`,
           'AUTH_EXPIRED',
           EXIT.AUTH,

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,13 @@ interface PageProps {
 }
 
 export const revalidate = 60;
+
+export const metadata: Metadata = {
+  title: 'Explore projects built on Entrify',
+  description:
+    'Browse public apps, APIs, dashboards, bots and tools that people have built and deployed on Entrify, and open each one live.',
+  alternates: { canonical: '/explore' },
+};
 
 export default async function ExplorePage({ searchParams }: PageProps) {
   const { tag, q } = await searchParams;
