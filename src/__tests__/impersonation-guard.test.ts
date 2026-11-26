@@ -34,6 +34,10 @@ describe('getSession while an admin views as a user', () => {
     // a percent-encoded static segment (git%68ub) does not route at all, and a dynamic one still matches [^/]+.
     '/api/auth/x/%2E%2E/github/connect',
     '/api/git-providers/git%68ub/repos',
+    // Encoded or doubled-slash spellings of a closed path are refused outright.
+    '/%61pi/admin/users',
+    '/api/%61dmin/users',
+    '/api//admin/users',
   ])('refuses GET %s', async (path) => {
     await expect(getSession(request('GET', path))).rejects.toThrow(/Not available/);
   });
@@ -47,5 +51,10 @@ describe('getSession while an admin views as a user', () => {
 describe('impersonationBlockReason', () => {
   it('does not mistake a lookalike path for the admin API', () => {
     expect(impersonationBlockReason('GET', '/api/administrators')).toBeNull();
+  });
+
+  it('still allows ordinary reads with ids and slugs', () => {
+    expect(impersonationBlockReason('GET', '/api/projects/cm3x9k2/deployments')).toBeNull();
+    expect(impersonationBlockReason('GET', '/api/projects/my-site_2')).toBeNull();
   });
 });

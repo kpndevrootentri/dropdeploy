@@ -178,22 +178,24 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return NextResponse.next();
   }
 
+  // Every path, not only /api/: Next's router decodes the path before matching a
+  // route, so a form posting to /%61pi/tokens still reaches /api/tokens.
+  if (
+    isForeignOriginMutation(
+      request.method,
+      hostname,
+      request.headers.get('origin'),
+      request.headers.get('sec-fetch-site'),
+    )
+  ) {
+    return NextResponse.json(
+      { success: false, error: { code: 'FORBIDDEN', message: 'Cross-origin request refused' } },
+      { status: 403 },
+    );
+  }
+
   // For API routes: inject request ID and pass through (no auth redirect needed here)
   if (pathname.startsWith('/api/')) {
-    if (
-      isForeignOriginMutation(
-        request.method,
-        hostname,
-        request.headers.get('origin'),
-        request.headers.get('sec-fetch-site'),
-      )
-    ) {
-      return NextResponse.json(
-        { success: false, error: { code: 'FORBIDDEN', message: 'Cross-origin request refused' } },
-        { status: 403 },
-      );
-    }
-
     const requestId = request.headers.get('x-request-id') ?? randomUUID();
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set('x-request-id', requestId);

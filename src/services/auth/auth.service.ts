@@ -119,15 +119,23 @@ export class AuthService {
    * request carries — is not enough to take over the account.
    */
   async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<AuthTokens> {
+    await this.confirmPassword(userId, currentPassword);
+    return this.resetPassword(userId, newPassword);
+  }
+
+  /**
+   * Throws unless `password` is the user's current password. For actions a stolen
+   * session must not be able to take alone: `confirmPassword('u1', 'wrong')` → ValidationError.
+   */
+  async confirmPassword(userId: string, password: string): Promise<void> {
     const user = await this.userRepo.findById(userId);
     if (!user) {
       throw new UnauthorizedError('User not found');
     }
-    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
       throw new ValidationError('Current password is incorrect');
     }
-    return this.resetPassword(userId, newPassword);
   }
 
   /**

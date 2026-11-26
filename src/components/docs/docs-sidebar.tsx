@@ -16,6 +16,17 @@ const NAV_SECTIONS = [
     ],
   },
   {
+    title: 'Deploy with AI & CLI',
+    items: [
+      { href: '/docs/deploy-html', label: 'Publish an HTML page' },
+      { href: '/docs/claude-desktop', label: 'Claude Desktop' },
+      { href: '/docs/claude-code', label: 'Claude Code' },
+      { href: '/docs/cli', label: 'CLI reference' },
+      { href: '/docs/api-tokens', label: 'API tokens' },
+      { href: '/docs/faq', label: 'FAQ' },
+    ],
+  },
+  {
     title: 'Frameworks',
     items: [
       { href: '/docs/frameworks/static',  label: 'Static HTML',       Icon: () => <FaHtml5   size={12} className="text-orange-500 shrink-0" /> },
@@ -52,6 +63,7 @@ export function DocsSidebar(): React.ReactElement {
                 <li key={item.href}>
                   <Link
                     href={item.href}
+                    aria-current={isActive ? 'page' : undefined}
                     className={cn(
                       'flex items-center gap-2 px-2 py-1.5 rounded-md transition-colors',
                       isActive

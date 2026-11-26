@@ -37,7 +37,8 @@ function LoginForm(): React.ReactElement {
         setLoading(false);
         return;
       }
-      router.push(from);
+      // The login redirect drops a #fragment such as /settings#api-tokens; the browser kept it on this URL.
+      router.push(from.includes('#') ? from : from + window.location.hash);
       router.refresh();
     } catch {
       setError('Something went wrong');

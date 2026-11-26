@@ -15,8 +15,12 @@ const CLI = fileURLToPath(new URL('./cli.ts', import.meta.url));
 const TSX = import.meta.resolve('tsx');
 const TOKEN = 'mcp-token';
 
-const projects = [{ id: 'p1', name: 'Taken Site', slug: 'taken-site', type: 'STATIC', source: 'UPLOAD', githubUrl: null }];
+const projects = [
+  { id: 'p1', name: 'Taken Site', slug: 'taken-site', type: 'STATIC', source: 'UPLOAD', githubUrl: null, updatedAt: '2026-11-01T00:00:00.000Z' },
+  { id: 'p2', name: 'Git App', slug: 'git-app', type: 'NEXTJS', source: 'GITHUB', githubUrl: 'https://github.com/me/git-app' },
+];
 const uploadedNames: string[] = [];
+let tokenExpired = false;
 let server: Server;
 let baseUrl = '';
 let home = '';
@@ -27,8 +31,10 @@ const send = (res: ServerResponse, status: number, body: unknown) => {
 };
 
 async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  if (req.headers.authorization !== `Bearer ${TOKEN}`) return send(res, 401, { error: 'Not authenticated' });
-  if (req.url === '/api/projects' && req.method === 'GET') return send(res, 200, { success: true, data: projects });
+  if (tokenExpired || req.headers.authorization !== `Bearer ${TOKEN}`) return send(res, 401, { error: 'Not authenticated' });
+  if (req.url === '/api/projects' && req.method === 'GET') {
+    return send(res, 200, { success: true, data: projects, quota: { used: projects.length, limit: 5, available: 5 - projects.length } });
+  }
   if (req.url === '/api/projects/upload' && req.method === 'POST') {
     const form = await readForm(req);
     uploadedNames.push((form.get('file') as File).name);
@@ -55,9 +61,10 @@ after(async () => {
 
 interface Message { id?: number | null; result?: Record<string, any>; error?: { code: number; message: string } }
 
-test('mcp server answers requests, deploys HTML, reports errors as tool results, and writes only JSON-RPC to stdout', { timeout: 30_000 }, async () => {
-  // A temp HOME and APPDATA, so the real saved login is never read.
-  const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, APPDATA: home, ENTRIFY_TOKEN: TOKEN, ENTRIFY_URL: baseUrl };
+/** Starts `entrify mcp` with a temp HOME and APPDATA, so the real saved login is never read. */
+function startMcp(token: string | undefined) {
+  const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, APPDATA: home, ENTRIFY_TOKEN: token, ENTRIFY_URL: baseUrl };
+  if (token === undefined) delete env.ENTRIFY_TOKEN;
   delete env.DROPDEPLOY_TOKEN;
   delete env.DROPDEPLOY_URL;
   const child = spawn(process.execPath, ['--import', TSX, CLI, 'mcp'], { env });
@@ -78,7 +85,12 @@ test('mcp server answers requests, deploys HTML, reports errors as tool results,
     write({ id, method, params });
     return r;
   };
-  const call = async (id: number, args: object) => (await request(id, 'tools/call', { name: 'deploy_to_entrify', arguments: args })).result!;
+  const call = async (id: number, args: object, name = 'deploy_to_entrify') => (await request(id, 'tools/call', { name, arguments: args })).result!;
+  return { child, lines, reply, write, request, call };
+}
+
+test('mcp server answers requests, deploys HTML, reports errors as tool results, and writes only JSON-RPC to stdout', { timeout: 30_000 }, async () => {
+  const { child, lines, reply, write, request, call } = startMcp(TOKEN);
 
   // One message split across two writes.
   const init = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '0' } } });
@@ -87,31 +99,60 @@ test('mcp server answers requests, deploys HTML, reports errors as tool results,
   await new Promise((r) => setTimeout(r, 50));
   child.stdin.write(init.slice(20) + '\n');
   const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
-  assert.deepEqual((await initReply).result, {
-    protocolVersion: '2025-03-26',
-    capabilities: { tools: {} },
-    serverInfo: { name: 'entrify', version },
-  });
+  const { instructions, ...initResult } = (await initReply).result!;
+  assert.deepEqual(initResult, { protocolVersion: '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'entrify', version } });
+  assert.match(instructions, /call list_my_sites first/i);
+  assert.match(instructions, /give the user the URL/);
 
   write({ method: 'notifications/initialized' });
   assert.deepEqual((await request(2, 'ping')).result, {});
 
-  const tools = (await request(3, 'tools/list')).result!.tools as Array<{ name: string; inputSchema: { properties: object; required: string[] } }>;
-  assert.equal(tools.length, 1);
-  assert.equal(tools[0].name, 'deploy_to_entrify');
-  assert.deepEqual(Object.keys(tools[0].inputSchema.properties).sort(), ['files', 'html', 'name', 'project_id']);
-  assert.deepEqual(tools[0].inputSchema.required, ['name', 'html']);
+  type Tool = { name: string; title: string; inputSchema: { properties: object; required?: string[] }; annotations: Record<string, boolean> };
+  const tools = (await request(3, 'tools/list')).result!.tools as Tool[];
+  assert.deepEqual(tools.map((t) => t.name), ['list_my_sites', 'deploy_to_entrify']);
+  const [list, deploy] = tools;
+  assert.deepEqual(list.annotations, { readOnlyHint: true, openWorldHint: true });
+  assert.deepEqual(list.inputSchema.properties, {});
+  assert.deepEqual(deploy.annotations, { readOnlyHint: false, destructiveHint: true, openWorldHint: true });
+  assert.deepEqual(Object.keys(deploy.inputSchema.properties).sort(), ['files', 'html', 'name', 'project_id']);
+  assert.deepEqual(deploy.inputSchema.required, ['name', 'html']);
+  assert.ok(list.title && deploy.title);
 
   const ok = await call(4, { name: 'My Page', html: '<h1>Hi</h1>', files: { 'style.css': 'h1 { color: red }' } });
   const url = `${baseUrl}/api/proxy/my-page`;
   assert.equal(ok.isError, undefined);
-  assert.deepEqual(ok.structuredContent, { url, project: { id: 'p2', slug: 'my-page', name: 'My Page' }, created: true, files: ['index.html', 'style.css'] });
+  assert.deepEqual(ok.structuredContent, { url, project: { id: 'p3', slug: 'my-page', name: 'My Page' }, created: true, files: ['index.html', 'style.css'] });
   assert.match(ok.content[0].text, new RegExp(url));
   assert.deepEqual(uploadedNames, ['site.zip']);
 
   const taken = await call(5, { name: 'taken site', html: '<p>x</p>' });
   assert.equal(taken.isError, true);
-  assert.match(taken.content[0].text, /NAME_TAKEN/);
+  assert.match(taken.content[0].text, /NAME_TAKEN.*call deploy_to_entrify again with project_id "taken-site"/);
+  assert.doesNotMatch(taken.content[0].text, /--/);
+  const takenByGit = await call(9, { name: 'Git App', html: '<p>x</p>' });
+  assert.match(takenByGit.content[0].text, /deployed from git.*Choose another name/);
+  assert.doesNotMatch(takenByGit.content[0].text, /project_id|--/);
+  assert.match((await call(10, { name: 'x', html: '<p>x</p>', project_id: 'nope' })).content[0].text, /PROJECT_NOT_FOUND.*list_my_sites/);
+  assert.match((await call(11, { name: 'x', html: '<p>x</p>', project_id: 'git-app' })).content[0].text, /NOT_UPLOAD_PROJECT.*Leave out project_id/);
+  assert.match((await call(12, { name: 'a.b', html: '<p>x</p>' })).content[0].text, /INVALID_NAME.*choose a name/);
+
+  const sites = await call(13, {}, 'list_my_sites');
+  assert.equal(sites.isError, undefined);
+  assert.deepEqual(sites.structuredContent, {
+    sites: [
+      { name: 'Taken Site', slug: 'taken-site', url: `${baseUrl}/api/proxy/taken-site`, source: 'UPLOAD', updatedAt: '2026-11-01T00:00:00.000Z' },
+      { name: 'Git App', slug: 'git-app', url: `${baseUrl}/api/proxy/git-app`, source: 'GITHUB' },
+      { name: 'My Page', slug: 'my-page', url, source: 'UPLOAD' },
+    ],
+    quota: { used: 3, limit: 5, available: 2 },
+  });
+  assert.match(sites.content[0].text, /taken-site.*\/api\/proxy\/taken-site\n.*\n.*\n2 new site\(s\) left/);
+
+  tokenExpired = true;
+  const expired = await call(14, {}, 'list_my_sites');
+  tokenExpired = false;
+  assert.equal(expired.isError, true);
+  assert.match(expired.content[0].text, /AUTH_EXPIRED.*\/settings#api-tokens.*Entrify extension in Claude Desktop \(Settings > Extensions, or Settings > Desktop app > Manage next to Extensions\)/);
 
   const unsafe = await call(6, { name: 'Unsafe', html: '<p>x</p>', files: { '../x': 'y' } });
   assert.equal(unsafe.isError, true);
@@ -129,6 +170,19 @@ test('mcp server answers requests, deploys HTML, reports errors as tool results,
   const [exitCode] = await once(child, 'exit');
   assert.equal(exitCode, 0);
   const parsed = lines.map((line) => JSON.parse(line) as Message);
-  // Eight requests plus the parse error; the notification got no reply.
-  assert.deepEqual(parsed.map((m) => m.id).sort(), [1, 2, 3, 4, 5, 6, 7, 8, null].sort());
+  // Fourteen requests plus the parse error; the notification got no reply.
+  assert.deepEqual(parsed.map((m) => m.id).sort(), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, null].sort());
+});
+
+test('without a token, the tools say how to add one in Claude Desktop', { timeout: 30_000 }, async () => {
+  const { child, lines, call } = startMcp(undefined);
+  for (const [id, name] of [[1, 'list_my_sites'], [2, 'deploy_to_entrify']] as const) {
+    const out = await call(id, { name: 'My Page', html: '<p>x</p>' }, name);
+    assert.equal(out.isError, true);
+    assert.match(out.content[0].text, /^Entrify needs an API token\. Create one at http:\/\/127\.0\.0\.1:\d+\/settings#api-tokens, then paste it into the Entrify extension in Claude Desktop \(Settings > Extensions, or Settings > Desktop app > Manage next to Extensions\)\. In a terminal, run entrify auth login instead\.$/);
+  }
+  child.stdin.end();
+  await once(child, 'exit');
+  for (const line of lines) JSON.parse(line);
+  assert.equal(uploadedNames.length, 1, 'no upload without a token');
 });

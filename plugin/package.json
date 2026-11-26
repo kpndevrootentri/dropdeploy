@@ -1,7 +1,25 @@
 {
   "name": "entrify-deploy",
-  "version": "1.4.0",
-  "description": "Deploy repositories and HTML pages to Entrify from the terminal, the Claude Code /deploy skill or Claude Desktop",
+  "version": "1.5.0",
+  "description": "Deploy websites, apps and HTML pages to Entrify from the terminal, Claude Code or Claude Desktop",
+  "keywords": [
+    "deploy",
+    "hosting",
+    "static-site",
+    "html",
+    "mcp",
+    "mcp-server",
+    "claude",
+    "claude-code",
+    "claude-desktop",
+    "entrify"
+  ],
+  "homepage": "https://entrify.site/docs/cli",
+  "bugs": {
+    "url": "https://github.com/kpndevrootentri/entrify-cli/issues"
+  },
+  "license": "MIT",
+  "mcpName": "io.github.kpndevrootentri/entrify",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kpndevrootentri/entrify-cli.git"
@@ -22,9 +40,11 @@
     "dev": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
-    "test": "node --import tsx --test src/*.test.ts"
+    "test": "node --import tsx --test src/*.test.ts",
+    "pack:mcpb": "npm run build && node scripts/pack-mcpb.mjs"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.2",
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"

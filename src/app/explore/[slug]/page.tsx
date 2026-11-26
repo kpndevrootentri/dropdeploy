@@ -3,10 +3,11 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { FrameworkLogo, FRAMEWORK_CONFIG } from '@/components/ui/framework-logo';
+import { FRAMEWORK_CONFIG } from '@/components/ui/framework-logo';
 import { showcaseService, type ShowcaseTag } from '@/services/showcase/showcase.service';
 import { showcaseRepository } from '@/repositories/showcase.repository';
 import { getSessionFromCookies } from '@/lib/get-session';
+import { SITE_URL, jsonLdScriptProps } from '@/lib/json-ld';
 import { ArrowLeft, ExternalLink, Github, Globe, Mail } from 'lucide-react';
 
 const TAG_LABELS: Record<ShowcaseTag, string> = {
@@ -32,9 +33,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const showcase = await showcaseRepository.findBySlug(slug);
   if (!showcase) return {};
 
-  const base = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
+  const base = SITE_URL;
   return {
-    title: `${showcase.project.name} — Entrify`,
+    title: showcase.project.name,
     description: showcase.shortDescription,
     openGraph: {
       title: showcase.project.name,
@@ -62,7 +63,7 @@ export default async function ExploreToolPage({ params }: PageProps) {
   const { Logo } = config;
   const ownerHandle = showcase.project.user.handle;
 
-  const base = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
+  const base = SITE_URL;
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'SoftwareApplication',
@@ -78,10 +79,7 @@ export default async function ExploreToolPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }}
-      />
+      <script {...jsonLdScriptProps(jsonLd)} />
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-xs sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between gap-4">

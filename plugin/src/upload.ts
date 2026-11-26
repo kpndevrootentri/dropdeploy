@@ -205,7 +205,7 @@ export async function deploySite(
       const message = taken.source === 'UPLOAD'
         ? `A site named "${opts.name}" already exists (${taken.slug}). Pass --project-id ${taken.slug} to upload a new version to it, or choose another --name.`
         : `A site named "${opts.name}" already exists (${taken.slug}) and is deployed from git. Choose another --name.`;
-      throw new CliError(message, 'NAME_TAKEN', EXIT.NEEDS_INPUT, { project: publicProject(taken) });
+      throw new CliError(message, 'NAME_TAKEN', EXIT.NEEDS_INPUT, { project: publicProject(taken), source: taken.source });
     }
   }
 

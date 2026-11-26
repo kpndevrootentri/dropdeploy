@@ -40,6 +40,8 @@ jest.mock('@/lib/prisma', () => {
         return { count: before - mockDb.invites.length };
       },
     },
+    // setPassword also revokes API tokens; these users have none.
+    apiToken: { updateMany: async () => ({ count: 0 }) },
     $transaction: async (ops: unknown) =>
       Array.isArray(ops) ? Promise.all(ops) : (ops as (tx: unknown) => Promise<unknown>)(prisma),
   };

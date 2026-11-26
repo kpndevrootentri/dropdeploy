@@ -30,10 +30,14 @@ import {
   Package,
   Download,
   Bot,
+  ChevronDown,
+  MessageSquare,
 } from 'lucide-react';
+import { FAQ, LANDING_FAQ_COUNT } from '@/components/docs/faq-data';
+import { SITE_URL } from '@/lib/json-ld';
 
 // Inlined at build time, so the copy follows whichever domain this build serves.
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://entrify.site';
+const APP_URL = SITE_URL;
 const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'entrify.site';
 const CLAUDE_PLUGIN_INSTALL = '/plugin install entrify --marketplace kpndevrootentri/entrify-cli';
 
@@ -94,7 +98,7 @@ const FEATURES = [
   {
     icon: Code,
     title: 'Works with your language',
-    desc: 'Supports 9 popular languages and frameworks. Pick yours from the list and everything is set up correctly for you.',
+    desc: 'Supports 13 popular languages and frameworks. Pick yours from the list and everything is set up correctly for you.',
   },
   {
     icon: Eye,
@@ -172,7 +176,7 @@ const USE_CASES = [
     audience: 'Students & Bootcampers',
     tagline: 'Show your work with a real link.',
     desc: "Don't just screenshot your project. Get a real, live URL you can put in your portfolio, send to a recruiter, or share with a friend — in minutes.",
-    points: ['9 frameworks supported', 'No cloud account needed', 'Live link to show employers'],
+    points: ['13 frameworks supported', 'No cloud account needed', 'Live link to show employers'],
   },
   {
     icon: Shield,
@@ -307,7 +311,7 @@ export function LandingPage() {
         <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center py-24">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-border bg-muted/60 text-xs text-muted-foreground mb-8 select-none">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" aria-hidden="true" />
-            GitHub & GitLab · Public & private repos · 9 frameworks
+            GitHub & GitLab · Public & private repos · 13 frameworks
             <ChevronRight className="h-3 w-3" aria-hidden="true" />
           </div>
 
@@ -319,6 +323,7 @@ export function LandingPage() {
           <p className="text-xl text-muted-foreground max-w-xl mx-auto mb-10 leading-relaxed">
             Connect GitHub or GitLab, pick any repo — public or private — click Deploy.
             Entrify builds and hosts your app — share it with anyone in seconds.
+            Just an HTML page? Drop it in, or ask Claude to publish it.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-5">
@@ -925,6 +930,141 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* ── Claude Desktop ── */}
+      <section id="claude-desktop" className="py-24 bg-muted/30 border-y border-border" aria-labelledby="claude-desktop-heading">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+
+            {/* Copy (first in reading order; shown on the right on wide screens) */}
+            <AnimatedSection className="space-y-8 lg:order-last">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-orange-500/30 bg-orange-500/5 px-3 py-1 text-xs font-medium text-orange-700 dark:text-orange-400 uppercase tracking-widest mb-4">
+                  <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
+                  Claude Desktop
+                </div>
+                <h2 id="claude-desktop-heading" className="text-4xl sm:text-5xl font-bold mb-4">
+                  Ask Claude Desktop to <span className="text-orange-600 dark:text-orange-400">publish a page.</span>
+                </h2>
+                <p className="text-lg text-muted-foreground leading-relaxed">
+                  Add the Entrify extension once. When Claude makes a page, say “deploy this page” and it replies with a live link. No terminal, nothing else to install.
+                </p>
+              </div>
+
+              <ol className="space-y-5" aria-label="Claude Desktop setup steps">
+                {[
+                  {
+                    n: '1',
+                    title: 'Add to Claude Desktop',
+                    desc: 'Download the Entrify extension and open it. Claude Desktop installs it in one click.',
+                  },
+                  {
+                    n: '2',
+                    title: 'Paste an API token',
+                    desc: 'Create a Deploy only token in your Entrify settings and paste it when Claude Desktop asks.',
+                  },
+                  {
+                    n: '3',
+                    title: 'Say “deploy this page”',
+                    desc: 'Claude publishes the page and gives you its URL. It asks before replacing a site you already have.',
+                  },
+                ].map((step) => (
+                  <li key={step.n} className="flex gap-4">
+                    <div className="w-7 h-7 rounded-full bg-orange-500/10 border border-orange-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-xs font-bold text-orange-700 dark:text-orange-400">{step.n}</span>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm mb-0.5">{step.title}</p>
+                      <p className="text-muted-foreground text-sm leading-relaxed">{step.desc}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                <Button size="sm" className="gap-2 bg-orange-700 hover:bg-orange-800 text-white" asChild>
+                  <a href="/downloads/entrify.mcpb" download>
+                    <Download className="h-4 w-4" aria-hidden="true" />
+                    Add to Claude Desktop
+                  </a>
+                </Button>
+                <Button size="sm" variant="outline" className="gap-2" asChild>
+                  <Link href="/docs/claude-desktop">
+                    Setup guide
+                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </Link>
+                </Button>
+              </div>
+            </AnimatedSection>
+
+            {/* Claude Desktop mockup */}
+            <AnimatedSection delay={150}>
+              <div
+                className="rounded-xl border border-orange-500/20 bg-zinc-950 overflow-hidden shadow-2xl"
+                role="img"
+                aria-label="Claude Desktop publishing a page with Entrify and replying with its live URL"
+              >
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800">
+                  <div className="w-3 h-3 rounded-full bg-red-500/80" />
+                  <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
+                  <div className="w-3 h-3 rounded-full bg-green-500/80" />
+                  <MessageSquare className="ml-2 h-3.5 w-3.5 text-orange-400" aria-hidden="true" />
+                  <span className="text-xs text-zinc-500">Claude</span>
+                </div>
+                <div className="p-5 text-sm space-y-3 leading-relaxed">
+                  <div className="flex justify-end">
+                    <div className="rounded-2xl rounded-tr-sm bg-orange-600/20 border border-orange-500/20 px-4 py-2 text-zinc-200 max-w-[85%]">
+                      Make a one-page site for my bakery and deploy it to Entrify
+                    </div>
+                  </div>
+                  <div className="rounded-2xl rounded-tl-sm bg-zinc-900 border border-zinc-800 px-4 py-3 text-xs text-zinc-300 space-y-2">
+                    <p className="inline-flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-[11px] text-zinc-400">
+                      deploy_to_entrify <span className="text-green-400">✓</span>
+                    </p>
+                    <p>Your bakery page is live:</p>
+                    <p className="font-mono text-orange-400">https://rosies-bakery.{BASE_DOMAIN}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-border bg-background p-4 text-xs text-muted-foreground space-y-1.5">
+                <p className="text-muted-foreground/70">What Claude can do with the extension</p>
+                <p><code className="font-mono text-foreground">deploy_to_entrify</code> publishes a page and returns its URL</p>
+                <p><code className="font-mono text-foreground">list_my_sites</code> lists your sites before it updates one</p>
+              </div>
+            </AnimatedSection>
+
+          </div>
+        </div>
+      </section>
+
+      {/* ── FAQ ── (same data as /docs/faq and this page's FAQPage JSON-LD) */}
+      <section id="faq" className="py-24" aria-labelledby="faq-heading">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <AnimatedSection className="text-center mb-12">
+            <p className="text-blue-500 text-sm font-medium uppercase tracking-widest mb-4">FAQ</p>
+            <h2 id="faq-heading" className="text-4xl sm:text-5xl font-bold">
+              Questions, answered.
+            </h2>
+          </AnimatedSection>
+
+          <div className="rounded-xl border border-border bg-card divide-y divide-border">
+            {FAQ.slice(0, LANDING_FAQ_COUNT).map((item) => (
+              <details key={item.question} className="group">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 font-medium rounded-xl hover:text-blue-500 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                  {item.question}
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+                </summary>
+                <p className="px-5 pb-5 text-sm text-muted-foreground leading-relaxed">{item.answer}</p>
+              </details>
+            ))}
+          </div>
+
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            More answers in the <Link href="/docs/faq" className="text-blue-500 hover:underline">FAQ</Link>.
+          </p>
+        </div>
+      </section>
+
       {/* ── Final CTA ── */}
       <section className="py-24 border-t border-border bg-muted/30 relative overflow-hidden" aria-labelledby="cta-heading">
         <div
@@ -969,10 +1109,12 @@ export function LandingPage() {
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <EntrifyLogo className="h-6 w-auto" />
             <p className="text-sm text-muted-foreground">Your project, live on the internet. No setup required.</p>
-            <div className="flex items-center gap-5 text-sm text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
               <Link href="/explore" className="hover:text-foreground transition-colors">Explore</Link>
               <Link href="/docs" className="hover:text-foreground transition-colors">Docs</Link>
               <a href="#claude-code" className="hover:text-foreground transition-colors">Claude Code</a>
+              <a href="#claude-desktop" className="hover:text-foreground transition-colors">Claude Desktop</a>
+              <Link href="/docs/faq" className="hover:text-foreground transition-colors">FAQ</Link>
               <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
               <a href="#" className="hover:text-foreground transition-colors">Terms</a>
             </div>

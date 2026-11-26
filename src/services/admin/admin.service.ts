@@ -288,7 +288,7 @@ export class AdminService {
     return updated;
   }
 
-  /** Revokes every browser session and CLI token the user holds. */
+  /** Revokes every browser session, CLI login and API token the user holds. */
   async signOutEverywhere(userId: string, actorId: string): Promise<void> {
     const user = await this.userRepo.findById(userId);
     if (!user) throw new NotFoundError('User');

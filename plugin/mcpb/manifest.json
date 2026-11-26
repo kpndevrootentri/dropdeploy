@@ -1,0 +1,62 @@
+{
+  "manifest_version": "0.2",
+  "name": "entrify",
+  "display_name": "Entrify",
+  "version": "1.5.0",
+  "description": "Publish HTML pages that Claude makes as live websites on Entrify, and get the URL.",
+  "long_description": "Entrify lets Claude Desktop publish an HTML page as a live website and reply with its URL. Ask Claude to make a page and \"deploy this page to Entrify\". Claude sends the page itself (HTML plus optional CSS, JavaScript and other text files), so it cannot publish files from your disk, and it asks before replacing a site you already have. Claude can also list your Entrify sites and how many new sites you have left. You need an Entrify API token: create one at https://entrify.site/settings under API tokens (Deploy only is enough).",
+  "author": {
+    "name": "Entrify",
+    "url": "https://entrify.site"
+  },
+  "homepage": "https://entrify.site/docs/claude-desktop",
+  "documentation": "https://entrify.site/docs/claude-desktop",
+  "support": "https://github.com/kpndevrootentri/entrify-cli/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "dist/cli.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/cli.js", "mcp"],
+      "env": {
+        "ENTRIFY_TOKEN": "${user_config.api_token}",
+        "ENTRIFY_URL": "${user_config.api_url}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "deploy_to_entrify",
+      "description": "Publish an HTML page (with optional CSS, JavaScript and other text files) as a live website and get its URL, or publish a new version of one of your uploaded sites."
+    },
+    {
+      "name": "list_my_sites",
+      "description": "List your Entrify sites with their URLs, and how many new sites you can still create."
+    }
+  ],
+  "keywords": ["deploy", "hosting", "html", "website", "static-site", "publish", "entrify"],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  },
+  "user_config": {
+    "api_token": {
+      "type": "string",
+      "title": "Entrify API token",
+      "description": "Create one at https://entrify.site/settings under API tokens (Deploy only is enough).",
+      "sensitive": true,
+      "required": true
+    },
+    "api_url": {
+      "type": "string",
+      "title": "Entrify URL",
+      "description": "Leave as is unless you run your own Entrify.",
+      "default": "https://entrify.site",
+      "required": false
+    }
+  }
+}
