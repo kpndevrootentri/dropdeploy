@@ -1,0 +1,24 @@
+# Adds the Node 24 app container to the root docker-compose.yml for the dev container.
+# Relative paths resolve from the first compose file's folder (the repo root).
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/javascript-node:24
+    command: sleep infinity
+    volumes:
+      - .:/workspaces/dropdeploy:cached
+      # Linux node_modules live in a volume, so `npm ci` here never replaces the host's.
+      - node-modules:/workspaces/dropdeploy/node_modules
+    # These win over the same keys in .env (Next.js and Prisma never override set variables).
+    environment:
+      DATABASE_URL: postgresql://dropdeploy:dropdeploy@postgres:5432/dropdeploy
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: dropdeploy-dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  node-modules:

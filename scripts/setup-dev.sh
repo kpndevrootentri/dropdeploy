@@ -4,11 +4,11 @@
 set -e
 
 echo "DropDeploy – dev setup"
-echo "Ensure PostgreSQL and Redis are running locally."
+echo "Start PostgreSQL and Redis first: docker compose up -d --wait (or run your own and edit .env)."
 
 if [ ! -f .env ]; then
   cp .env.example .env
-  echo "Created .env from .env.example – edit DATABASE_URL and JWT_SECRET."
+  echo "Created .env from .env.example – set ENV_ENCRYPTION_KEY (openssl rand -hex 32) and JWT_SECRET."
 fi
 
 npm install
