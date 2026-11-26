@@ -1,5 +1,6 @@
 import * as bcrypt from 'bcryptjs';
 import * as jose from 'jose';
+import { createHmac } from 'crypto';
 import { userRepository, type IUserRepository } from '@/repositories/user.repository';
 import { UnauthorizedError, ConflictError, ValidationError, ForbiddenError, NotFoundError } from '@/lib/errors';
 import { getConfig } from '@/lib/config';
@@ -142,15 +143,12 @@ export class AuthService {
    * Verifies JWT and returns payload. Throws UnauthorizedError if invalid.
    */
   async verifyToken(token: string): Promise<JwtPayload> {
-    if (!this.config.jwtSecret) {
-      throw new ValidationError('JWT_SECRET not configured');
-    }
+    return this.readToken(token, this.sessionKey());
+  }
+
+  private async readToken(token: string, key: Uint8Array): Promise<JwtPayload> {
     try {
-      const { payload } = await jose.jwtVerify(
-        token,
-        new TextEncoder().encode(this.config.jwtSecret),
-        { algorithms: ['HS256'] }
-      );
+      const { payload } = await jose.jwtVerify(token, key, { algorithms: ['HS256'] });
       const sub = payload.sub as string;
       const email = payload.email as string;
       const role = (payload.role as string) ?? 'USER';
@@ -184,7 +182,28 @@ export class AuthService {
    * demoted admin or a stolen token working until it expires.
    */
   async verifySession(token: string): Promise<SessionUser> {
-    const payload = await this.verifyToken(token);
+    return this.activeSession(await this.verifyToken(token));
+  }
+
+  /**
+   * {@link verifySession} for a site-view token (the private-URL gate's cookie):
+   * the same revocation checks, but only a token signed with the site key passes.
+   */
+  async verifySiteSession(token: string): Promise<SessionUser> {
+    return this.activeSession(await this.readToken(token, this.siteKey()));
+  }
+
+  /**
+   * The site-view token for a session token we issued: the same claims and
+   * expiry, signed with the site key. `siteTokenFor(sessionJwt)` → a JWT that
+   * only {@link verifySiteSession} accepts.
+   */
+  async siteTokenFor(sessionToken: string): Promise<string> {
+    const { payload } = await jose.jwtVerify(sessionToken, this.sessionKey(), { algorithms: ['HS256'] });
+    return new jose.SignJWT(payload).setProtectedHeader({ alg: 'HS256' }).sign(this.siteKey());
+  }
+
+  private async activeSession(payload: JwtPayload): Promise<SessionUser> {
     const user = await this.userRepo.findById(payload.sub);
     // Suspension also bumps tokenVersion; checking suspendedAt as well keeps a
     // suspended account locked out even if a token is somehow issued later.
@@ -254,14 +273,27 @@ export class AuthService {
   }
 
   private async sign(claims: jose.JWTPayload, expiresIn: string): Promise<string> {
-    if (!this.config.jwtSecret) {
-      throw new ValidationError('JWT_SECRET not configured');
-    }
     return new jose.SignJWT(claims)
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
       .setExpirationTime(expiresIn)
-      .sign(new TextEncoder().encode(this.config.jwtSecret));
+      .sign(this.sessionKey());
+  }
+
+  /** Signs dashboard sessions and Bearer login tokens. */
+  private sessionKey(): Uint8Array {
+    if (!this.config.jwtSecret) {
+      throw new ValidationError('JWT_SECRET not configured');
+    }
+    return new TextEncoder().encode(this.config.jwtSecret);
+  }
+
+  /**
+   * Signs site-view tokens. Derived from JWT_SECRET for this one purpose, so a
+   * site-view token never verifies as a session and a session never as one.
+   */
+  private siteKey(): Uint8Array {
+    return new Uint8Array(createHmac('sha256', this.sessionKey()).update('entrify-site-view').digest());
   }
 }
 

@@ -263,7 +263,7 @@ dropDeploy/
 | **DB access** | Only through repositories — no Prisma imports in API routes or components |
 | **Queue** | `IDeploymentQueue` interface in `lib/queue.ts`; BullMQ implementation behind it |
 | **Static hosting** | STATIC / REACT / VUE / SVELTE types use `servingMethod: STATIC_FILES` — files extracted to `STATIC_SERVE_DIR/<slug>/` after build; no persistent container. Dynamic types use `servingMethod: CONTAINER`. |
-| **Auth** | JWT (HS256 via `jose`) stored in httpOnly `auth-token` cookie |
+| **Auth** | JWT (HS256 via `jose`) in the host-only httpOnly `__Host-auth-token` cookie (`auth-token` in development); private sites use a separate `site-view` cookie signed with a derived key |
 | **Session** | `getSession(req)` extracts `{ userId }` from JWT; every protected route calls it |
 | **Config** | Centralized Zod-validated env in `lib/config.ts` via `getConfig()` |
 | **DI pattern** | Services take dependencies via constructor; export both the class and a wired singleton |

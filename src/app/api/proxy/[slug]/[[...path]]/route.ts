@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { splitCookiesString } from 'next/dist/server/web/utils';
 import { prisma } from '@/lib/prisma';
 import * as nodePath from 'path';
 import { serveStaticFile } from '@/lib/static-serve';
-import { getTokenFromCookie, isAuthSetCookie, withoutAuthCookie } from '@/lib/auth-cookie';
+import { getSiteToken, isAuthSetCookie, withoutAuthCookie } from '@/lib/auth-cookie';
 import { getConfig } from '@/lib/config';
 import { mayServeTenant } from '@/lib/platform-host';
 import { publicLocation } from '@/lib/upstream-location';
@@ -44,7 +45,19 @@ const HOP_BY_HOP = new Set([
  * decompressed body — causing a "Content Encoding Error". content-length is
  * also stale after decompression and must be dropped.
  */
-const STRIP_RESPONSE = new Set(['content-encoding', 'content-length']);
+const STRIP_RESPONSE = new Set([
+  'content-encoding',
+  'content-length',
+  // `cookies` would wipe every cookie on BASE_DOMAIN, the dashboard session and other tenants' included.
+  'clear-site-data',
+]);
+
+/**
+ * A private site's responses are never reused without asking us: every load
+ * revalidates, and a 304 is only sent after the gate has passed. ETags still
+ * save re-downloading unchanged files. Shared caches must not store them.
+ */
+const PRIVATE_CACHE_CONTROL = 'private, no-cache';
 
 /** Longest wait for a deployed app to send response headers. */
 const UPSTREAM_HEADERS_TIMEOUT_MS = 60_000;
@@ -209,7 +222,7 @@ function denialResponse(): NextResponse {
  *
  * Flow:
  *  1. Look up the active (DEPLOYED) deployment for the slug.
- *  2. If the project is private, verify the auth cookie carries an @entri.me JWT.
+ *  2. If the project is private, verify the site-view cookie names someone who may view it.
  *  3. Forward the HTTP request to http://127.0.0.1:{containerPort}/{path}.
  *  4. Stream the upstream response back to the client.
  *
@@ -254,15 +267,22 @@ async function handler(
   // user or allowed email domain), platform admins (CONTRIBUTOR) and active mentors
   // of the project's batch. A logged-in user who is none of these is denied —
   // being authenticated is not enough.
+  //
+  // Only the site-view cookie counts here; the dashboard session is host-only and
+  // never reaches tenant hosts. A tenant can plant a site-view cookie, but that
+  // only shows a visitor private sites as another user, never the dashboard.
+  // ponytail: the site-view cookie is scoped to .BASE_DOMAIN, so private sites on
+  // custom domains always deny; supporting them needs a per-site redirect
+  // handshake through the dashboard that sets a host-only cookie on each tenant host.
   if (deployment.project.isPrivate) {
-    const token = getTokenFromCookie(request);
+    const token = getSiteToken(request);
     let authorized = false;
 
     if (token) {
       try {
-        // verifySession, not a bare JWT check: a revoked session or a removed
+        // verifySiteSession, not a bare JWT check: a revoked session or a removed
         // collaborator must lose access now, not when the token expires.
-        const user = await authService.verifySession(token);
+        const user = await authService.verifySiteSession(token);
         // Someone still on an invited or admin-reset password signs in with a password
         // they didn't choose; like every API route, the site waits until they set their own.
         authorized = !user.mustResetPassword && await projectAccessService.canView(
@@ -301,6 +321,7 @@ async function handler(
         { status: 404 }
       );
     }
+    if (deployment.project.isPrivate) response.headers.set('Cache-Control', PRIVATE_CACHE_CONTROL);
     if (!targetPath.startsWith('/_next') && targetPath !== '/favicon.ico') {
       prisma.proxyHit.create({
         data: {
@@ -325,8 +346,8 @@ async function handler(
 
   // Build forwarded headers — strip hop-by-hop, host and accept-encoding.
   // Cookies are forwarded so apps can keep their own sessions, minus the
-  // platform's auth-token: that is the visitor's Entrify session and must
-  // never reach tenant code.
+  // platform's session and site-view cookies: they are the visitor's Entrify
+  // tokens and must never reach tenant code.
   const forwardHeaders = new Headers();
   for (const [key, value] of request.headers.entries()) {
     const k = key.toLowerCase();
@@ -390,10 +411,14 @@ async function handler(
   }
   // Set-Cookie is the one header that may legitimately repeat, so it is
   // appended one by one — `set` above would keep only the last. The platform's
-  // own auth cookie is dropped: see isAuthSetCookie.
-  for (const cookie of upstream.headers.getSetCookie()) {
-    if (!isAuthSetCookie(cookie)) responseHeaders.append('set-cookie', cookie);
+  // own cookies are dropped: see isAuthSetCookie. Each line is split the way
+  // Next splits it on the way out, so a comma-joined line cannot carry one past.
+  for (const line of upstream.headers.getSetCookie()) {
+    for (const cookie of splitCookiesString(line)) {
+      if (!isAuthSetCookie(cookie)) responseHeaders.append('set-cookie', cookie);
+    }
   }
+  if (deployment.project.isPrivate) responseHeaders.set('cache-control', PRIVATE_CACHE_CONTROL);
   const location = upstream.headers.get('location');
   if (location && publicHost) {
     responseHeaders.set(

@@ -42,7 +42,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
       data: { userId: result.userId, email: dto.email, joined },
     });
     const maxAge = parseExpiresInToSeconds(getConfig().JWT_EXPIRES_IN);
-    setAuthCookie(res, result.tokens.accessToken, maxAge);
+    setAuthCookie(res, result.tokens.accessToken, await authService.siteTokenFor(result.tokens.accessToken), maxAge);
     return res;
   } catch (error) {
     return handleApiError(error);
