@@ -41,7 +41,7 @@ export async function PATCH(
     const body = await req.json();
     const parsed = updateProjectSchema.safeParse(body);
     if (!parsed.success) {
-      throw new ValidationError(parsed.error.errors[0]?.message ?? 'Invalid input');
+      throw new ValidationError(parsed.error.issues[0]?.message ?? 'Invalid input');
     }
 
     // autoDeploy has side effects (registers/removes a GitHub webhook), so it is

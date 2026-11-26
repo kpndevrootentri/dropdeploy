@@ -18,7 +18,7 @@ const envBool = (defaultValue: boolean) =>
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   REDIS_HOST: z.string().default('localhost'),
-  REDIS_PORT: z.string().transform(Number).default('6379'),
+  REDIS_PORT: z.string().transform(Number).prefault('6379'),
   REDIS_PASSWORD: z.string().optional(),
   // HS256 tokens signed with a short secret can be brute-forced offline from
   // any single token, which would let anyone mint an admin session. 24 is a

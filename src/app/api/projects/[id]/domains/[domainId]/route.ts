@@ -21,7 +21,7 @@ export async function PATCH(req: NextRequest, { params }: RouteCtx): Promise<Nex
     const body = await req.json();
     const parsed = updateDomainSchema.safeParse(body);
     if (!parsed.success) {
-      throw new ValidationError(parsed.error.errors[0]?.message ?? 'Invalid input');
+      throw new ValidationError(parsed.error.issues[0]?.message ?? 'Invalid input');
     }
 
     const domain = await domainService.update(id, session.userId, domainId, parsed.data);
