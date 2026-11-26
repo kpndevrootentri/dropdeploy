@@ -1,0 +1,21 @@
+#!/bin/sh
+# Opt-in pre-commit hook (enable: npm run hooks:install). Lints staged JS/TS files, type-checks when TS files are staged.
+# ponytail: eslint and tsc read the working tree, not the index, so unstaged edits in a partially staged file are checked too.
+
+fail() {
+  echo "pre-commit: $1 failed. Fix it, or commit without the hook: git commit --no-verify" >&2
+  exit 1
+}
+
+set -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs'
+if [ -n "$(git diff --cached --name-only --diff-filter=ACMR -- "$@")" ]; then
+  echo "pre-commit: eslint (staged files)"
+  # --no: never let npx download a package when node_modules is missing.
+  git diff --cached --name-only --diff-filter=ACMR -z -- "$@" | xargs -0 npx --no -- eslint --no-warn-ignored || fail eslint
+fi
+
+# Deletions and renames count: removing a .ts file can break its importers.
+if ! git diff --cached --quiet -- '*.ts' '*.tsx'; then
+  echo "pre-commit: tsc --noEmit"
+  npx --no -- tsc --noEmit || fail tsc
+fi
