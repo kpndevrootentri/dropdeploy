@@ -51,8 +51,8 @@ describe('POST /api/tokens', () => {
     [{ name: 'CI', scope: 'ADMIN' }, /DEPLOY|FULL/],
     [{ name: 'CI', expiresInDays: 7 }, /30, 90 or 365/],
     [{ name: 'CI', expiresInDays: '90' }, /30, 90 or 365/],
-    [{}, /Required/],
-    [{ name: 'CI' }, /Required/],
+    [{}, /expected string, received undefined/],
+    [{ name: 'CI' }, /expected string, received undefined/],
     [{ name: 'CI', password: '' }, /Enter your password/],
   ])('rejects %j', async (body, message) => {
     const res = await POST(post(body));

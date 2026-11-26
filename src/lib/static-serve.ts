@@ -142,7 +142,7 @@ async function respondWithFile(
 
   // Stream rather than buffer: one large video or archive per request would
   // otherwise sit whole in the memory of the process serving every site.
-  headers['Content-Length'] = String(stat.size);
+  // No Content-Length: since 16.4.5 Next drops it from every route handler response.
   const body = Readable.toWeb(fs.createReadStream(filePath)) as ReadableStream<Uint8Array>;
   return new NextResponse(body, { status, headers });
 }

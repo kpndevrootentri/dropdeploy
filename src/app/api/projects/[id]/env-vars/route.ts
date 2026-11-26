@@ -48,7 +48,7 @@ export async function POST(
     const body = await req.json();
     const parsed = createEnvVarSchema.safeParse(body);
     if (!parsed.success) {
-      throw new ValidationError(parsed.error.errors[0]?.message ?? 'Invalid input');
+      throw new ValidationError(parsed.error.issues[0]?.message ?? 'Invalid input');
     }
 
     const envVar = await envVarService.create(id, parsed.data, session.userId);

@@ -35,7 +35,7 @@ export async function POST(req: NextRequest, { params }: RouteCtx): Promise<Next
     const body = await req.json();
     const parsed = grantAccessSchema.safeParse(body);
     if (!parsed.success) {
-      throw new ValidationError(parsed.error.errors[0]?.message ?? 'Invalid input');
+      throw new ValidationError(parsed.error.issues[0]?.message ?? 'Invalid input');
     }
 
     const entry = await projectAccessService.grant(id, session.userId, parsed.data);

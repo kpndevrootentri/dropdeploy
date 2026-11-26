@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Caddy compresses at the edge (`encode zstd gzip`); gzipping in this one Node process would cost CPU for every tenant.
+  compress: false,
   experimental: {
     serverActions: {
       bodySizeLimit: '100mb',

@@ -37,7 +37,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
     if (limited) return limited;
     const parsed = createApiTokenSchema.safeParse(await req.json());
     if (!parsed.success) {
-      throw new ValidationError(parsed.error.errors[0]?.message ?? 'Invalid input');
+      throw new ValidationError(parsed.error.issues[0]?.message ?? 'Invalid input');
     }
     const { password, ...input } = parsed.data;
     await authService.confirmPassword(session.userId, password);

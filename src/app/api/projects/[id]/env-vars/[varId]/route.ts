@@ -27,7 +27,7 @@ export async function PUT(
     const body = await req.json();
     const parsed = updateEnvVarSchema.safeParse(body);
     if (!parsed.success) {
-      throw new ValidationError(parsed.error.errors[0]?.message ?? 'Invalid input');
+      throw new ValidationError(parsed.error.issues[0]?.message ?? 'Invalid input');
     }
 
     const envVar = await envVarService.update(varId, id, parsed.data, session.userId);
