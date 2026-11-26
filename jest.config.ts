@@ -11,6 +11,10 @@ const config: Config = {
   },
   // .tsx suites opt into a browser-like DOM with a `@jest-environment jsdom` docblock.
   testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx'],
+  setupFiles: ['<rootDir>/jest.setup.ts'],
+  // Count every source file, not only the ones a test happens to import.
+  collectCoverageFrom: ['src/**/*.{ts,tsx}', '!src/**/__tests__/**', '!src/**/*.d.ts'],
+  coverageReporters: ['text-summary', 'json-summary', 'lcov'],
 };
 
 export default config;

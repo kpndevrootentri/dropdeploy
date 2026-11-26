@@ -8,6 +8,7 @@ next-env.d.ts
 
 # build
 tsconfig.tsbuildinfo
+coverage/
 
 # env
 .env

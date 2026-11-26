@@ -59,7 +59,8 @@ after(async () => {
   await rm(home, { recursive: true, force: true });
 });
 
-interface Message { id?: number | null; result?: Record<string, any>; error?: { code: number; message: string } }
+/** The result fields these tests read; each reply carries only the ones its method returns. */
+interface Message { id?: number | null; result?: { [key: string]: unknown; instructions: string; content: { text: string }[] }; error?: { code: number; message: string } }
 
 /** Starts `entrify mcp` with a temp HOME and APPDATA, so the real saved login is never read. */
 function startMcp(token: string | undefined) {

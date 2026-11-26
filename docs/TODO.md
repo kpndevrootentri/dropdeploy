@@ -143,8 +143,8 @@ graph TD
 - [ ] Unit tests for services (auth, deployment, docker, git). Partial: none for docker or git.
 - [ ] Integration tests for API routes (partial)
 - [ ] E2E test for full deploy flow (create → deploy → verify URL)
-- [ ] CI pipeline (GitHub Actions) with test + type-check (there is no CI config at all)
-- [ ] Test coverage tracking
+- [x] CI pipeline (GitHub Actions) with test + type-check (`.github/workflows/ci.yml`: type-check, lint and tests, plus the CLI package's typecheck and tests, on every PR and push to main)
+- [x] Test coverage tracking (CI uploads the jest coverage report and shows totals in the job summary; baseline 31% of lines, no threshold yet)
 
 ### Team & Collaboration
 
