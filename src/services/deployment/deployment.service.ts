@@ -256,10 +256,11 @@ export class DeploymentService {
    * Also re-enqueues QUEUED deployments that were held back (their BUILDING job is now gone).
    */
   async recoverStuckDeployments(): Promise<void> {
-    const count = await this.deploymentRepo.markBuildingAsFailed();
-    if (count > 0) {
-      log.warn('Marked stuck BUILDING deployment(s) as FAILED on startup', { count });
+    const failed = await this.deploymentRepo.markBuildingAsFailed();
+    if (failed.length > 0) {
+      log.warn('Marked stuck BUILDING deployment(s) as FAILED on startup', { count: failed.length });
     }
+    for (const id of failed) void this.notifications.deploymentFinished(id);
 
     const orphaned = await this.deploymentRepo.findAllOrphanedQueuedDeployments();
     for (const dep of orphaned) {

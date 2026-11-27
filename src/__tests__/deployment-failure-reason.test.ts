@@ -264,12 +264,19 @@ describe('each way a deployment fails records where and why', () => {
     expect(row.failureReason).toBeUndefined();
   });
 
-  it('a worker restart mid-build', async () => {
-    await new DeploymentRepository().markBuildingAsFailed();
+  it('a worker restart mid-build, and the hooks hear about each one', async () => {
+    mockPrisma.deployment.findMany.mockResolvedValueOnce([{ id: 'dep-a' }, { id: 'dep-b' }] as never);
+    await expect(new DeploymentRepository().markBuildingAsFailed()).resolves.toEqual(['dep-a', 'dep-b']);
     expect(mockPrisma.deployment.updateMany).toHaveBeenCalledWith({
-      where: { status: 'BUILDING' },
+      where: { id: { in: ['dep-a', 'dep-b'] }, status: 'BUILDING' },
       data: expect.objectContaining({ status: 'FAILED', failureReason: expect.stringContaining('build server restarted') }),
     });
+    mockPrisma.deployment.findMany.mockClear();
+
+    const repo = { markBuildingAsFailed: async () => ['dep-a', 'dep-b'], findAllOrphanedQueuedDeployments: async () => [] };
+    mockFinished.mockReset();
+    await new DeploymentService(repo as never, {} as never, {} as never, {} as never, {} as never, {} as never).recoverStuckDeployments();
+    expect(mockFinished.mock.calls).toEqual([['dep-a'], ['dep-b']]);
   });
 
   it('an upload that cannot be extracted', async () => {

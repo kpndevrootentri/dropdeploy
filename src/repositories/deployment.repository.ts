@@ -56,9 +56,9 @@ export interface IDeploymentRepository {
   /**
    * Marks all BUILDING deployments as FAILED with completedAt = now.
    * Called on worker startup to clean up deployments stuck from a previous crash.
-   * Returns the number of rows updated.
+   * Returns the ids of the deployments it failed.
    */
-  markBuildingAsFailed(): Promise<number>;
+  markBuildingAsFailed(): Promise<string[]>;
   /** Returns true if the project has at least one DEPLOYED deployment. */
   hasDeployedStatus(projectId: string): Promise<boolean>;
   /** Commit of the newest DEPLOYED deployment created before `before`, or null. */
@@ -204,16 +204,18 @@ export class DeploymentRepository implements IDeploymentRepository {
     return rows.filter((r) => !seen.has(r.projectId) && seen.add(r.projectId));
   }
 
-  async markBuildingAsFailed(): Promise<number> {
-    const result = await prisma.deployment.updateMany({
-      where: { status: 'BUILDING' },
+  async markBuildingAsFailed(): Promise<string[]> {
+    // Prisma 5 has no updateManyAndReturn; the status filter keeps a row that finished in between as it is.
+    const ids = (await prisma.deployment.findMany({ where: { status: 'BUILDING' }, select: { id: true } })).map((d) => d.id);
+    await prisma.deployment.updateMany({
+      where: { id: { in: ids }, status: 'BUILDING' },
       data: {
         status: 'FAILED',
         failureReason: 'The build was interrupted because the build server restarted. Retry the deployment.',
         completedAt: new Date(),
       },
     });
-    return result.count;
+    return ids;
   }
 
   async hasDeployedStatus(projectId: string): Promise<boolean> {
