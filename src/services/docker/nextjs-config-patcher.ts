@@ -26,7 +26,8 @@ export async function patchNextConfig(
     const filePath = path.join(/*turbopackIgnore: true*/ contextPath, file);
     let content = await readRepoFile(filePath);
     if (content === null) continue;
-    if (content.includes('dropdeploy-patch') || content.includes('ignoreDuringBuilds')) return;
+    // The marker alone: a user's own ignoreDuringBuilds still needs the output/basePath/worker settings.
+    if (content.includes('dropdeploy-patch')) return;
 
     if (content.includes('module.exports')) {
       content +=

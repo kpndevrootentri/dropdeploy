@@ -140,7 +140,7 @@ graph TD
 
 ### Testing
 
-- [ ] Unit tests for services (auth, deployment, docker, git). Partial: none for docker or git.
+- [x] Unit tests for services (auth, deployment, docker, git). Docker: `docker-service` (container hardening, ports and limits, port retry, tenant network, build options and errors, readiness, promotion, static extraction, image cleanup), `dockerfile-templates`, `nextjs-config-patcher`, `docker-terminal`. Git: `git-service` (real git on local repos: shallow clone, redeploy reset and clean, branch switch, re-clone on a new origin, filtered env, credentials as a header), `git-provider-service` (encrypted tokens, GitLab refresh).
 - [ ] Integration tests for API routes (partial)
 - [ ] E2E test for full deploy flow (create → deploy → verify URL)
 - [x] CI pipeline (GitHub Actions) with test + type-check (`.github/workflows/ci.yml`: type-check, lint and tests, plus the CLI package's typecheck and tests, on every PR and push to main)

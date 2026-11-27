@@ -77,7 +77,10 @@ export async function exchangeGitLabCode(
   return res.json() as Promise<GitLabTokenResponse>;
 }
 
-/** Use a refresh token to obtain a new access token. Returns empty object on failure. */
+/**
+ * Use a refresh token to obtain a new access token. Returns an empty object when
+ * GitLab rejects the refresh token (400 invalid_grant); throws on any other failure.
+ */
 export async function refreshGitLabToken(
   clientId: string,
   clientSecret: string,
@@ -95,7 +98,8 @@ export async function refreshGitLabToken(
       redirect_uri: redirectUri,
     }),
   });
-  if (!res.ok) return {};
+  if (res.status === 400) return {};
+  if (!res.ok) throw new Error(`GitLab token refresh failed with status ${res.status}`);
   return res.json() as Promise<GitLabTokenResponse>;
 }
 
