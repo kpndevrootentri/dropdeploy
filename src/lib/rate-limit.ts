@@ -35,10 +35,11 @@ sweep.unref?.();
  * count (1 by default, so `max` counts requests); once the count reaches `max`, requests are
  * refused and add nothing. So a request costing more than 1 can take the count past `max`.
  * Returns a 429 NextResponse (with `message`, if given) when refused, or null if allowed.
+ * `message` may be a function of the seconds until the window resets, to tell people when to retry.
  */
 export function checkRateLimit(
   key: string,
-  opts: { windowMs: number; max: number; message?: string },
+  opts: { windowMs: number; max: number; message?: string | ((retryAfterSeconds: number) => string) },
   cost = 1,
 ): NextResponse | null {
   const now = Date.now();
@@ -56,7 +57,10 @@ export function checkRateLimit(
         success: false,
         error: {
           code: 'RATE_LIMIT_EXCEEDED',
-          message: opts.message ?? 'Too many requests. Please try again later.',
+          message:
+            typeof opts.message === 'function'
+              ? opts.message(retryAfter)
+              : opts.message ?? 'Too many requests. Please try again later.',
         },
       },
       {
@@ -264,4 +268,50 @@ const TOUR_END_MAX = 10; // 10 per minute per user
  */
 export function checkTourEndRateLimit(userId: string): NextResponse | null {
   return checkRateLimit(`tour-end:${userId}`, { windowMs: TOUR_END_WINDOW_MS, max: TOUR_END_MAX });
+}
+
+const DEPLOY_TRIGGER_WINDOW_MS = 60 * 60_000; // 1 hour
+const DEPLOY_TRIGGER_MAX = 20; // 20 deployments per hour per user
+const WEBHOOK_DEPLOY_MAX = 30; // 30 push deployments per hour per project
+const WEBHOOK_OWNER_DEPLOY_MAX = 60; // 60 push deployments per hour per owner, across all their projects
+
+/** "Try again in 12 minutes." — the windows here are at most an hour, so minutes are precise enough. */
+function retryIn(seconds: number): string {
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+  return `Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`;
+}
+
+/**
+ * Rate limit queuing a deployment (deploy, retry, rollback) — 20/hour/user, so one person or a
+ * looping script cannot flood the shared build host. Admins (CONTRIBUTOR) are exempt.
+ */
+export function checkDeployRateLimit(session: { userId: string; role: string }): NextResponse | null {
+  if (session.role === 'CONTRIBUTOR') return null;
+  return checkRateLimit(`deploy:${session.userId}`, {
+    windowMs: DEPLOY_TRIGGER_WINDOW_MS,
+    max: DEPLOY_TRIGGER_MAX,
+    message: (s) => `Deployment limit reached: you can start ${DEPLOY_TRIGGER_MAX} deployments per hour. ${retryIn(s)}`,
+  });
+}
+
+/** Rate limit GitHub push deployments — 30/hour per project, whoever owns it. */
+export function checkWebhookDeployRateLimit(projectId: string): NextResponse | null {
+  return checkRateLimit(`webhook-deploy:${projectId}`, {
+    windowMs: DEPLOY_TRIGGER_WINDOW_MS,
+    max: WEBHOOK_DEPLOY_MAX,
+    message: (s) => `Push deployment limit reached: ${WEBHOOK_DEPLOY_MAX} per hour per project. ${retryIn(s)}`,
+  });
+}
+
+/**
+ * Rate limit GitHub push deployments per owner — 60/hour across all their projects, so a push loop
+ * can't multiply the per-project limit by the number of projects following one repo. Admins (CONTRIBUTOR) are exempt.
+ */
+export function checkWebhookOwnerDeployRateLimit(owner: { userId: string; role: string }): NextResponse | null {
+  if (owner.role === 'CONTRIBUTOR') return null;
+  return checkRateLimit(`webhook-deploy-owner:${owner.userId}`, {
+    windowMs: DEPLOY_TRIGGER_WINDOW_MS,
+    max: WEBHOOK_OWNER_DEPLOY_MAX,
+    message: (s) => `Push deployment limit reached: ${WEBHOOK_OWNER_DEPLOY_MAX} per hour across all your projects. ${retryIn(s)}`,
+  });
 }

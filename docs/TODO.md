@@ -90,7 +90,7 @@ graph TD
 
 ### Rate Limiting & Resource Quotas
 
-- [ ] Per-user deployment rate limit (e.g., 10/hour). `src/lib/rate-limit.ts` exists, but `/deploy` doesn't use it.
+- [x] Per-user deployment rate limit (e.g., 10/hour). `src/lib/rate-limit.ts` exists, but `/deploy` doesn't use it. Done: deploy, retry and git rollback share 20/hour/user (admins exempt); GitHub pushes 30/hour/project and 60/hour/owner across all their projects (admins exempt). In-memory per process.
 - [x] Limit 1 active deployment per project (queue subsequent triggers)
 - [ ] Per-user container limit (e.g., 5 running containers). Today it's only capped indirectly by `projectQuota`, at one container per project.
 - [ ] Auto-cleanup of deployments older than 30 days. Old images are pruned, but deployment rows and logs are never deleted.

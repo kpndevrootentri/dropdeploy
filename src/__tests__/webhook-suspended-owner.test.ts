@@ -6,8 +6,8 @@ import { projectRepository } from '@/repositories/project.repository';
 describe('push-webhook auto-deploy lookup', () => {
   it('skips projects whose owner is suspended', async () => {
     await projectRepository.findAutoDeployByBranch('main');
-    expect(mockFindMany).toHaveBeenCalledWith({
+    expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ autoDeploy: true, branch: 'main', user: { suspendedAt: null } }),
-    });
+    }));
   });
 });

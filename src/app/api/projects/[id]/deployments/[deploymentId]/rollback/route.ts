@@ -5,6 +5,7 @@ import { projectService } from '@/services/project';
 import { uploadDeployService } from '@/services/upload/upload.deploy.service';
 import { auditLogRepository } from '@/repositories/audit-log.repository';
 import { handleApiError } from '@/lib/api-error';
+import { checkDeployRateLimit } from '@/lib/rate-limit';
 
 type RouteCtx = { params: Promise<{ id: string; deploymentId: string }> };
 
@@ -18,6 +19,9 @@ export async function POST(req: NextRequest, { params }: RouteCtx): Promise<Next
     const session = await getSession(req);
     const { id, deploymentId } = await params;
     const project = await projectService.getById(id, session.userId);
+    // An upload rollback copies files in place; only a git rollback queues a job on the build worker.
+    const limited = project.source === 'UPLOAD' ? null : checkDeployRateLimit(session);
+    if (limited) return limited;
     const { deployment, queued } = project.source === 'UPLOAD'
       ? { ...(await uploadDeployService.rollback(project, deploymentId)), queued: false }
       : await deploymentService.createRollback(id, session.userId, deploymentId);

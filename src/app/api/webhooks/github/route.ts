@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { webhookService } from '@/services/webhook';
 import { deploymentService } from '@/services/deployment';
 import { auditLogRepository } from '@/repositories/audit-log.repository';
-import { checkWebhookRateLimit, getClientIp } from '@/lib/rate-limit';
+import { checkWebhookDeployRateLimit, checkWebhookOwnerDeployRateLimit, checkWebhookRateLimit, getClientIp } from '@/lib/rate-limit';
 import { verifySignature, parsePushRef, parsePushRepoFullName } from '@/lib/github-webhook';
 import { createLogger } from '@/lib/logger';
 import { getRedisConnection } from '@/lib/redis';
@@ -87,21 +87,37 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
 
   // A signed delivery stays valid forever, so anyone who captures one could
   // replay it to trigger build after build. GitHub gives each delivery a
-  // unique ID (redeliveries from its UI get a new one); accept each ID once.
+  // unique ID, and a redelivery from its UI reuses it; accept each ID once.
   // Checked only after the signature, so unsigned requests cannot burn IDs.
+  // GitHub always sends the ID, so a push without one is refused.
   const deliveryId = req.headers.get('x-github-delivery');
-  if (deliveryId) {
-    const firstSeen = await getRedisConnection()
-      .set(`webhook:delivery:${deliveryId}`, '1', 'EX', DELIVERY_TTL_S, 'NX')
-      .catch(() => 'OK'); // Redis down: fail open rather than drop real pushes
-    if (firstSeen === null) {
-      log.info('Ignoring replayed webhook delivery', { deliveryId });
-      return new NextResponse(null, { status: 204 });
-    }
+  if (!deliveryId) {
+    return NextResponse.json(
+      { success: false, error: { code: 'MISSING_DELIVERY_ID', message: 'Missing X-GitHub-Delivery header' } },
+      { status: 400 },
+    );
+  }
+  const deliveryKey = `webhook:delivery:${deliveryId}`;
+  const firstSeen = await getRedisConnection()
+    .set(deliveryKey, '1', 'EX', DELIVERY_TTL_S, 'NX')
+    .catch(() => 'OK'); // Redis down: fail open rather than drop real pushes
+  if (firstSeen === null) {
+    log.info('Ignoring replayed webhook delivery', { deliveryId });
+    return new NextResponse(null, { status: 204 });
   }
 
   let triggered = 0;
+  let refused: NextResponse | null = null;
   for (const project of verified) {
+    // Counted only after the signature and delivery-ID checks above. The project limit goes first,
+    // so a push its project refuses doesn't use up the owner's budget.
+    const limited = checkWebhookDeployRateLimit(project.id)
+      ?? checkWebhookOwnerDeployRateLimit({ userId: project.userId, role: project.user.role });
+    if (limited) {
+      refused = limited;
+      log.warn('Webhook deployment rate limited', { projectId: project.id, userId: project.userId });
+      continue;
+    }
     try {
       const { deployment } = await deploymentService.createDeploymentFromWebhook(project.id);
       triggered++;
@@ -117,5 +133,11 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
     }
   }
 
+  // Every matching project is over a limit: say so, so the delivery shows as failed in GitHub, and
+  // free the delivery ID, so redelivering it from GitHub deploys once the limit resets.
+  if (triggered === 0 && refused) {
+    await getRedisConnection().del(deliveryKey).catch(() => {});
+    return refused;
+  }
   return NextResponse.json({ success: true, data: { triggered } }, { status: 202 });
 }
