@@ -105,7 +105,7 @@ export class GitProviderService implements IGitProviderService {
       const fiveMinMs = 5 * 60 * 1000;
       if (record.tokenExpiresAt.getTime() - Date.now() <= fiveMinMs) {
         const refreshed = await this.refreshGitLabToken(record);
-        if (!refreshed) return null; // token revoked; record deleted
+        if (!refreshed) return null; // revoked (record deleted) or GitLab unreachable
         return refreshed;
       }
     }
@@ -158,7 +158,17 @@ export class GitProviderService implements IGitProviderService {
       );
 
       if (!data.access_token || !data.refresh_token) {
-        log.warn('GitLab token refresh failed — disconnecting provider', { userId: record.userId });
+        // A concurrent refresh that rotated the token first spends ours: use the token it stored.
+        // ponytail: not serialized; losing the race before the winner's write lands still disconnects. A per-user lock fixes that.
+        const current = await this.repo.findByUserAndProvider(record.userId, record.provider);
+        if (current && current.encryptedRefreshToken !== record.encryptedRefreshToken) {
+          return this.encryption.decrypt({
+            encryptedValue: current.encryptedToken,
+            iv: current.iv,
+            authTag: current.authTag,
+          });
+        }
+        log.warn('GitLab refresh token rejected — disconnecting provider', { userId: record.userId });
         await this.repo.delete(record.userId, record.provider);
         return null;
       }
@@ -181,8 +191,8 @@ export class GitProviderService implements IGitProviderService {
 
       return data.access_token;
     } catch (err) {
+      // Network error, rate limit or GitLab outage: keep the connection for the next try.
       log.error('GitLab token refresh error', { error: String(err) });
-      await this.repo.delete(record.userId, record.provider);
       return null;
     }
   }
