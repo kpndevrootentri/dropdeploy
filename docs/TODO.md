@@ -93,7 +93,7 @@ graph TD
 - [x] Per-user deployment rate limit (e.g., 10/hour). `src/lib/rate-limit.ts` exists, but `/deploy` doesn't use it. Done: deploy, retry and git rollback share 20/hour/user (admins exempt); GitHub pushes 30/hour/project and 60/hour/owner across all their projects (admins exempt). In-memory per process.
 - [x] Limit 1 active deployment per project (queue subsequent triggers)
 - [ ] Per-user container limit (e.g., 5 running containers). Today it's only capped indirectly by `projectQuota`, at one container per project.
-- [ ] Auto-cleanup of deployments older than 30 days. Old images are pruned, but deployment rows and logs are never deleted.
+- [x] Auto-cleanup of deployments older than 30 days. Old images are pruned, but deployment rows and logs are never deleted. Done: build logs older than 30 days are cleared; rows are kept. The worker clears them at startup and daily, measured from when the deployment finished, and always keeps the live deployment, rollback targets and each project's newest 10.
 
 ### Deployment Concurrency Control
 
