@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { ProjectTerminal } from '@/components/features/terminal';
 import { EnvVarsPanel } from '@/components/features/env-vars-panel';
 import { AccessListPanel } from '@/components/features/access-list-panel';
+import { NotificationsPanel } from '@/components/features/notifications-panel';
 import { AddToBatchCard } from '@/components/features/add-to-batch-card';
 import { DomainsPanel } from '@/components/features/domains-panel';
 import { getLocalIP } from '@/lib/local-ip';
@@ -1446,6 +1447,8 @@ function SettingsPanel({
           </CardContent>
         </Card>
       )}
+
+      <NotificationsPanel projectId={project.id} />
 
       {/* Privacy */}
       <Card>

@@ -267,6 +267,14 @@ export function checkAccessGrantRateLimit(userId: string): NextResponse | null {
   return checkRateLimit(`access-grant:${userId}`, { windowMs: ACCESS_GRANT_WINDOW_MS, max: ACCESS_GRANT_MAX });
 }
 
+const NOTIFICATION_HOOK_WINDOW_MS = 60_000; // 1 minute
+const NOTIFICATION_HOOK_MAX = 10; // 10 per minute per user
+
+/** Rate limit adding notification hooks — 10/min/user. Each one sends a ping to a URL the user chose. */
+export function checkNotificationHookRateLimit(userId: string): NextResponse | null {
+  return checkRateLimit(`notification-hook:${userId}`, { windowMs: NOTIFICATION_HOOK_WINDOW_MS, max: NOTIFICATION_HOOK_MAX });
+}
+
 const TOUR_END_WINDOW_MS = 60_000; // 1 minute
 const TOUR_END_MAX = 10; // 10 per minute per user
 

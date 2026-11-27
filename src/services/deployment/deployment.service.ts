@@ -10,6 +10,7 @@ import { gitService, type IGitService, type GitCredentials } from '@/services/gi
 import { DJANGO_SETTINGS_FILE, DJANGO_WSGI_FILE, isPublicBuildEnv, WORDPRESS_CONFIG_FILE } from '@/services/docker/dockerfile.templates';
 import { startsPrivate } from '@/types/project.types';
 import { envVarService, type EnvironmentVariableService } from '@/services/env-var';
+import { notificationService, type NotificationService } from '@/services/notification';
 import { gitProviderService } from '@/services/git-provider';
 import { getRedisConnection } from '@/lib/redis';
 import { getConfig } from '@/lib/config';
@@ -36,6 +37,7 @@ export class DeploymentService {
     private readonly docker: DockerService,
     private readonly git: IGitService,
     private readonly envVar: EnvironmentVariableService,
+    private readonly notifications: Pick<NotificationService, 'deploymentFinished'> = notificationService,
   ) { }
 
   /**
@@ -254,10 +256,11 @@ export class DeploymentService {
    * Also re-enqueues QUEUED deployments that were held back (their BUILDING job is now gone).
    */
   async recoverStuckDeployments(): Promise<void> {
-    const count = await this.deploymentRepo.markBuildingAsFailed();
-    if (count > 0) {
-      log.warn('Marked stuck BUILDING deployment(s) as FAILED on startup', { count });
+    const failed = await this.deploymentRepo.markBuildingAsFailed();
+    if (failed.length > 0) {
+      log.warn('Marked stuck BUILDING deployment(s) as FAILED on startup', { count: failed.length });
     }
+    for (const id of failed) void this.notifications.deploymentFinished(id);
 
     const orphaned = await this.deploymentRepo.findAllOrphanedQueuedDeployments();
     for (const dep of orphaned) {
@@ -305,6 +308,7 @@ export class DeploymentService {
     const { project } = deployment;
     if (!project.githubUrl) {
       await this.deploymentRepo.update(deploymentId, { status: 'FAILED', failureReason: 'The project has no repository to build from.' });
+      void this.notifications.deploymentFinished(deploymentId);
       return null;
     }
     // A project created before its slug was reserved: its container name is a platform
@@ -319,6 +323,7 @@ export class DeploymentService {
         completedAt: new Date(),
       });
       getRedisConnection().publish(`build:${deploymentId}`, '__DONE__').catch(() => {});
+      void this.notifications.deploymentFinished(deploymentId);
       log.warn('Refused to deploy a project with a platform slug', { deploymentId, slug: project.slug });
       return null;
     }
@@ -484,6 +489,7 @@ export class DeploymentService {
         await this.pruneRetainedImages(project.id);
 
         getRedisConnection().publish(redisChannel, '__DONE__').catch(() => {});
+        void this.notifications.deploymentFinished(deploymentId);
         log.info('Static deployment live — served from filesystem', { slug: project.slug });
         return { slug: project.slug, servingMethod: 'STATIC_FILES', containerPort: null, commitHash, projectType: project.type };
 
@@ -530,6 +536,7 @@ export class DeploymentService {
         await this.pruneRetainedImages(project.id);
 
         getRedisConnection().publish(redisChannel, '__DONE__').catch(() => {});
+        void this.notifications.deploymentFinished(deploymentId);
         log.info('Deployment live — routed via in-app proxy', { slug: project.slug, containerPort });
         return { slug: project.slug, servingMethod: 'CONTAINER', containerPort, commitHash, projectType: project.type };
       }
@@ -549,6 +556,7 @@ export class DeploymentService {
       });
       // Signal SSE subscribers that the build ended (with failure)
       getRedisConnection().publish(redisChannel, '__DONE__').catch(() => {});
+      void this.notifications.deploymentFinished(deploymentId);
       throw err;
     }
   }

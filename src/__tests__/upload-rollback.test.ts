@@ -14,6 +14,10 @@ Object.assign(process.env, {
   UPLOADS_DIR,
 });
 
+// Deployment notifications are covered by notification-service.test.ts.
+const mockFinished = jest.fn<Promise<void>, [string]>(async () => undefined);
+jest.mock('@/services/notification', () => ({ notificationService: { deploymentFinished: (id: string) => mockFinished(id) } }));
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { UploadDeployService, KEPT_UPLOADS } = require('@/services/upload/upload.deploy.service');
 
@@ -57,6 +61,22 @@ describe('upload versions', () => {
     expect(live()).toBe('v3');
     expect(deployment).toMatchObject({ rollbackOfId: 'd3', status: 'DEPLOYED', subdomain: 'shop' });
     expect(rows.find((r) => r.id === 'd6')?.subdomain).toBeNull();
+  });
+
+  it('tells the notification hooks once the upload is live', async () => {
+    const { service, rows } = makeService();
+    const statuses: string[] = [];
+    mockFinished.mockReset().mockImplementationOnce(async (id: string) => { statuses.push(rows.find((r) => r.id === id)!.status); });
+    await service.deploy(Buffer.from('v1'), 'html', project);
+    expect(statuses).toEqual(['DEPLOYED']);
+  });
+
+  it('tells the notification hooks when an upload fails', async () => {
+    const { service, rows } = makeService();
+    const statuses: string[] = [];
+    mockFinished.mockReset().mockImplementationOnce(async (id: string) => { statuses.push(rows.find((r) => r.id === id)!.status); });
+    await expect(service.deploy(Buffer.from('not a zip'), 'zip', project)).rejects.toThrow();
+    expect(statuses).toEqual(['FAILED']);
   });
 
   it('refuses a pruned upload, the live one, and another project\'s', async () => {

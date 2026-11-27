@@ -13,6 +13,7 @@ const DOCS_PAGES: { path: string; priority: number }[] = [
   { path: '/docs/faq', priority: 0.8 },
   { path: '/docs/getting-started', priority: 0.8 },
   { path: '/docs/git-setup', priority: 0.6 },
+  { path: '/docs/notifications', priority: 0.6 },
   { path: '/docs/local-dev', priority: 0.5 },
 ];
 

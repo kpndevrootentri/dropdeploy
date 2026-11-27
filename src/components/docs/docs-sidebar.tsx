@@ -12,6 +12,7 @@ const NAV_SECTIONS = [
     items: [
       { href: '/docs/getting-started', label: 'Project Creation' },
       { href: '/docs/git-setup', label: 'Git Setup' },
+      { href: '/docs/notifications', label: 'Notifications' },
       { href: '/docs/local-dev', label: 'Local Development' },
     ],
   },

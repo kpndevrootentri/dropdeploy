@@ -13,6 +13,8 @@ import { deploymentService } from '@/services/deployment';
 import type { DeploymentJob } from '@/types/deployment.types';
 import { DOCKER_OPS_QUEUE, type DockerOpRequest, type DockerOpResult } from '@/lib/docker-ops';
 import { processDockerOp } from './docker-ops.processor';
+import { NOTIFICATION_QUEUE, type NotificationJob } from '@/lib/queue';
+import { notificationService } from '@/services/notification';
 
 const log = createLogger('worker');
 
@@ -103,6 +105,16 @@ async function main(): Promise<void> {
     log.warn('Docker operation job failed', { op: job?.data?.op, error: err?.message });
   });
 
+  // Notification hooks: all outbound HTTP to owner-chosen URLs happens here, never in the web process.
+  const notificationWorker = new Worker<NotificationJob>(
+    NOTIFICATION_QUEUE,
+    (job) => notificationService.deliver(job),
+    { connection: getRedisConnection(), concurrency: 5 },
+  );
+  notificationWorker.on('failed', (job, err) => {
+    log.warn('Notification delivery failed', { hookId: job?.data?.hookId, event: job?.data?.event, attempt: job?.attemptsMade, error: err?.message });
+  });
+
   worker.on('completed', (job) => {
     log.info('Job completed', { jobId: job.id, projectId: job.data.projectId });
     void deploymentService.enqueueNextForProject(job.data.projectId).catch((err) =>
@@ -125,7 +137,7 @@ async function main(): Promise<void> {
     log.info('Shutting down...');
     clearInterval(heartbeatTimer);
     await redis.del(HEARTBEAT_KEY).catch(() => {});
-    await Promise.all([worker.close(), dockerOpsWorker.close()]);
+    await Promise.all([worker.close(), dockerOpsWorker.close(), notificationWorker.close()]);
     process.exit(0);
   };
 

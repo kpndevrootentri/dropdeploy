@@ -161,10 +161,10 @@ graph TD
 
 ### API & Integrations
 
-- [ ] Webhook notifications for deployment events
+- [x] Webhook notifications for deployment events (per project, Settings > Notifications; signed, retried, sent by the worker)
 - [x] GitHub webhook for auto-deploy on push
 - [ ] GitLab auto-deploy on push
-- [ ] Slack/Discord notification integration
+- [x] Slack/Discord notification integration (formatted by the webhook URL's host)
 
 ### UI Polish
 

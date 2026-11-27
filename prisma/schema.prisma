@@ -190,6 +190,7 @@ model Project {
   proxyHits            ProxyHit[]
   accessList           ProjectAccess[]
   customDomains        CustomDomain[]
+  notificationHooks    NotificationHook[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -197,6 +198,29 @@ model Project {
   @@index([userId])
   @@index([cohortId])
   @@map("projects")
+}
+
+/// An outbound webhook the owner added to hear about deployments. Slack and
+/// Discord are told apart by `host`; anything else gets the plain JSON payload.
+model NotificationHook {
+  id            String    @id @default(cuid())
+  projectId     String    @map("project_id")
+  /// The URL's hostname, kept in clear for display and to pick the format.
+  host          String
+  /// AES-256-GCM triplet over JSON {url, secret}: Slack and Discord URLs are credentials too.
+  configEnc     String    @map("config_enc") @db.Text
+  configIv      String    @map("config_iv")
+  configTag     String    @map("config_tag")
+  events        String[]
+  /// Coarse result of the last delivery: an HTTP status, "timeout", "unreachable" or "blocked".
+  lastStatus    String?   @map("last_status")
+  lastAttemptAt DateTime? @map("last_attempt_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("notification_hooks")
 }
 
 /// Lifecycle of a user-supplied custom domain.

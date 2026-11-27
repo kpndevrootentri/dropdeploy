@@ -21,6 +21,9 @@ const mockScan = jest.fn(async () => ({ blocked: [] as string[] }));
 jest.mock('@/services/deployment/package-scanner', () => ({ scanPackages: () => mockScan() }));
 const mockPrisma = { deployment: { updateMany: jest.fn(async () => ({ count: 1 })), findMany: jest.fn(async () => []) }, project: { findMany: jest.fn(async () => []) } };
 jest.mock('@/lib/prisma', () => ({ prisma: mockPrisma }));
+// Deployment notifications are covered by notification-service.test.ts.
+const mockFinished = jest.fn<Promise<void>, [string]>(async () => undefined);
+jest.mock('@/services/notification', () => ({ notificationService: { deploymentFinished: (id: string) => mockFinished(id) } }));
 
 // Required, not imported: the env above must be set before the services read their config.
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -236,18 +239,53 @@ describe('each way a deployment fails records where and why', () => {
     expect(noRepo.row).toMatchObject({ status: 'FAILED', failureReason: 'The project has no repository to build from.' });
   });
 
+  it('tells the notification hooks once the final status is written', async () => {
+    const statuses: unknown[] = [];
+    const failed = setup();
+    failed.git.ensureRepo.mockRejectedValueOnce(new Error('fatal: boom'));
+    mockFinished.mockReset().mockImplementationOnce(async () => { statuses.push(failed.row.status); });
+    await expect(failed.service.buildAndDeploy('dep-1')).rejects.toThrow();
+
+    const reserved = setup({ project: { slug: 'caddy' } });
+    mockFinished.mockImplementationOnce(async () => { statuses.push(reserved.row.status); });
+    await reserved.service.buildAndDeploy('dep-1');
+    expect(statuses).toEqual(['FAILED', 'FAILED']);
+
+    const live = setup();
+    mockFinished.mockReset();
+    await live.service.buildAndDeploy('dep-1');
+    expect(mockFinished).toHaveBeenCalledTimes(1);
+    expect(mockFinished.mock.invocationCallOrder[0]).toBeGreaterThan(live.deploymentRepo.activate.mock.invocationCallOrder[0]);
+  });
+
   it('a deployment that succeeds records no reason', async () => {
     const { service, row } = setup();
     await expect(service.buildAndDeploy('dep-1')).resolves.toMatchObject({ servingMethod: 'CONTAINER' });
     expect(row.failureReason).toBeUndefined();
   });
 
-  it('a worker restart mid-build', async () => {
-    await new DeploymentRepository().markBuildingAsFailed();
+  it('a worker restart mid-build, and the hooks hear about each one', async () => {
+    mockPrisma.deployment.findMany.mockResolvedValueOnce([{ id: 'dep-a' }, { id: 'dep-b' }] as never);
+    await expect(new DeploymentRepository().markBuildingAsFailed()).resolves.toEqual(['dep-a', 'dep-b']);
     expect(mockPrisma.deployment.updateMany).toHaveBeenCalledWith({
-      where: { status: 'BUILDING' },
+      where: { id: { in: ['dep-a', 'dep-b'] }, status: 'BUILDING' },
       data: expect.objectContaining({ status: 'FAILED', failureReason: expect.stringContaining('build server restarted') }),
     });
+    mockPrisma.deployment.findMany.mockClear();
+
+    const repo = { markBuildingAsFailed: async () => ['dep-a', 'dep-b'], findAllOrphanedQueuedDeployments: async () => [] };
+    mockFinished.mockReset();
+    await new DeploymentService(repo as never, {} as never, {} as never, {} as never, {} as never, {} as never).recoverStuckDeployments();
+    expect(mockFinished.mock.calls).toEqual([['dep-a'], ['dep-b']]);
+  });
+
+  it('a static site going live tells the hooks after it is activated', async () => {
+    const { service, deploymentRepo, docker } = setup({ project: { type: 'REACT', useStaticHosting: true } });
+    docker.extractStaticFiles.mockImplementationOnce((async (_image: string, dir: string) => { fs.mkdirSync(dir); }) as never);
+    mockFinished.mockReset();
+    await expect(service.buildAndDeploy('dep-1')).resolves.toMatchObject({ servingMethod: 'STATIC_FILES' });
+    expect(mockFinished).toHaveBeenCalledWith('dep-1');
+    expect(mockFinished.mock.invocationCallOrder[0]).toBeGreaterThan(deploymentRepo.activate.mock.invocationCallOrder[0]);
   });
 
   it('an upload that cannot be extracted', async () => {
