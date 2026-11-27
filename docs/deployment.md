@@ -705,6 +705,7 @@ pm2 set pm2-logrotate:retain 7
 | Deployments stuck in BUILDING | Worker crashed — `pm2 restart dropdeploy-worker` |
 | Custom domain stuck in PENDING_DNS / never re-checks | Domain worker not running — `pm2 status`, then `pm2 restart dropdeploy-domains`. Confirm the user's TXT record actually resolves: `dig +short TXT _dropdeploy-verify.<their-domain>` |
 | Custom domain went ACTIVE → FAILED | Five consecutive DNS re-checks failed, so it is no longer served. Check the user still publishes the TXT record; `pm2 logs dropdeploy-domains` names the reason |
+| A site shows Down | Its container has not answered `GET /` for about 3 minutes; the badge's tooltip and the project page say why. Check the app's logs (Advanced → Terminal or Admin → Projects). Redeploying clears it. Many sites Down at once: look for `Possible platform outage` in `pm2 logs dropdeploy-worker` and check `docker info` |
 | Docker build fails | `docker info` — verify daemon is running and accessible |
 | Database connection refused | `sudo systemctl status postgresql` |
 | Redis connection refused | `sudo systemctl status redis-server` |

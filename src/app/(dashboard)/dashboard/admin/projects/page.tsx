@@ -44,6 +44,9 @@ interface AdminProject {
   user: ProjectOwner;
   deployments: Deployment[];
   stoppedAt: string | null;
+  /** Set by the health sweep while the live container is not answering. */
+  unhealthySince: string | null;
+  healthReason: string | null;
   createdAt: string;
 }
 
@@ -592,6 +595,11 @@ export default function AdminProjectsPage(): React.ReactElement {
                         </span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
+                      )}
+                      {!p.stoppedAt && p.unhealthySince && (
+                        <span title={p.healthReason ?? undefined} className={`ml-1.5 inline-block px-2 py-0.5 rounded text-xs font-medium ${DEPLOY_STATUS_CLASS.FAILED}`}>
+                          DOWN
+                        </span>
                       )}
                       {latestDeployment?.status === 'FAILED' && (
                         <DeploymentFailure buildStep={latestDeployment.buildStep} failureReason={latestDeployment.failureReason} className="mt-1 max-w-xs" />

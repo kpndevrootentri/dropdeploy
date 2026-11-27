@@ -116,6 +116,9 @@ describe('Project.stoppedAt', () => {
     expect(ops).toContainEqual({
       projectUpdateMany: { where: { id: 'p1', stoppedAt: { not: null } }, data: { stoppedAt: null } },
     });
+    expect(ops).toContainEqual({
+      projectUpdateMany: { where: { id: 'p1', unhealthySince: { not: null } }, data: { unhealthySince: null, healthReason: null } },
+    });
   });
 });
 

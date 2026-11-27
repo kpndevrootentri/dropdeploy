@@ -80,13 +80,15 @@ export const candidateContainerName = (slug: string, deploymentId: string): stri
  * included: the app is up and handling requests. A bare TCP connect is not
  * enough, because Docker's port proxy accepts connections on the host port
  * before the app inside is listening, then drops them.
+ * Also the health sweep's probe; the User-Agent lets owners spot it in their logs.
  */
-function answersHttp(port: number): Promise<boolean> {
+export function answersHttp(port: number, timeoutMs = 2000): Promise<boolean> {
   return new Promise((resolve) => {
     const req = http.request(
-      { host: '127.0.0.1', port, path: '/', method: 'GET', timeout: 2000 },
+      { host: '127.0.0.1', port, path: '/', method: 'GET', timeout: timeoutMs, headers: { 'User-Agent': 'Entrify-HealthCheck' } },
       (res) => {
-        res.resume();
+        // The status is all we need; reading on would keep a streaming body open.
+        res.destroy();
         resolve(true);
       },
     );

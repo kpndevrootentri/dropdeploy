@@ -10,7 +10,7 @@ import { createLogger } from '@/lib/logger';
 
 const log = createLogger('email');
 
-export type EmailKind = 'invite' | 'reset' | 'test';
+export type EmailKind = 'invite' | 'reset' | 'test' | 'health';
 
 export interface OutgoingEmail {
   to: string;

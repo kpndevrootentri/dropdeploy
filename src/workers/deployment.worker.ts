@@ -10,6 +10,7 @@ import { getRedisConnection } from '@/lib/redis';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
 import { deploymentService } from '@/services/deployment';
+import { containerHealthService, HEALTH_SWEEP_INTERVAL_MS } from '@/services/health';
 import type { DeploymentJob } from '@/types/deployment.types';
 import { DOCKER_OPS_QUEUE, type DockerOpRequest, type DockerOpResult } from '@/lib/docker-ops';
 import { processDockerOp } from './docker-ops.processor';
@@ -120,10 +121,14 @@ async function main(): Promise<void> {
   });
 
   const heartbeatTimer = startHeartbeat(redis);
+  const healthTimer = setInterval(() => {
+    containerHealthService.sweep().catch((err) => log.error('Health sweep failed', { error: String(err) }));
+  }, HEALTH_SWEEP_INTERVAL_MS);
 
   const shutdown = async (): Promise<void> => {
     log.info('Shutting down...');
     clearInterval(heartbeatTimer);
+    clearInterval(healthTimer);
     await redis.del(HEARTBEAT_KEY).catch(() => {});
     await Promise.all([worker.close(), dockerOpsWorker.close()]);
     process.exit(0);

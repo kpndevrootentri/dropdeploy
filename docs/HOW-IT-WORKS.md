@@ -543,6 +543,10 @@ If any pipeline step fails (clone, build, or run):
 2. Error message stored in the `logs` column.
 3. Common Docker errors **normalized** to user-friendly messages (e.g., "no such image" becomes guidance about adding a `start` script).
 
+### Site health
+
+Once a minute the deployment worker checks every live container site (`src/services/health`): it inspects `dropdeploy-<slug>` and, if it runs and publishes the deployment's port, sends `GET /` to `127.0.0.1:<port>` (User-Agent `Entrify-HealthCheck`, 10 s timeout, any status counts, the same meaning of "up" as the deploy readiness gate). Three failed checks in a row of the same deployment (about 3 minutes; a redeploy starts the count again) set `Project.unhealthySince` and `healthReason`, and the dashboard, the project page and Admin → Projects show **Down** (Stopped wins over Down). The owner gets one email per incident, at most one per site per day; none when 5 or more sites go down in one sweep (that is logged as a possible platform outage). The first answer, or a new deployment going live, clears it. Sites an admin stopped and static sites are not checked. A Docker error aborts the sweep without marking anything.
+
 ### BullMQ Retry Strategy
 
 ```mermaid

@@ -29,6 +29,8 @@ export interface IProjectRepository {
   transferOwner(id: string, newUserId: string): Promise<Project>;
   /** Records that the live container was stopped (a date) or started again (null). */
   setStoppedAt(id: string, stoppedAt: Date | null): Promise<void>;
+  /** Health sweep writes. `updatedAt` is the project's current one, so "Last Updated" does not move. */
+  setHealth(id: string, data: Partial<Pick<Project, 'unhealthySince' | 'healthReason' | 'healthAlertedAt'>> & { updatedAt: Date }): Promise<void>;
   /** Enable auto-deploy and persist the GitHub hook id + encrypted webhook secret. */
   setWebhookConfig(id: string, data: { githubHookId: string; webhookSecretEnc: string; webhookSecretIv: string; webhookSecretTag: string }): Promise<Project>;
   /** Disable auto-deploy and clear all webhook fields. */
@@ -122,6 +124,11 @@ export class ProjectRepository implements IProjectRepository {
 
   async setStoppedAt(id: string, stoppedAt: Date | null): Promise<void> {
     await prisma.project.update({ where: { id }, data: { stoppedAt } });
+  }
+
+  async setHealth(id: string, data: Partial<Pick<Project, 'unhealthySince' | 'healthReason' | 'healthAlertedAt'>> & { updatedAt: Date }): Promise<void> {
+    // updateMany: a project deleted since the sweep read it is no error.
+    await prisma.project.updateMany({ where: { id }, data });
   }
 
   async setWebhookConfig(
