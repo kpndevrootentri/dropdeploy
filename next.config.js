@@ -13,6 +13,9 @@ const nextConfig = {
     // uploads cost memory; raise only when tenants need bigger uploads.
     proxyClientMaxBodySize: '64mb',
   },
+  // Keeps request.url in src/proxy.ts as the address Next is bound to, so tenant
+  // rewrites built from it stay internal under `next start -H 127.0.0.1`.
+  skipProxyUrlNormalize: true,
   // Tenant apps own their URLs: stripping "/calculate/" to "/calculate" loops
   // with Django's APPEND_SLASH. src/proxy.ts still strips it for platform pages.
   skipTrailingSlashRedirect: true,

@@ -460,7 +460,9 @@ module.exports = {
       script: 'node_modules/.bin/next',
       // Loopback only: the edge proxies to 127.0.0.1:3000. On *:3000 the app
       // is reachable from tenant containers at the Docker gateway IP, which
-      // skips the edge's /api/internal block.
+      // skips the edge's /api/internal block. Tenant sites work under -H,
+      // also behind the https edge: skipProxyUrlNormalize in next.config.js
+      // keeps the tenant rewrite in src/proxy.ts internal.
       args: 'start -H 127.0.0.1',
       cwd: '/home/ubuntu/dropdeploy',
       instances: 1,
