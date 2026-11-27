@@ -69,6 +69,7 @@ describe('buildAndDeploy with a platform slug', () => {
       findWithRetainedImages: jest.fn(async () => []),
     };
     const docker = {
+      isRepoImage: jest.fn(async () => false),
       startContainer: jest.fn(async () => 4000),
       waitUntilReady: jest.fn(async () => undefined),
       promoteContainer: jest.fn(async () => undefined),

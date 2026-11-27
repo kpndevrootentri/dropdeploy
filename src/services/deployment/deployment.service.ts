@@ -368,7 +368,7 @@ export class DeploymentService {
       let imageName: string;
       let commitHash: string;
       let runtimeEnv: Record<string, string>;
-      // ponytail: a rollback keeps the project's static-hosting choice even for a repo-built image; extraction then fails and the live deployment stays.
+      // Whether the image comes from the repository's own Dockerfile (always a container).
       let useRepoDockerfile = false;
 
       if (deployment.rollbackOfId) {
@@ -380,6 +380,8 @@ export class DeploymentService {
         }
         addMarker(`Rolling back to deployment ${source.id}${source.commitHash ? ` (${source.commitHash.slice(0, 7)})` : ''}...`);
         imageName = source.imageTag;
+        // From the image's label, as startContainer does, not the project's current flag.
+        useRepoDockerfile = await this.docker.isRepoImage(imageName);
         commitHash = source.commitHash ?? '';
         ({ runtimeEnv } = await this.resolveEnv(project.id, project.type));
         envValues = Object.values(runtimeEnv);

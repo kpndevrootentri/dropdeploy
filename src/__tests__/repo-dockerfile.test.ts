@@ -151,9 +151,10 @@ describe('DockerService.startContainer', () => {
 });
 
 /** buildAndDeploy with git and Docker stubbed; the clone is `workDir`. */
-function deploy(workDir: string, project: Record<string, unknown>) {
-  const row: Record<string, unknown> = { id: 'dep-1', projectId: 'p1', status: 'QUEUED', buildStep: null, rollbackOfId: null };
+function deploy(workDir: string, project: Record<string, unknown>, rollbackOfId: string | null = null) {
+  const row: Record<string, unknown> = { id: 'dep-1', projectId: 'p1', status: 'QUEUED', buildStep: null, rollbackOfId };
   const deploymentRepo = {
+    findById: jest.fn(async () => ({ id: 'dep-0', projectId: 'p1', imageTag: 'dropdeploy/shop:d-dep-0', commitHash: 'abc1234' })),
     findByIdWithProject: jest.fn(async () => ({
       ...row,
       project: { id: 'p1', slug: 'shop', type: 'NODEJS', useStaticHosting: false, githubUrl: 'https://github.com/o/shop', branch: 'main', source: 'GITHUB', userId: 'u1', ...project },
@@ -164,6 +165,7 @@ function deploy(workDir: string, project: Record<string, unknown>) {
     findWithRetainedImages: jest.fn(async () => []),
   };
   const docker = {
+    isRepoImage: jest.fn(async () => true),
     buildImage: jest.fn(async () => 'dropdeploy/shop:latest'),
     tagForDeployment: jest.fn(async () => 'dropdeploy/shop:d-dep-1'),
     extractStaticFiles: jest.fn(async () => undefined),
@@ -196,6 +198,14 @@ describe('DeploymentService.buildAndDeploy with a repo Dockerfile', () => {
     await run();
     expect(buildOpts(docker).useRepo).toBe(false);
     expect(row.buildLog).toContain('the one in your repository is not used. An admin can switch');
+  });
+
+  it("rolls back to a repo-built image as a container, whatever the project's static hosting says", async () => {
+    const { run, docker } = deploy(repoDir({}), { type: 'REACT', useStaticHosting: true, allowRepoDockerfile: false }, 'dep-0');
+    await expect(run()).resolves.toMatchObject({ servingMethod: 'CONTAINER' });
+    expect(docker.isRepoImage).toHaveBeenCalledWith('dropdeploy/shop:d-dep-0');
+    expect(docker.extractStaticFiles).not.toHaveBeenCalled();
+    expect(docker.stopAndRemoveContainer).not.toHaveBeenCalledWith('dropdeploy-shop');
   });
 
   it('fails at SCANNING on an ADD line, before any build', async () => {

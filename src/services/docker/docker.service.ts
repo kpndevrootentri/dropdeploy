@@ -273,6 +273,12 @@ export class DockerService {
     return imageName;
   }
 
+  /** Whether the image was built from a repository's own Dockerfile; false when it is gone. */
+  async isRepoImage(imageName: string): Promise<boolean> {
+    const image = await this.docker.getImage(imageName).inspect().catch(() => null);
+    return image?.Config?.Labels?.[REPO_DOCKERFILE_LABEL] === 'repo';
+  }
+
   /**
    * Creates and starts a container from the image under `containerName`;
    * returns the host port. Static projects expose 80, Node/Next expose 3000.
