@@ -1,20 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { webhookService } from '@/services/webhook';
-import { deploymentService } from '@/services/deployment';
-import { auditLogRepository } from '@/repositories/audit-log.repository';
-import { checkWebhookDeployRateLimit, checkWebhookOwnerDeployRateLimit, checkWebhookRateLimit, getClientIp } from '@/lib/rate-limit';
+import { checkWebhookRateLimit, getClientIp } from '@/lib/rate-limit';
 import { verifySignature, parsePushRef, parsePushRepoFullName } from '@/lib/github-webhook';
+import { deployPushedProjects, readWebhookJson } from '@/lib/push-deploy';
 import { createLogger } from '@/lib/logger';
 import { getRedisConnection } from '@/lib/redis';
 
 const log = createLogger('webhook-github');
-
-/**
- * Largest delivery accepted. GitHub push payloads are normally tens of KB
- * (they carry at most 20 commits); this leaves ample room while stopping an
- * unauthenticated caller from making us buffer and HMAC arbitrarily large bodies.
- */
-const MAX_BODY_BYTES = 5 * 1024 * 1024;
 
 /** How long a delivery ID is remembered for replay detection. */
 const DELIVERY_TTL_S = 24 * 60 * 60;
@@ -38,23 +30,10 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
     return new NextResponse(null, { status: 204 });
   }
 
-  const declaredLength = Number(req.headers.get('content-length') ?? 0);
-  if (declaredLength > MAX_BODY_BYTES) {
-    return NextResponse.json({ success: false, error: { code: 'PAYLOAD_TOO_LARGE', message: 'Payload too large' } }, { status: 413 });
-  }
-
   // Raw body is required to verify the HMAC — cannot use req.json().
-  const raw = await req.text();
-  if (Buffer.byteLength(raw) > MAX_BODY_BYTES) {
-    return NextResponse.json({ success: false, error: { code: 'PAYLOAD_TOO_LARGE', message: 'Payload too large' } }, { status: 413 });
-  }
-
-  let payload: unknown;
-  try {
-    payload = JSON.parse(raw);
-  } catch {
-    return NextResponse.json({ success: false, error: { code: 'INVALID_PAYLOAD', message: 'Invalid JSON' } }, { status: 400 });
-  }
+  const body = await readWebhookJson(req);
+  if (body instanceof NextResponse) return body;
+  const { raw, payload } = body;
 
   const repoFullName = parsePushRepoFullName(payload as never);
   const branch = parsePushRef(payload as never);
@@ -67,7 +46,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
 
   // Find every auto-deploy project matching this repo+branch and verify each
   // against its own secret. Verification is per-project because secrets differ.
-  const projects = await webhookService.findProjectsForPush(repoFullName, branch);
+  const projects = await webhookService.findProjectsForPush(repoFullName, branch, 'GITHUB');
   if (projects.length === 0) {
     return new NextResponse(null, { status: 204 });
   }
@@ -106,32 +85,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
     return new NextResponse(null, { status: 204 });
   }
 
-  let triggered = 0;
-  let refused: NextResponse | null = null;
-  for (const project of verified) {
-    // Counted only after the signature and delivery-ID checks above. The project limit goes first,
-    // so a push its project refuses doesn't use up the owner's budget.
-    const limited = checkWebhookDeployRateLimit(project.id)
-      ?? checkWebhookOwnerDeployRateLimit({ userId: project.userId, role: project.user.role });
-    if (limited) {
-      refused = limited;
-      log.warn('Webhook deployment rate limited', { projectId: project.id, userId: project.userId });
-      continue;
-    }
-    try {
-      const { deployment } = await deploymentService.createDeploymentFromWebhook(project.id);
-      triggered++;
-      auditLogRepository.create({
-        action: 'DEPLOY_TRIGGERED_WEBHOOK',
-        targetKey: deployment.id,
-        userId: project.userId,
-        projectId: project.id,
-      }).catch(() => {});
-    } catch (err) {
-      // Don't fail the whole delivery if one project's enqueue errors.
-      log.warn('Webhook deployment trigger failed', { projectId: project.id, error: String(err) });
-    }
-  }
+  const { triggered, refused } = await deployPushedProjects(verified);
 
   // Every matching project is over a limit: say so, so the delivery shows as failed in GitHub, and
   // free the delivery ID, so redelivering it from GitHub deploys once the limit resets.

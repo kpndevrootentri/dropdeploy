@@ -19,8 +19,10 @@ import { EnvVarsPanel } from '@/components/features/env-vars-panel';
 import { AccessListPanel } from '@/components/features/access-list-panel';
 import { AddToBatchCard } from '@/components/features/add-to-batch-card';
 import { DomainsPanel } from '@/components/features/domains-panel';
+import { CopyValue } from '@/components/ui/copy-value';
 import { getLocalIP } from '@/lib/local-ip';
 import { compareUrl } from '@/lib/git-url';
+import type { GitLabWebhookSetup } from '@/services/webhook';
 import {
   ArrowLeft,
   ExternalLink,
@@ -1107,6 +1109,9 @@ function SettingsPanel({
   const [autoDeploy, setAutoDeploy] = useState(project.autoDeploy);
   const [autoDeploySaving, setAutoDeploySaving] = useState(false);
   const [autoDeployError, setAutoDeployError] = useState<string | null>(null);
+  // GitLab only: the webhook URL and secret from turning auto-deploy on (shown once), and whether it was just turned off.
+  const [gitlabWebhook, setGitlabWebhook] = useState<GitLabWebhookSetup | null>(null);
+  const [gitlabTurnedOff, setGitlabTurnedOff] = useState(false);
 
   const [useStaticHosting, setUseStaticHosting] = useState(project.useStaticHosting);
 
@@ -1196,7 +1201,9 @@ function SettingsPanel({
     }
   };
 
+  // Also rotates a GitLab secret: called with true while auto-deploy is already on.
   const handleAutoDeployToggle = async (next: boolean): Promise<void> => {
+    const previous = autoDeploy;
     setAutoDeployError(null);
     setAutoDeploySaving(true);
     setAutoDeploy(next);
@@ -1208,13 +1215,15 @@ function SettingsPanel({
       });
       const data = await res.json();
       if (!res.ok) {
-        setAutoDeploy(!next); // revert on failure
+        setAutoDeploy(previous); // revert on failure
         setAutoDeployError(data?.error?.message ?? 'Failed to update');
       } else {
+        setGitlabWebhook(data?.data?.gitlabWebhook ?? null);
+        setGitlabTurnedOff(!next);
         onUpdated();
       }
     } catch {
-      setAutoDeploy(!next);
+      setAutoDeploy(previous);
       setAutoDeployError('Something went wrong');
     } finally {
       setAutoDeploySaving(false);
@@ -1398,14 +1407,17 @@ function SettingsPanel({
         </CardContent>
       </Card>
 
-      {/* Auto-deploy on git push — GitHub projects only */}
-      {project.source === 'GITHUB' && (
+      {/* Auto-deploy on git push — GitHub and GitLab projects */}
+      {(project.source === 'GITHUB' || project.source === 'GITLAB') && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Auto-Deploy</CardTitle>
             <CardDescription>
               When enabled, every push to the <span className="font-medium">{project.branch}</span> branch
-              automatically triggers a new deployment. Entrify registers a webhook on your GitHub repository.
+              automatically triggers a new deployment.{' '}
+              {project.source === 'GITHUB'
+                ? 'Entrify registers a webhook on your GitHub repository.'
+                : 'You add a webhook to your GitLab project once, with the URL and secret Entrify shows you.'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -1440,6 +1452,40 @@ function SettingsPanel({
                 />
               </button>
             </div>
+            {project.source === 'GITLAB' && autoDeploy && (gitlabWebhook ? (
+              <div role="status" className="mt-4 space-y-3 rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm">
+                <p>
+                  In GitLab, open your project&apos;s <span className="font-medium">Settings → Webhooks</span>, click{' '}
+                  <span className="font-medium">Add new webhook</span> and fill in:
+                </p>
+                <CopyValue label="URL" value={gitlabWebhook.url} />
+                <CopyValue label="Secret token" hint="Copy it now. It will not be shown again." value={gitlabWebhook.secret} emphasis />
+                <p>
+                  Trigger: <span className="font-medium">Push events</span>, all branches. Entrify deploys only pushes
+                  to {project.branch}.
+                </p>
+              </div>
+            ) : project.autoDeploy && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">
+                  Secret hidden. A new one replaces it: the GitLab webhook stops working until you paste it there.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={autoDeploySaving}
+                  onClick={() => { void handleAutoDeployToggle(true); }}
+                >
+                  Generate new secret
+                </Button>
+              </div>
+            ))}
+            {project.source === 'GITLAB' && !autoDeploy && gitlabTurnedOff && (
+              <p className="text-xs text-muted-foreground mt-3">
+                Also delete the webhook in GitLab (Settings → Webhooks). Entrify now ignores its pushes.
+              </p>
+            )}
             {autoDeployError && (
               <p className="text-sm text-destructive mt-3" role="alert">{autoDeployError}</p>
             )}

@@ -92,9 +92,11 @@ https://gitlab.com/your-username/my-project.git`}</Pre>
           anything else, update the branch field in the Create Project form before deploying.
           When a repo is selected via the picker the branch is set automatically from the repo&apos;s default.
         </p>
-        <Callout type="warn">
-          Entrify always deploys the <em>latest commit</em> on that branch at the time you click Deploy.
-          There is no automatic redeploy on push — you trigger each deployment manually.
+        <Callout type="info">
+          Each deployment uses the <em>latest commit</em> on that branch. To deploy on every push, turn on
+          Auto-Deploy in the project&apos;s Settings tab. For GitHub, Entrify adds the webhook for you. For
+          GitLab, paste the URL and the secret token Entrify shows you (only once) into your GitLab project
+          under Settings → Webhooks, with Push events ticked.
         </Callout>
       </section>
 

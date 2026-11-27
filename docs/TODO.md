@@ -163,7 +163,7 @@ graph TD
 
 - [ ] Webhook notifications for deployment events
 - [x] GitHub webhook for auto-deploy on push
-- [ ] GitLab auto-deploy on push
+- [x] GitLab auto-deploy on push. Done with a webhook the student adds in GitLab by hand: Settings shows the URL and a one-time secret.
 - [ ] Slack/Discord notification integration
 
 ### UI Polish
