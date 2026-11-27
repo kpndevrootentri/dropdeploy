@@ -4,6 +4,7 @@ import { deploymentRepository, type IDeploymentRepository } from '@/repositories
 import { extractZipToDir, writeSingleHtmlToDir } from './upload.service';
 import { getConfig } from '@/lib/config';
 import { getDeployedProjectUrl } from '@/lib/project-url';
+import { failureReason } from '@/services/deployment/failure-reason';
 import { NotFoundError, ValidationError } from '@/lib/errors';
 import type { Deployment, Project } from '@prisma/client';
 import type { UploadFileType } from '@/lib/upload-utils';
@@ -42,10 +43,13 @@ export class UploadDeployService implements IUploadDeployService {
         await writeSingleHtmlToDir(buffer, destDir);
       }
     } catch (extractErr) {
+      // The log is shown to owners and batch mentors too, so it gets the same text, without server paths.
+      const reason = failureReason(extractErr instanceof Error ? extractErr.message : 'Extraction failed');
       await this.deployRepo.update(deployment.id, {
         status: 'FAILED',
         completedAt: new Date(),
-        buildLog: extractErr instanceof Error ? extractErr.message : 'Extraction failed',
+        buildLog: reason,
+        failureReason: reason,
       });
       throw extractErr;
     }

@@ -115,7 +115,8 @@ erDiagram
     Deployment {
         string id PK "cuid"
         enum status "QUEUED | BUILDING | DEPLOYED | FAILED"
-        string buildStep "CLONING | BUILDING_IMAGE | STARTING"
+        string buildStep "CLONING | SCANNING | BUILDING_IMAGE | EXTRACTING | STARTING (kept on failure)"
+        string failureReason "one line, why a FAILED deployment failed"
         int containerPort "host port 4000-9999 (null for static)"
         enum servingMethod "CONTAINER | STATIC_FILES — default: CONTAINER"
         string subdomain UK
@@ -735,7 +736,7 @@ Events are stored in `PlatformEvent` with optional `userId` and `meta` JSON. The
 |---------|---------|
 | **Users** | Total users, new this week, 14-day signups chart |
 | **Projects** | Total projects, new this week, framework distribution, 14-day new-projects chart |
-| **Deployments** | Total, succeeded, failed, success rate, deploys this week, per-day frequency chart (total / success / failed), build time p50/p95 (successful builds, rollbacks and uploads excluded), failed deploys grouped by `buildStep` (there is no error-message column) |
+| **Deployments** | Total, succeeded, failed, success rate, deploys this week, per-day frequency chart (total / success / failed), build time p50/p95 (successful builds, rollbacks and uploads excluded), failed deploys grouped by `buildStep` (each one's `failureReason` is free text, shown per deploy in Projects) |
 | **Traffic** | Total proxy hits, hits this week, per-day hits chart, device breakdown, top 10 projects by hits in the range |
 | **Showcase** | Total showcases, published count, total views, top 5 by view count |
 | **Platform Events** | Event counts by type, events this week |

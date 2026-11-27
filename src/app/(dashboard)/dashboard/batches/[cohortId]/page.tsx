@@ -11,6 +11,7 @@ import { adminRequest } from '@/components/admin/admin-request';
 import { NoPasswordPill, batchStage, formatDay } from '@/components/admin/batch-status';
 import { AddStudentsDialog } from '@/components/features/add-students-dialog';
 import { getProjectUrl } from '@/components/ui/framework-logo';
+import { DeploymentFailure } from '@/components/features/deployment-failure';
 
 /** GET /api/cohorts/[cohortId]: joinLink is null while joining is closed. */
 interface BatchView {
@@ -26,7 +27,10 @@ interface CohortProject {
   type: string;
   isPrivate: boolean;
   user: { id: string; email: string; name: string | null };
-  deployments: Array<{ id: string; status: string; containerPort: number | null; createdAt: string }>;
+  deployments: Array<{
+    id: string; status: string; containerPort: number | null; createdAt: string;
+    buildStep: string | null; failureReason: string | null;
+  }>;
 }
 
 interface DeploymentRow {
@@ -206,6 +210,9 @@ export default function BatchProjectsPage({ params }: { params: Promise<{ cohort
                     </td>
                     <td className="py-3 pr-4">
                       {latest ? <Status status={latest.status} /> : <span className="text-xs text-muted-foreground">Never deployed</span>}
+                      {latest?.status === 'FAILED' && (
+                        <DeploymentFailure buildStep={latest.buildStep} failureReason={latest.failureReason} className="mt-1 max-w-xs" />
+                      )}
                     </td>
                     <td className="py-3">
                       <div className="flex items-center gap-2">

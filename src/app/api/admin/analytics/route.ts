@@ -124,7 +124,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
         FROM deployments d JOIN projects p ON p.id = d.project_id
         WHERE d.status = 'DEPLOYED' AND d.started_at IS NOT NULL AND d.completed_at IS NOT NULL
           AND d.rollback_of_id IS NULL AND p.source <> 'UPLOAD' AND d.created_at >= ${since}`,
-      // There is no error-message column; the step a build stopped at is the best grouping we have.
+      // Grouped by the step a build stopped at; failureReason is free text, too varied to group by.
       prisma.deployment.groupBy({
         by: ['buildStep'],
         where: { status: 'FAILED', createdAt: { gte: since } },

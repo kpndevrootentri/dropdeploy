@@ -25,6 +25,7 @@ import {
   injectBuildArgs,
 } from './dockerfile.templates';
 import { patchNextConfig } from './nextjs-config-patcher';
+import { redact } from '@/services/deployment/failure-reason';
 import { readRepoFile, writeRepoFile } from '@/lib/repo-fs';
 
 const log = createLogger('docker');
@@ -180,8 +181,8 @@ export class DockerService {
       } as Record<string, unknown>,
     );
 
-    // Build a scrubber to redact secret values from build output
-    const scrub = this.buildScrubber(secretValues);
+    // The same redaction as the failure reason, so a value hidden there is hidden here too.
+    const scrub = (text: string): string => redact(text, secretValues);
 
     // Collect build output for diagnostics
     const buildLog: string[] = [];
@@ -374,8 +375,7 @@ export class DockerService {
   private async tailLogs(containerName: string, lines = 30): Promise<string> {
     try {
       const buf = await this.docker.getContainer(containerName).logs({ stdout: true, stderr: true, tail: lines });
-      // Strip Docker's 8-byte multiplexing headers.
-      return (buf as unknown as Buffer).toString('utf8').replace(/[\x00-\x08]/g, '').trim() || '(no output)';
+      return demuxLogs(buf as unknown as Buffer).trim() || '(no output)';
     } catch {
       return '(logs unavailable)';
     }
@@ -409,23 +409,6 @@ export class DockerService {
       // Another worker created it between our inspect and create.
       if (!String(err).includes('already exists')) throw err;
     }
-  }
-
-  /**
-   * Returns a function that replaces all secret values in a string with [REDACTED].
-   * Only scrubs values that are 3+ characters to avoid false positives.
-   */
-  private buildScrubber(secretValues: string[]): (text: string) => string {
-    const meaningful = secretValues.filter((v) => v.length >= 3);
-    if (meaningful.length === 0) return (text) => text;
-
-    // Escape regex special chars and sort longest-first for greedy matching
-    const escaped = meaningful
-      .sort((a, b) => b.length - a.length)
-      .map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    const pattern = new RegExp(escaped.join('|'), 'g');
-
-    return (text: string) => text.replace(pattern, '[REDACTED]');
   }
 
   /**

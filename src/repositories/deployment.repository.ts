@@ -6,7 +6,7 @@ export type DeploymentWithProject = Deployment & { project: Project };
 export type DeploymentSummary = Omit<Deployment, 'buildLog'>;
 
 const SUMMARY_SELECT = {
-  id: true, status: true, containerPort: true, subdomain: true, buildStep: true, commitHash: true,
+  id: true, status: true, containerPort: true, subdomain: true, buildStep: true, failureReason: true, commitHash: true,
   servingMethod: true, imageTag: true, rollbackOfId: true, startedAt: true, completedAt: true,
   projectId: true, createdAt: true, updatedAt: true,
 } satisfies Prisma.DeploymentSelect;
@@ -18,7 +18,7 @@ export interface IDeploymentRepository {
   findByProjectId(projectId: string, limit?: number, skip?: number): Promise<DeploymentSummary[]>;
   countByProjectId(projectId: string): Promise<number>;
   create(data: { projectId: string; status?: string; rollbackOfId?: string; commitHash?: string | null }): Promise<Deployment>;
-  update(id: string, data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'buildLog' | 'commitHash' | 'servingMethod' | 'startedAt' | 'completedAt' | 'imageTag'>>): Promise<Deployment>;
+  update(id: string, data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'failureReason' | 'buildLog' | 'commitHash' | 'servingMethod' | 'startedAt' | 'completedAt' | 'imageTag'>>): Promise<Deployment>;
   /**
    * Makes `deploymentId` the project's live deployment in one transaction:
    * releases the subdomain and port held by its other deployments and marks
@@ -139,7 +139,7 @@ export class DeploymentRepository implements IDeploymentRepository {
 
   async update(
     id: string,
-    data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'buildLog' | 'commitHash' | 'servingMethod' | 'startedAt' | 'completedAt'>>
+    data: Partial<Pick<Deployment, 'status' | 'containerPort' | 'subdomain' | 'buildStep' | 'failureReason' | 'buildLog' | 'commitHash' | 'servingMethod' | 'startedAt' | 'completedAt'>>
   ): Promise<Deployment> {
     return prisma.deployment.update({
       where: { id },
@@ -207,7 +207,11 @@ export class DeploymentRepository implements IDeploymentRepository {
   async markBuildingAsFailed(): Promise<number> {
     const result = await prisma.deployment.updateMany({
       where: { status: 'BUILDING' },
-      data: { status: 'FAILED', completedAt: new Date() },
+      data: {
+        status: 'FAILED',
+        failureReason: 'The build was interrupted because the build server restarted. Retry the deployment.',
+        completedAt: new Date(),
+      },
     });
     return result.count;
   }

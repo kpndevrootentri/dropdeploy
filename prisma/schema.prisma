@@ -314,6 +314,9 @@ model Deployment {
   containerPort Int?             @map("container_port")
   subdomain     String?          @unique
   buildStep     String?          @map("build_step")
+  /// Why a FAILED deployment failed, one short line (capped, env var values redacted).
+  /// buildStep, kept on failure, says where.
+  failureReason String?          @map("failure_reason")
   buildLog      String?          @map("build_log") @db.Text
   commitHash    String?          @map("commit_hash")
   servingMethod ServingMethod    @default(CONTAINER) @map("serving_method")
