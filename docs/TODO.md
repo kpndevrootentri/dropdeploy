@@ -219,7 +219,7 @@ Found on 2026-11-26 by checking `main` and the production host.
 ### Students and batches
 
 - [ ] Filter `/explore` by batch, and add a batch column to the CSV exports
-- [ ] Move a project between batches
+- [x] Move a project between batches (admin batch page → Move to batch…; owner must be a current student there)
 
 ---
 

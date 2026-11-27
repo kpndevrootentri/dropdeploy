@@ -20,6 +20,8 @@ export const updateCohortSchema = z
 
 export const addMentorSchema = z.object({ email: z.string().trim().email() });
 
+export const moveProjectSchema = z.object({ toCohortId: z.string().min(1).max(64) });
+
 /** Checked one by one in the service, so a bad entry is reported instead of failing the list. */
 export const addStudentsSchema = z.object({ emails: z.array(z.string().max(254)).min(1).max(100) });
 

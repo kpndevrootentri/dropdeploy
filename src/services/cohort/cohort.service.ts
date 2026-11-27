@@ -17,7 +17,7 @@
  *
  * The switch (PlatformSetting.cohortsEnabled) turns off joining, stamping, adding
  * projects and mentor access. Admins can still see and edit batches, and remove
- * projects from them, while it is off.
+ * projects from them or move them to another batch, while it is off.
  */
 import { randomBytes } from 'crypto';
 import type { Cohort, CohortMember, Prisma } from '@prisma/client';
@@ -199,6 +199,39 @@ export class CohortService {
     const project = await this.projects.findById(projectId);
     if (!project || !(await this.repo.removeProject(cohortId, projectId))) throw new NotFoundError('Project');
     await this.record(actorId, 'COHORT_PROJECT_REMOVED', cohort, { projectId, project: project.name });
+  }
+
+  /**
+   * Admin: moves a project from this batch to another in one step. Only Project.cohortId changes;
+   * deployments and the running site are untouched. The owner must already be a current student
+   * there, so a move never shows their work to mentors of a batch they are not in.
+   * Moving to the batch it is in is refused (409) rather than recorded as a move that did nothing.
+   */
+  async moveProject(cohortId: string, projectId: string, toCohortId: string, actorId: string): Promise<Cohort> {
+    const cohort = await this.repo.findById(cohortId);
+    if (!cohort) throw new NotFoundError('Batch');
+    if (toCohortId === cohortId) throw new ConflictError('The project is already in this batch');
+    const target = await this.repo.findById(toCohortId);
+    if (!target) throw new NotFoundError('Target batch');
+    if (target.archivedAt) throw new ConflictError(`${target.name} is archived`);
+    const project = await this.projects.findById(projectId);
+    if (!project || project.cohortId !== cohortId) throw new NotFoundError('Project');
+    const member = await this.repo.findMember(target.id, project.userId);
+    if (member?.role !== 'STUDENT' || member.endedAt) {
+      throw new ConflictError(`The owner of ${project.name} is not a student in ${target.name}. Add the student to that batch first.`);
+    }
+    // ponytail: a membership ended or the target archived between these checks and the update still moves it; both states are already reachable (projects stay put when either happens).
+    if (!(await this.repo.moveProject(projectId, cohortId, target.id))) throw new NotFoundError('Project');
+    await this.record(actorId, 'COHORT_PROJECT_MOVED', cohort, { projectId, project: project.name, from: cohortId, to: target.id, toName: target.name });
+    return target;
+  }
+
+  /** Admin: the batches moveProject accepts for this project: other live batches its owner is a current student in. */
+  async moveTargets(cohortId: string, projectId: string): Promise<Cohort[]> {
+    const project = await this.projects.findById(projectId);
+    if (!project || project.cohortId !== cohortId) throw new NotFoundError('Project');
+    const memberships = await this.repo.listActiveMemberships(project.userId);
+    return memberships.filter((m) => m.role === 'STUDENT' && m.cohortId !== cohortId).map((m) => m.cohort);
   }
 
   // ── Joining ──────────────────────────────────────────────────────────────
