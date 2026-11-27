@@ -69,4 +69,51 @@ describe('serveStaticFile', () => {
     expect((await get(dir, '/.env')).status).toBe(404);
     expect((await get(dir, '/../../etc/passwd')).body).not.toContain('root:');
   });
+
+  describe('edge hand-off', () => {
+    /** What the edge would send: the file named under its root (STATIC_SERVE_DIR), or null. */
+    const handOff = async (p: string, opts: { ifNoneMatch?: string; slug?: string } = {}) => {
+      const res = (await serveStaticFile(dir, p, { ...opts, edgeRoot: path.dirname(dir) }))!;
+      return { status: res.status, body: await res.text(), file: res.headers.get('x-entrify-static-file'), res };
+    };
+
+    it('names the file for the edge instead of sending it, with its cache headers and no validator or 304', async () => {
+      dir = await site({ 'index.html': 'shell', 'assets/app.js': 'js' });
+      const { etag } = await get(dir, '/assets/app.js');
+      const { status, body, file, res } = await handOff('/assets/app.js', { ifNoneMatch: etag! });
+      expect({ status, body, file }).toEqual({ status: 200, body: '', file: `/${path.basename(dir)}/assets/app.js` });
+      expect(res.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+      expect(res.headers.get('content-type')).toBe('application/javascript; charset=utf-8');
+      expect(res.headers.get('etag')).toBeNull();
+      // Relative to the edge's root, wherever the site folder sits under it.
+      const nested = await serveStaticFile(dir, '/assets/app.js', { edgeRoot: path.dirname(path.dirname(dir)) });
+      expect(nested!.headers.get('x-entrify-static-file'))
+        .toBe(`/${path.basename(path.dirname(dir))}/${path.basename(dir)}/assets/app.js`);
+    });
+
+    it('keeps the path rules, and sends the 404 page itself', async () => {
+      dir = await site({ 'index.html': 'shell', 'about.html': 'about', '.env': 'SECRET=1' });
+      const base = `/${path.basename(dir)}`;
+      expect((await handOff('/dashboard/settings')).file).toBe(`${base}/index.html`);
+      expect((await handOff('/about')).file).toBe(`${base}/about.html`);
+      for (const p of ['/missing.js', '/.env', '/../../etc/passwd']) {
+        expect(await handOff(p)).toMatchObject({ status: 404, file: null });
+      }
+      await fs.promises.writeFile(path.join(dir, '404.html'), 'nope');
+      expect(await handOff('/no-such-page')).toMatchObject({ status: 404, body: 'nope', file: null });
+    });
+
+    it('percent-encodes each segment, since the edge decodes the path it is given', async () => {
+      dir = await site({ 'My Photo #1/ünï?%.jpg': 'img' });
+      expect((await handOff('/My Photo #1/ünï?%.jpg')).file)
+        .toBe(`/${path.basename(dir)}/My%20Photo%20%231/%C3%BCn%C3%AF%3F%25.jpg`);
+    });
+
+    it('sends HTML rewritten for local dev itself', async () => {
+      dir = await site({ 'index.html': '<html><head></head><script src="/app.js"></script></html>' });
+      const { body, file } = await handOff('/', { slug: 'shop' });
+      expect(file).toBeNull();
+      expect(body).toContain('src="/api/proxy/shop/app.js"');
+    });
+  });
 });

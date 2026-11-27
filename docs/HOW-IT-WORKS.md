@@ -443,7 +443,7 @@ graph LR
 
 All subdomain traffic is routed through the in-app proxy at `/api/proxy/[slug]/[[...path]]`. The proxy checks `deployment.servingMethod`:
 
-- **`STATIC_FILES`:** Reads files directly from `STATIC_SERVE_DIR/<slug>/` on disk. Serves correct MIME types, sets `Cache-Control: immutable` for hashed assets and `no-cache` for HTML. Unknown paths fall back to `index.html` (SPA support). Response is instant — no container boot.
+- **`STATIC_FILES`:** Reads files directly from `STATIC_SERVE_DIR/<slug>/` on disk. Serves correct MIME types, sets `Cache-Control: immutable` for hashed assets and `no-cache` for HTML. Unknown paths fall back to `index.html` (SPA support). Response is instant — no container boot. Behind the Caddy edge (which sends the shared `INTERNAL_EDGE_TOKEN` in `X-Entrify-Static-Edge`), the route still picks the file and runs the private gate, then returns an empty 200 naming it in `X-Entrify-Static-File`, and Caddy's `file_server` sends it with `Content-Length`, Range and 304s (see `infra/caddy/Caddyfile`).
 - **`CONTAINER`:** Forwards the request to the container's host port on `localhost`.
 
 For local development, the UI also shows a **local network URL** (e.g., `http://192.168.1.x:8472`) so other devices on the same network can access the deployed app.

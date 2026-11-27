@@ -17,6 +17,12 @@ import * as nodePath from 'path';
 import { Readable } from 'stream';
 import { NextResponse } from 'next/server';
 
+/**
+ * Names the file the edge sends (see handle_response in infra/caddy/Caddyfile).
+ * The proxy route strips it from container responses, so only this module sets it.
+ */
+export const STATIC_FILE_HEADER = 'x-entrify-static-file';
+
 export function getMimeType(filePath: string): string {
   const ext = nodePath.extname(filePath).toLowerCase();
   const map: Record<string, string> = {
@@ -110,10 +116,18 @@ async function statFile(filePath: string | null): Promise<fs.Stats | null> {
   }
 }
 
+interface StaticServeOptions {
+  /** Rewrite HTML for local dev, where the site lives under /api/proxy/{slug}/. */
+  slug?: string;
+  ifNoneMatch?: string | null;
+  /** The edge sends the file itself, from this folder (its root): see STATIC_FILE_HEADER. */
+  edgeRoot?: string;
+}
+
 async function respondWithFile(
   filePath: string,
   stat: fs.Stats,
-  opts: { slug?: string; ifNoneMatch?: string | null; status?: number },
+  opts: StaticServeOptions & { status?: number },
 ): Promise<NextResponse> {
   const status = opts.status ?? 200;
   const mime = getMimeType(filePath);
@@ -128,6 +142,14 @@ async function respondWithFile(
   // HTML rewritten for local dev has a different body, so no validator for it.
   const rewrite = isHtml && !!opts.slug;
   if (status === 200 && !rewrite) {
+    // Caddy sends the bytes, with Content-Length, Range, its own ETag and 304s. The path
+    // is under its root, encoded per segment because its rewrite decodes it.
+    // Not for the 404 page: file_server's status override would turn its 304s and 206s into 404s.
+    if (opts.edgeRoot) {
+      const rel = nodePath.relative(opts.edgeRoot, filePath);
+      headers[STATIC_FILE_HEADER] = '/' + rel.split(nodePath.sep).map(encodeURIComponent).join('/');
+      return new NextResponse(null, { status, headers });
+    }
     const etag = etagFor(stat);
     headers.ETag = etag;
     if (opts.ifNoneMatch && opts.ifNoneMatch.split(',').map((t) => t.trim()).includes(etag)) {
@@ -150,7 +172,7 @@ async function respondWithFile(
 export async function serveStaticFile(
   serveDir: string,
   requestPath: string,
-  opts: { slug?: string; ifNoneMatch?: string | null } = {},
+  opts: StaticServeOptions = {},
 ): Promise<NextResponse | null> {
   if (isHiddenPath(requestPath)) return notFound();
 

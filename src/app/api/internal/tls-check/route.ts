@@ -1,20 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { timingSafeEqual } from 'crypto';
 import { domainService } from '@/services/domain';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
 import { checkTlsAskRateLimit } from '@/lib/rate-limit';
+import { secretMatches } from '@/lib/secret-matches';
 
 const log = createLogger('tls-check');
-
-/** Constant-time comparison that does not leak the secret's length. */
-function secretMatches(provided: string | null, expected: string): boolean {
-  if (!provided) return false;
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
 
 /**
  * GET /api/internal/tls-check?domain=example.com — Caddy's on-demand TLS "ask" hook.
