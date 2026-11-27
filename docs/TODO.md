@@ -111,9 +111,9 @@ graph TD
 
 ### Build Performance
 
-- [ ] Enable Docker BuildKit (`DOCKER_BUILDKIT=1`) for layer caching
-- [ ] Cache `node_modules` and `pip` packages across builds via Docker volumes
-- [ ] Support custom Dockerfile (user-provided in repo root). Today the generated Dockerfile overwrites the repo's own.
+- [x] Enable Docker BuildKit (`DOCKER_BUILDKIT=1`) for layer caching. Ships off by default: `BUILDKIT_PROJECTS` turns it on per project (see docs/deployment.md).
+- [x] Cache `node_modules` and `pip` packages across builds via Docker volumes. BuildKit cache mounts per project (npm and pip downloads), off by default behind `BUILDKIT_PROJECTS`.
+- [ ] Support custom Dockerfile (user-provided in repo root). Today the generated Dockerfile overwrites the repo's own. A tenant Dockerfile must be refused if it uses `--mount` or a `# syntax` line: cache mounts are keyed by project ids, which are not secret.
 
 ### Custom Domains
 
@@ -200,6 +200,7 @@ Found on 2026-11-26 by checking `main` and the production host.
 - [ ] Check that the daily backup cron runs on the production host, and keep a copy off the server
 - [ ] Retire `en3.wtf`: remove `sites/legacy-domain.caddy` and the CLI fallback in `plugin/src/auth.ts`. Its DNS is already gone, and its certificate expires 2026-12-03.
 - [ ] Remove unused Docker images (about 10 GB reclaimable)
+- [ ] Roll out BuildKit on production: canary projects, then all (see docs/deployment.md)
 
 ### Email
 
@@ -231,7 +232,7 @@ High impact, achievable in a single session:
 
 | # | Item | What to do |
 |---|------|-----------|
-| 1 | **Docker BuildKit** | Set `DOCKER_BUILDKIT=1` in worker env for faster builds (currently stripping BuildKit directives for classic builder compat) |
+| 1 | ~~**Docker BuildKit**~~ (done, off by default) | Set `BUILDKIT_PROJECTS` for the worker; see docs/deployment.md |
 | 2 | ~~**Django on gunicorn**~~ (done) | Copy the Flask template's gunicorn setup into the Django template |
 | 3 | **Skip stopped sites in redeploy-all** | Add `stoppedAt` to `RedeployCandidate` and skip it in `redeploy-plan.ts` |
 | 4 | **Backup cron** | Check the daily cron for `scripts/backup.sh` on the production host |

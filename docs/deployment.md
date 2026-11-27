@@ -674,6 +674,26 @@ pm2 status
 0 3 * * 0 docker container prune -f >> /home/ubuntu/logs/docker-prune.log 2>&1
 ```
 
+### BuildKit builds (off by default)
+
+The build worker uses Docker's classic builder for every project unless `BUILDKIT_PROJECTS` names it: comma-separated project slugs, or `*` for all. A BuildKit build reuses unchanged layers and keeps the project's npm and pip downloads in cache mounts keyed by the project's id, so no project reads another's. After each BuildKit build the worker trims the build cache to `BUILD_CACHE_MAX_MB` (default 4096), least recently used first; the admin System page shows its size. Its deploy log starts with "Building with BuildKit". If the daemon refuses a BuildKit build before it starts, the worker builds it with the classic builder and logs "BuildKit is unavailable; building with the classic builder". It then uses the classic builder for every project until it restarts: dockerode leaves a refused build's session connection open (about 10 s on Docker 29.7.2), so the worker does not ask again on every build.
+
+Limits, checked on Docker 29.7.2 (moby's source is the same in 27.5):
+
+- `BUILD_MEMORY_MB` and `BUILD_CPUS` apply to the classic builder only. The daemon runs BuildKit's RUN steps in its own BuildKit cgroup, next to the tenant containers, and ignores a per-build cgroup parent. Keep `BUILDKIT_PROJECTS` to platform-owned canary projects until BuildKit builds have a memory and CPU limit.
+- BuildKit looks up each base image tag (`node:22-alpine`, `python:3.13-slim`, …) on Docker Hub at every build, and pulls the image again when the tag has moved. Pulled layers count as build cache, so leave room for them in `BUILD_CACHE_MAX_MB`, and watch for Docker Hub rate limits.
+- The cache records of an aborted (timed-out) build were still not reclaimable more than 2 hours later. Neither the trim nor any prune frees them, `docker builder prune -af` included. Check `docker buildx du` after a build times out.
+
+Rollout:
+
+1. Free disk with the admin Maintenance action "remove superseded images". Don't run `docker image prune -a` (it deletes the images rollbacks use) or `docker system prune` (it also wipes the build cache). Note `df -h /` and `docker system df`.
+2. Set `BUILDKIT_PROJECTS` to one platform-owned project per template family (Node.js, Next.js container and static export, React/Vite, Django, Flask or FastAPI, WordPress). Restart only `pm2 restart dropdeploy-worker`, while no build runs: a restart marks in-flight builds failed.
+3. Deploy each canary twice. The log shows "Building with BuildKit" and no fallback line, the second build shows `CACHED` steps, the site serves, and `docker system df` shows the build cache under the cap.
+4. Make one canary build time out (lower `BULLMQ_JOB_TIMEOUT_MS` while only that build runs), then note what `docker buildx du` keeps for it and whether only a dockerd restart frees that.
+5. Before deleting a canary project, take its slug out of `BUILDKIT_PROJECTS` and restart `dropdeploy-worker`. Slugs are reused, so a new project under that name would otherwise get BuildKit builds, which have no memory or CPU limit.
+
+Rollback: unset `BUILDKIT_PROJECTS` and restart `dropdeploy-worker`. Images don't depend on the builder that made them, so rolling back to an earlier deployment keeps working. `docker builder prune -af` gives back the build cache's disk, except what aborted builds still hold.
+
 ### Backups (run nightly)
 
 `scripts/backup.sh` backs up the database, uploaded/static sites and every project's persistent `/data` volume, keeps 14 days locally, and optionally copies each run to S3 (`BACKUP_S3_URI`). Restore commands are at the bottom of the script.
