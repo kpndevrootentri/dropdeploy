@@ -28,6 +28,7 @@ describe('apiTokenBlockReason', () => {
     ['PATCH', '/api/projects/p1'],
     ['POST', '/api/projects/p1/domains'],
     ['POST', '/api/projects/p1/access'],
+    ['POST', '/api/projects/p1/notifications'],
     ['POST', '/api/projects/p1/deployments/d1/retry'],
     ['GET', '/api/projects/p1/analytics'],
     ['DELETE', '/api/projects/p1/deployments'],
@@ -46,6 +47,7 @@ describe('apiTokenBlockReason', () => {
     ['POST', '/api/projects/p1/env-vars'],
     ['POST', '/api/projects/p1/domains'],
     ['GET', '/api/projects/p1/analytics'],
+    ['POST', '/api/projects/p1/notifications'],
   ])('a Full access token may %s %s', (method, path) => {
     expect(apiTokenBlockReason('FULL', method, path)).toBeNull();
   });

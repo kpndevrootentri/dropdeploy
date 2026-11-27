@@ -12,6 +12,9 @@ Object.assign(process.env, {
   STATIC_SERVE_DIR: STATIC_DIR,
 });
 
+// Deployment notifications are covered by notification-service.test.ts.
+const mockFinished = jest.fn<Promise<void>, [string]>(async () => undefined);
+jest.mock('@/services/notification', () => ({ notificationService: { deploymentFinished: (id: string) => mockFinished(id) } }));
 // Redis is only used for the per-project enqueue lock.
 jest.mock('@/lib/redis', () => ({
   getRedisConnection: () => ({ set: async () => 'OK', del: async () => 1, publish: async () => 1 }),

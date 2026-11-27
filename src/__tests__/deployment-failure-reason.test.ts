@@ -21,6 +21,9 @@ const mockScan = jest.fn(async () => ({ blocked: [] as string[] }));
 jest.mock('@/services/deployment/package-scanner', () => ({ scanPackages: () => mockScan() }));
 const mockPrisma = { deployment: { updateMany: jest.fn(async () => ({ count: 1 })), findMany: jest.fn(async () => []) }, project: { findMany: jest.fn(async () => []) } };
 jest.mock('@/lib/prisma', () => ({ prisma: mockPrisma }));
+// Deployment notifications are covered by notification-service.test.ts.
+const mockFinished = jest.fn<Promise<void>, [string]>(async () => undefined);
+jest.mock('@/services/notification', () => ({ notificationService: { deploymentFinished: (id: string) => mockFinished(id) } }));
 
 // Required, not imported: the env above must be set before the services read their config.
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -234,6 +237,25 @@ describe('each way a deployment fails records where and why', () => {
     const noRepo = setup({ project: { githubUrl: null } });
     await expect(noRepo.service.buildAndDeploy('dep-1')).resolves.toBeNull();
     expect(noRepo.row).toMatchObject({ status: 'FAILED', failureReason: 'The project has no repository to build from.' });
+  });
+
+  it('tells the notification hooks once the final status is written', async () => {
+    const statuses: unknown[] = [];
+    const failed = setup();
+    failed.git.ensureRepo.mockRejectedValueOnce(new Error('fatal: boom'));
+    mockFinished.mockReset().mockImplementationOnce(async () => { statuses.push(failed.row.status); });
+    await expect(failed.service.buildAndDeploy('dep-1')).rejects.toThrow();
+
+    const reserved = setup({ project: { slug: 'caddy' } });
+    mockFinished.mockImplementationOnce(async () => { statuses.push(reserved.row.status); });
+    await reserved.service.buildAndDeploy('dep-1');
+    expect(statuses).toEqual(['FAILED', 'FAILED']);
+
+    const live = setup();
+    mockFinished.mockReset();
+    await live.service.buildAndDeploy('dep-1');
+    expect(mockFinished).toHaveBeenCalledTimes(1);
+    expect(mockFinished.mock.invocationCallOrder[0]).toBeGreaterThan(live.deploymentRepo.activate.mock.invocationCallOrder[0]);
   });
 
   it('a deployment that succeeds records no reason', async () => {

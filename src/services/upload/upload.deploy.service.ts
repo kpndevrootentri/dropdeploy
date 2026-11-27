@@ -5,6 +5,7 @@ import { extractZipToDir, writeSingleHtmlToDir } from './upload.service';
 import { getConfig } from '@/lib/config';
 import { getDeployedProjectUrl } from '@/lib/project-url';
 import { failureReason } from '@/services/deployment/failure-reason';
+import { notificationService, type NotificationService } from '@/services/notification';
 import { NotFoundError, ValidationError } from '@/lib/errors';
 import type { Deployment, Project } from '@prisma/client';
 import type { UploadFileType } from '@/lib/upload-utils';
@@ -23,7 +24,10 @@ export interface IUploadDeployService {
 }
 
 export class UploadDeployService implements IUploadDeployService {
-  constructor(private readonly deployRepo: IDeploymentRepository) {}
+  constructor(
+    private readonly deployRepo: IDeploymentRepository,
+    private readonly notifications: Pick<NotificationService, 'deploymentFinished'> = notificationService,
+  ) {}
 
   async deploy(
     buffer: Buffer,
@@ -51,6 +55,7 @@ export class UploadDeployService implements IUploadDeployService {
         buildLog: reason,
         failureReason: reason,
       });
+      void this.notifications.deploymentFinished(deployment.id);
       throw extractErr;
     }
 
@@ -64,6 +69,7 @@ export class UploadDeployService implements IUploadDeployService {
       completedAt: new Date(),
       buildLog: 'Uploaded and extracted successfully.',
     });
+    void this.notifications.deploymentFinished(deployment.id);
 
     await this.keepUpload(project, deployment.id, fileType, buffer);
 

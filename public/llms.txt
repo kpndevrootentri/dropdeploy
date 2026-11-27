@@ -29,6 +29,7 @@ Four ways; each gives the page its own URL in seconds. Limits: 50 MB and 500 fil
 
 - [Getting Started](https://entrify.site/docs/getting-started): Create a project, connect a git repository, and trigger your first deployment from the dashboard.
 - [Git Setup](https://entrify.site/docs/git-setup): Connect GitHub and GitLab OAuth apps for private repository access. Tokens are stored encrypted and auto-refreshed for GitLab.
+- [Notifications](https://entrify.site/docs/notifications): Post to Slack, Discord or any HTTPS URL when a deployment succeeds or fails (Settings > Notifications, up to 3 per project). JSON payload, HMAC-SHA256 `X-Entrify-Signature` over `<timestamp>.<body>`, retries on timeouts, 429 and 5xx.
 - [Local Dev](https://entrify.site/docs/local-dev): Run the Next.js dev server and BullMQ worker locally. Covers environment variables, Prisma setup, and Docker requirements.
 - [Publish an HTML page](https://entrify.site/docs/deploy-html): The four ways to publish an HTML file, folder or .zip, the limits, and updating a site without changing its URL.
 - [Claude Desktop](https://entrify.site/docs/claude-desktop): Install the extension, create a Deploy only token, paste it, and ask Claude to deploy. Safety and troubleshooting.

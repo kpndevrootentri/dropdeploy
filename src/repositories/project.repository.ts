@@ -26,6 +26,7 @@ export interface IProjectRepository {
   create(userId: string, data: CreateProjectDto & { cohortId?: string | null }, quota: number): Promise<Project | null>;
   update(id: string, data: UpdateProjectDto): Promise<Project>;
   delete(id: string): Promise<void>;
+  /** Also deletes the project's notification hooks, in the same transaction. */
   transferOwner(id: string, newUserId: string): Promise<Project>;
   /** Records that the live container was stopped (a date) or started again (null). */
   setStoppedAt(id: string, stoppedAt: Date | null): Promise<void>;
@@ -117,7 +118,12 @@ export class ProjectRepository implements IProjectRepository {
   }
 
   async transferOwner(id: string, newUserId: string): Promise<Project> {
-    return prisma.project.update({ where: { id }, data: { userId: newUserId } });
+    // The hooks post to the previous owner's channels; the new owner adds their own.
+    const [, project] = await prisma.$transaction([
+      prisma.notificationHook.deleteMany({ where: { projectId: id } }),
+      prisma.project.update({ where: { id }, data: { userId: newUserId } }),
+    ]);
+    return project;
   }
 
   async setStoppedAt(id: string, stoppedAt: Date | null): Promise<void> {
