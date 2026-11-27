@@ -1,5 +1,5 @@
 const config = { SES_REGION: 'ap-south-1', NEXT_PUBLIC_APP_URL: 'https://entrify.site' };
-jest.mock('@/lib/config', () => ({ getConfig: () => config }));
+jest.mock('@/lib/config', () => ({ ...jest.requireActual('@/lib/config'), getConfig: () => config }));
 
 import { EmailService, type EmailKind, type OutgoingEmail } from '@/services/email/email.service';
 import { DEFAULT_PLATFORM_SETTINGS, type PlatformSettings } from '@/services/platform-settings/platform-settings.service';

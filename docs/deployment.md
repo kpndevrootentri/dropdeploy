@@ -201,9 +201,20 @@ NEXT_PUBLIC_APP_URL="https://app.yourdomain.com"
 BASE_DOMAIN="yourdomain.com"
 NGINX_CONFIG_PATH="/etc/nginx/sites-enabled"
 
-# Worker tuning (optional — defaults shown)
-BULLMQ_CONCURRENCY="5"          # max simultaneous builds (1–20)
-BULLMQ_JOB_TIMEOUT_MS="900000"  # per-job timeout in ms (default: 15 min)
+# Worker tuning (optional — defaults shown). Keep comments on their own line:
+# systemd's EnvironmentFile (the Step 13 web unit) keeps a trailing "# ..." in the value.
+# Max simultaneous builds (1–20)
+BULLMQ_CONCURRENCY="5"
+# Per-job timeout in ms (default: 15 min)
+BULLMQ_JOB_TIMEOUT_MS="900000"
+
+# Database pool and query limits (optional — defaults shown, see Step 9)
+# Pooled connections per process
+DB_CONNECTION_LIMIT="10"
+# Wait for a free connection, then fail (0 = wait forever)
+DB_POOL_TIMEOUT_SECONDS="10"
+# Postgres cancels any longer statement (0 = no limit)
+DB_STATEMENT_TIMEOUT_MS="30000"
 
 # Admin / contributor account (used by seed script)
 # Set these to auto-provision the first CONTRIBUTOR account on startup
@@ -265,6 +276,26 @@ Verify tables were created:
 psql postgresql://dropdeploy:your_strong_password_here@localhost:5432/dropdeploy \
   -c "\dt"
 ```
+
+### Connection pool and statement timeout
+
+The web app (`dropdeploy-app` in PM2, or `dropdeploy-web` under systemd after the Step 13 split) and each worker (`dropdeploy-worker`, `dropdeploy-domains`) open their own Prisma connection pool. `src/lib/prisma.ts` adds three parameters to `DATABASE_URL`, each only when the URL doesn't set it already:
+
+| Variable | URL parameter | Default | Why |
+|---|---|---|---|
+| `DB_CONNECTION_LIMIT` | `connection_limit` | 10 | Prisma's own default is 2 × CPUs + 1, so it grows with the host. 10 per process is far more than the app needs at once (its queries take milliseconds), and three processes stay at 30 of Postgres's default `max_connections` of 100, leaving room for `psql`, backups and `prisma db push`. |
+| `DB_POOL_TIMEOUT_SECONDS` | `pool_timeout` | 10 | Prisma's default, made explicit: with every connection busy, a query waits up to 10 s for one, then fails (P2024) rather than piling up behind a stuck pool. |
+| `DB_STATEMENT_TIMEOUT_MS` | `options=-c statement_timeout=…` | 30000 | Postgres cancels a statement after 30 s, so a runaway query can't hold a pooled connection forever. The limit is per statement, not per request: an admin page or export that runs many queries is never cut off as a whole. The heaviest single statements are admin analytics over `proxy_hits` and the admin proxy-hit prune (one `DELETE`); both have plenty of room at 30 s. A cancelled query fails with `canceling statement due to statement timeout` (SQLSTATE 57014), and a cancelled write is rolled back. |
+
+If a prune of a large backlog is ever cancelled, prune with a longer retention first.
+
+Only the app's client adds these. `prisma db push` and `prisma migrate` connect with `DATABASE_URL` as written, so as long as `DATABASE_URL` itself has no `statement_timeout`, schema changes are not cut off. Keep the timeout in `DB_STATEMENT_TIMEOUT_MS` where you can. Two cases put it in the URL: `DATABASE_URL` already has an `options` parameter (the builder then adds no timeout, so you'd write `-c statement_timeout=30000` into `options` yourself), or you set one there to override the env var. Either way the Prisma CLI applies that timeout too, and a long index build in `db push` is cancelled with SQLSTATE 57014. Run schema changes with the timeout off for that one command, using the same URL with `-c statement_timeout=0` in `options` (environment variables take precedence over `.env`):
+
+```bash
+DATABASE_URL='postgresql://…?schema=public&options=-c%20statement_timeout%3D0' npm run db:push
+```
+
+After changing any of these, restart the web app (`sudo systemctl restart dropdeploy-web` after the split, `pm2 restart dropdeploy-app` before it) and both workers (`pm2 restart dropdeploy-worker dropdeploy-domains`).
 
 ---
 

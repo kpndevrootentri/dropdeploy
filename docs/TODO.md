@@ -125,8 +125,8 @@ graph TD
 
 ### Database Resilience
 
-- [ ] Connection pooling (PgBouncer or Prisma pool settings)
-- [ ] Query timeout configuration
+- [x] Connection pooling (PgBouncer or Prisma pool settings): bounded Prisma pool per process, `DB_CONNECTION_LIMIT` / `DB_POOL_TIMEOUT_SECONDS` (see docs/deployment.md, Step 9)
+- [x] Query timeout configuration: Postgres `statement_timeout` on every app connection, `DB_STATEMENT_TIMEOUT_MS`
 - [x] Automated daily backups (`scripts/backup.sh` + cron, see docs/deployment.md). Check that the cron runs on the production host: see [2026-11 review](#2026-11-review).
 
 ### Deployment History UI

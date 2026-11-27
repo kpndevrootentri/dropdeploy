@@ -103,6 +103,34 @@ const envSchema = z.object({
   PLATFORM_EXTRA_HOSTS: z.string().optional(),
 });
 
+/** An optional integer env var; unset, empty or blank means the default (z.coerce would turn "" or " " into 0). */
+const envInt = (min: number, defaultValue: number) =>
+  z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), z.coerce.number().int().min(min).default(defaultValue));
+
+/**
+ * Prisma pool and query limits, applied to DATABASE_URL by src/lib/prisma.ts
+ * (see docs/deployment.md). Parsed apart from envSchema so that importing the
+ * client never needs the rest of the env. Every process (the web app and each
+ * worker) has its own pool of DB_CONNECTION_LIMIT connections.
+ */
+const dbEnvSchema = z.object({
+  DB_CONNECTION_LIMIT: envInt(1, 10),
+  // How long a query waits for a free pooled connection before failing. 0 waits forever.
+  DB_POOL_TIMEOUT_SECONDS: envInt(0, 10),
+  // Postgres cancels any statement that runs longer. 0 turns the limit off.
+  DB_STATEMENT_TIMEOUT_MS: envInt(0, 30_000),
+});
+
+export type DbConfig = z.infer<typeof dbEnvSchema>;
+
+export function getDbConfig(): DbConfig {
+  const parsed = dbEnvSchema.safeParse(process.env);
+  if (!parsed.success) {
+    throw new Error(`Invalid env: ${parsed.error.message}`);
+  }
+  return parsed.data;
+}
+
 type Env = z.infer<typeof envSchema> & { UPLOADS_DIR: string };
 
 let config: Env | null = null;
