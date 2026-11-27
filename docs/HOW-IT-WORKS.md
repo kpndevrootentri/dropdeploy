@@ -318,7 +318,7 @@ flowchart TB
    ```json
    { "deploymentId": "clxyz...", "projectId": "clxyz..." }
    ```
-5. **Queue settings:** 3 retry attempts, exponential backoff (2s, 4s, 8s), keeps last 100 completed jobs.
+5. **Queue settings:** 1 attempt (a failed build almost always fails the same way again), keeps the newest 100 completed and the newest 100 failed jobs.
 6. **Graceful degradation:** If Redis is down, the deployment record is still created and can be retried later.
 
 ### Step 3: Worker picks up the job
@@ -543,20 +543,12 @@ If any pipeline step fails (clone, build, or run):
 2. Error message stored in the `logs` column.
 3. Common Docker errors **normalized** to user-friendly messages (e.g., "no such image" becomes guidance about adding a `start` script).
 
-### BullMQ Retry Strategy
+### Retrying Failed Builds
 
-```mermaid
-graph LR
-    F1["Attempt 1 fails"] -->|2s backoff| F2["Attempt 2"]
-    F2 -->|4s backoff| F3["Attempt 3"]
-    F3 -->|8s backoff| F4["Attempt 4 (final)"]
-    F4 -->|still fails| PERM["Permanently failed"]
-
-    style PERM fill:#fee2e2
-```
-
-- **3 retries** with exponential backoff starting at 2 seconds.
-- After all retries exhausted, the job is marked as permanently failed.
+- Each build job gets **1 attempt**; BullMQ never retries it on its own.
+- The `FAILED` Deployment row is the lasting record: it keeps the step, the redacted reason and the build log. BullMQ keeps only the newest 100 failed jobs, since its copy holds raw build output.
+- The owner retries with **Retry** on the failed deployment.
+- An admin opens **Projects → Failed (N)** (the System tab links to it) and uses **Redeploy**, per row or for the ticked rows. That creates a new deployment, so the failed one stays in the history. Uploads cannot be redeployed this way; the owner uploads a new version.
 
 ### Redis Unavailability
 
@@ -660,7 +652,7 @@ flowchart LR
 | `POST` | `/api/admin/users/:userId/impersonate` | View the dashboard as a non-admin user: read-only, 30 minutes, recorded as a `PlatformEvent` |
 | `GET` | `/api/admin/projects` | List all projects across all users |
 | `GET` | `/api/admin/projects/:projectId` | Get project details (any user) |
-| `POST` | `/api/admin/projects/:projectId/deploy` | Force-deploy any project |
+| `POST` | `/api/admin/projects/:projectId/deploy` | Force-deploy any project; refuses uploads and projects with no repository URL (400) |
 | `POST` | `/api/admin/projects/redeploy-all` | Rebuild every matching repository project (`{ type?, source?, dryRun, confirm: "redeploy all", projectIds }`; a confirmed run must send the previewed `projectIds` and queues only those); skips uploads, never-deployed projects, sites an admin stopped and ones already queued or building; the worker's `BULLMQ_CONCURRENCY` caps how many build at once |
 | `POST` | `/api/admin/projects/:projectId/restart` | Restart container |
 | `POST` | `/api/admin/projects/:projectId/stop` | Stop container |

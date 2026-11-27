@@ -44,7 +44,7 @@ graph TD
 
 ### Worker Resilience
 
-- [ ] Add dead-letter queue UI for manually retrying permanently failed jobs (owners already have a Retry button on FAILED deployments; admins have no view of failed BullMQ jobs)
+- [x] Add dead-letter queue UI for manually retrying permanently failed jobs (owners already have a Retry button on FAILED deployments; admins have no view of failed BullMQ jobs) — done as Admin → Projects → Failed (N) with Redeploy; BullMQ keeps the newest 100 failed jobs
 
 > If the worker crashes mid-build, deployments stay in `BUILDING` forever.
 

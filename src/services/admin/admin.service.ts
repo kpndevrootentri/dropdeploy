@@ -25,7 +25,7 @@ import {
   type PasswordLinkKind,
 } from '@/services/invite';
 import { getConfig } from '@/lib/config';
-import { planRedeployAll, type RedeployCandidate, type RedeployFilters } from './redeploy-plan';
+import { planRedeployAll, unbuildableReason, type RedeployCandidate, type RedeployFilters } from './redeploy-plan';
 
 import { SALT_ROUNDS } from '@/services/auth/auth.service';
 import { newUserQuotas, platformSettingsService, type PlatformSettingsService } from '@/services/platform-settings/platform-settings.service';
@@ -509,6 +509,9 @@ export class AdminService {
   async forceRedeploy(projectId: string, actorId: string): Promise<void> {
     const project = await this.projectRepo.findById(projectId);
     if (!project) throw new NotFoundError('Project');
+    // The worker would only mark these FAILED again (no repository to build from).
+    const unbuildable = unbuildableReason(project);
+    if (unbuildable) throw new ValidationError(unbuildable);
     // Bypass ownership check by delegating to deploymentService with the project's actual owner
     await deploymentService.createDeployment(projectId, project.userId);
     await this.record(actorId, 'PROJECT_REDEPLOYED', projectTarget(project), { slug: project.slug });
