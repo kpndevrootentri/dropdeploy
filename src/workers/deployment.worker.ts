@@ -20,6 +20,7 @@ const QUEUE_NAME = 'deployments';
 const HEARTBEAT_KEY = 'worker:health';
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const HEARTBEAT_TTL_S = 90;
+const LOG_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 async function processJob(job: Job<DeploymentJob>): Promise<void> {
   const { deploymentId, projectId } = job.data;
@@ -77,6 +78,12 @@ function startHeartbeat(redis: Redis): ReturnType<typeof setInterval> {
   return setInterval(write, HEARTBEAT_INTERVAL_MS);
 }
 
+function clearOldBuildLogs(): void {
+  deploymentService.clearOldBuildLogs()
+    .then((cleared) => log.info('Cleared old build logs', { cleared }))
+    .catch((err) => log.error('Clearing old build logs failed', { error: String(err) }));
+}
+
 async function main(): Promise<void> {
   await deploymentService.recoverStuckDeployments();
 
@@ -120,10 +127,14 @@ async function main(): Promise<void> {
   });
 
   const heartbeatTimer = startHeartbeat(redis);
+  // Once at startup, then daily; one worker process runs it (instances: 1).
+  clearOldBuildLogs();
+  const logRetentionTimer = setInterval(clearOldBuildLogs, LOG_RETENTION_INTERVAL_MS);
 
   const shutdown = async (): Promise<void> => {
     log.info('Shutting down...');
     clearInterval(heartbeatTimer);
+    clearInterval(logRetentionTimer);
     await redis.del(HEARTBEAT_KEY).catch(() => {});
     await Promise.all([worker.close(), dockerOpsWorker.close()]);
     process.exit(0);

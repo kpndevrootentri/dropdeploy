@@ -19,6 +19,7 @@ import { failureReason, redact } from './failure-reason';
 import { detectFromFiles } from '@/lib/type-detector';
 import { NotFoundError, ConflictError, ValidationError } from '@/lib/errors';
 import { parseSafeRepoUrl } from '@/lib/git-url';
+import { BUILD_LOGS_KEPT, buildLogCutoff } from '@/lib/build-log-retention';
 import type { Deployment } from '@prisma/client';
 
 const log = createLogger('deployment-service');
@@ -594,6 +595,11 @@ export class DeploymentService {
     if (hadLive) await fs.promises.rename(live, retired);
     await fs.promises.rename(staged, live);
     if (hadLive) await fs.promises.rm(retired, { recursive: true, force: true }).catch(() => {});
+  }
+
+  /** Clears build logs older than BUILD_LOG_RETENTION_DAYS (see the repository for what is always kept). */
+  async clearOldBuildLogs(): Promise<number> {
+    return this.deploymentRepo.clearOldBuildLogs(buildLogCutoff(), BUILD_LOGS_KEPT);
   }
 
   /**

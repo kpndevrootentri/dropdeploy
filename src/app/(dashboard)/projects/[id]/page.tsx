@@ -21,6 +21,7 @@ import { AddToBatchCard } from '@/components/features/add-to-batch-card';
 import { DomainsPanel } from '@/components/features/domains-panel';
 import { getLocalIP } from '@/lib/local-ip';
 import { compareUrl } from '@/lib/git-url';
+import { emptyBuildLogText } from '@/lib/build-log-retention';
 import {
   ArrowLeft,
   ExternalLink,
@@ -371,7 +372,9 @@ function DeploymentLogs({ deployment, projectId }: { deployment: Deployment; pro
               <span className="text-zinc-500">Loading logs…</span>
             )}
             {lines === '' && !loading && (
-              <span className="text-zinc-500">No log output yet.</span>
+              <span className="text-zinc-500">
+                {isTerminal ? emptyBuildLogText(deployment.completedAt ?? deployment.createdAt) : 'No log output yet.'}
+              </span>
             )}
             <pre className="whitespace-pre-wrap break-all">{lines}</pre>
             <div ref={bottomRef} />

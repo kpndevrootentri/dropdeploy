@@ -65,6 +65,12 @@ export interface IDeploymentRepository {
   findLastDeployedCommitBefore(projectId: string, before: Date): Promise<string | null>;
   /** The deployment the proxy serves for this subdomain (a project's slug), or null. */
   findLiveDeployment(subdomain: string): Promise<Deployment | null>;
+  /**
+   * Nulls the build log of finished deployments that ended before `before`,
+   * except the live one, rollback targets and each project's newest `keepLatest`.
+   * Rows are kept. Returns the number of logs cleared.
+   */
+  clearOldBuildLogs(before: Date, keepLatest: number): Promise<number>;
 }
 
 export class DeploymentRepository implements IDeploymentRepository {
@@ -234,6 +240,35 @@ export class DeploymentRepository implements IDeploymentRepository {
 
   async findLiveDeployment(subdomain: string): Promise<Deployment | null> {
     return prisma.deployment.findFirst({ where: { subdomain, status: 'DEPLOYED' } });
+  }
+
+  async clearOldBuildLogs(before: Date, keepLatest: number): Promise<number> {
+    // Checked again by each UPDATE, so a row retried or going live meanwhile is skipped.
+    const old = {
+      buildLog: { not: null },
+      status: { in: ['DEPLOYED', 'FAILED', 'CANCELLED'] },
+      subdomain: null,
+      // Not a rollback target (as findWithRetainedImages defines it); a failed rollback keeps its source's tag.
+      NOT: { status: 'DEPLOYED', imageTag: { not: null } },
+      // A retry keeps createdAt, so its fresh log is aged by completedAt.
+      OR: [{ completedAt: { lt: before } }, { completedAt: null, createdAt: { lt: before } }],
+    } satisfies Prisma.DeploymentWhereInput;
+    const projects = await prisma.deployment.findMany({ where: old, select: { projectId: true }, distinct: ['projectId'] });
+    let cleared = 0;
+    for (const { projectId } of projects) {
+      const latest = await prisma.deployment.findMany({
+        where: { projectId },
+        orderBy: { createdAt: 'desc' },
+        take: keepLatest,
+        select: { id: true },
+      });
+      const { count } = await prisma.deployment.updateMany({
+        where: { ...old, projectId, id: { notIn: latest.map((d) => d.id) } },
+        data: { buildLog: null },
+      });
+      cleared += count;
+    }
+    return cleared;
   }
 }
 
