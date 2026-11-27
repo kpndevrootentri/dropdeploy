@@ -273,7 +273,7 @@ graph LR
 
 - [ ] **`src/app/api/auth/register/route.ts`** -- Parse body → validate with `registerSchema` → `authService.register()` → set cookie → return tokens.
 - [ ] **`src/app/api/auth/login/route.ts`** -- Same pattern, calls `authService.login()`.
-- [ ] **`src/app/api/auth/logout/route.ts`** -- Clears auth cookie, returns success.
+- [ ] **`src/app/api/auth/logout/route.ts`** -- Revokes the session's `jti` in Redis until the token would expire (so `verifySession` rejects a copy), clears the cookies, returns success.
 - [ ] **`src/app/api/auth/session/route.ts`** -- Returns current user or null (doesn't throw on missing token).
 - [ ] **`src/app/api/projects/route.ts`** -- GET: list user's projects. POST: create project. Both require `getSession()`.
 - [ ] **`src/app/api/projects/[id]/route.ts`** -- GET / PATCH / DELETE for a single project.

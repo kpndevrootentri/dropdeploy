@@ -8,6 +8,7 @@ import { GET } from '@/app/api/proxy/[slug]/[[...path]]/route';
 const findFirst = jest.fn();
 const canView = jest.fn();
 const mockUsers = new Map<string, User>();
+const mockRevoked = new Set<string>();
 const SECRET = 'x'.repeat(32);
 
 jest.mock('@/lib/prisma', () => ({
@@ -35,7 +36,8 @@ jest.mock('@/services/project-access', () => ({ projectAccessService: { canView:
 jest.mock('@/services/auth', () => {
   const { AuthService } = jest.requireActual('@/services/auth/auth.service');
   const repo = { findById: async (id: string) => mockUsers.get(id) ?? null };
-  return { authService: new AuthService(repo, { jwtSecret: 'x'.repeat(32), jwtExpiresIn: '1h' }) };
+  const revoked = { add: async (jti: string) => void mockRevoked.add(jti), has: async (jti: string) => mockRevoked.has(jti) };
+  return { authService: new AuthService(repo, { jwtSecret: 'x'.repeat(32), jwtExpiresIn: '1h' }, undefined, revoked) };
 });
 
 const MENTOR = {
@@ -52,6 +54,7 @@ const MENTOR = {
 async function mentorTokens(): Promise<{ session: string; site: string }> {
   const session = await new jose.SignJWT({ sub: 'm1', email: 'mentor@entri.me', role: 'USER', tv: 0 })
     .setProtectedHeader({ alg: 'HS256' })
+    .setJti('mentor-session')
     .setExpirationTime('1h')
     .sign(new TextEncoder().encode(SECRET));
   return { session, site: await auth.siteTokenFor(session) };
@@ -64,6 +67,7 @@ describe('private site gate', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUsers.clear();
+    mockRevoked.clear();
     mockUsers.set('m1', { ...MENTOR });
     findFirst.mockResolvedValue({
       containerPort: 4123,
@@ -132,6 +136,13 @@ describe('private site gate', () => {
     const { site } = await mentorTokens();
     mockUsers.set('m1', { ...MENTOR, tokenVersion: 1 });
     expect((await open(`site-view=${site}`)).status).toBe(401);
+  });
+
+  it('refuses a site-view cookie once its session has logged out', async () => {
+    const { session, site } = await mentorTokens();
+    await auth.revokeSession(session);
+    expect((await open(`site-view=${site}`)).status).toBe(401);
+    expect(canView).not.toHaveBeenCalled();
   });
 
   it('refuses a site-view cookie for a deleted or suspended user', async () => {

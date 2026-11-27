@@ -10,7 +10,7 @@ jest.mock('@/services/auth', () => {
     findById: async (id: string) => mockUsers.get(id) ?? null,
     findByEmail: async (email: string) => [...mockUsers.values()].find((u) => u.email === email) ?? null,
   };
-  return { authService: new AuthService(repo, { jwtSecret: 'x'.repeat(32), jwtExpiresIn: '1h' }) };
+  return { authService: new AuthService(repo, { jwtSecret: 'x'.repeat(32), jwtExpiresIn: '1h' }, undefined, { add: async () => {}, has: async () => false }) };
 });
 
 function makeUser(overrides: Partial<User>): User {

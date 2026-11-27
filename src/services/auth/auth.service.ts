@@ -1,12 +1,16 @@
 import * as bcrypt from 'bcryptjs';
 import * as jose from 'jose';
-import { createHmac } from 'crypto';
+import { createHmac, randomUUID } from 'crypto';
 import { userRepository, type IUserRepository } from '@/repositories/user.repository';
 import { UnauthorizedError, ConflictError, ValidationError, ForbiddenError, NotFoundError } from '@/lib/errors';
 import { getConfig } from '@/lib/config';
 import type { RegisterDto, LoginDto } from '@/validators/auth.validator';
 import type { User } from '@prisma/client';
 import { platformSettingsService, type PlatformSettingsService } from '@/services/platform-settings/platform-settings.service';
+import { redisRevokedSessions, type IRevokedSessionStore } from '@/lib/revoked-sessions';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('auth');
 
 /** bcrypt cost for new hashes. Existing cost-10 hashes still verify and upgrade on the next password change. */
 export const SALT_ROUNDS = 12;
@@ -30,6 +34,8 @@ export interface JwtPayload {
   impersonatorId?: string;
   /** The admin's `tokenVersion` at issue time, so signing them out everywhere ends the view too. */
   impersonatorTokenVersion?: number;
+  /** Random id of this one session, so logout can revoke it alone. Absent on tokens issued before logout revoked anything. */
+  jti?: string;
   iat: number;
   exp: number;
 }
@@ -54,6 +60,7 @@ export class AuthService {
     private readonly userRepo: IUserRepository,
     private readonly config: AuthServiceConfig,
     private readonly settings: Pick<PlatformSettingsService, 'get'> = platformSettingsService,
+    private readonly revokedSessions: IRevokedSessionStore = redisRevokedSessions,
   ) {}
 
   /**
@@ -167,6 +174,7 @@ export class AuthService {
         tokenVersion,
         impersonatorId,
         impersonatorTokenVersion,
+        jti: typeof payload.jti === 'string' ? payload.jti : undefined,
         iat: (payload.iat as number) ?? 0,
         exp: (payload.exp as number) ?? 0,
       };
@@ -203,7 +211,38 @@ export class AuthService {
     return new jose.SignJWT(payload).setProtectedHeader({ alg: 'HS256' }).sign(this.siteKey());
   }
 
+  /**
+   * Signs this one session out for good: the token, and the site-view token made
+   * from it, stop verifying now instead of at expiry. The user's other sessions
+   * stay signed in. Never throws, so logout always gets to clear the cookies.
+   */
+  async revokeSession(token: string | undefined): Promise<void> {
+    const payload = token ? await this.verifyToken(token).catch(() => null) : null;
+    const ttl = payload ? payload.exp - Math.floor(Date.now() / 1000) : 0;
+    // A token issued before this has no jti and stays valid until it expires.
+    if (!payload?.jti || ttl <= 0) return;
+    try {
+      await this.revokedSessions.add(payload.jti, ttl);
+    } catch (err) {
+      log.error('Could not record a signed-out session; its token works until it expires', { userId: payload.sub, error: String(err) });
+    }
+  }
+
+  private async isRevoked(jti: string | undefined): Promise<boolean> {
+    if (!jti) return false;
+    try {
+      return await this.revokedSessions.has(jti);
+    } catch (err) {
+      // Fail open: Redis also runs the deploy queue, so an outage degrades the platform anyway; locking everyone out would be worse.
+      log.error('Revoked-session check failed; accepting the token', { error: String(err) });
+      return false;
+    }
+  }
+
   private async activeSession(payload: JwtPayload): Promise<SessionUser> {
+    if (await this.isRevoked(payload.jti)) {
+      throw new UnauthorizedError('Session has been revoked');
+    }
     const user = await this.userRepo.findById(payload.sub);
     // Suspension also bumps tokenVersion; checking suspendedAt as well keeps a
     // suspended account locked out even if a token is somehow issued later.
@@ -276,6 +315,7 @@ export class AuthService {
     return new jose.SignJWT(claims)
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
+      .setJti(randomUUID())
       .setExpirationTime(expiresIn)
       .sign(this.sessionKey());
   }

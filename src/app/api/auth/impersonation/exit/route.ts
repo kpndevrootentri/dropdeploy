@@ -9,8 +9,9 @@ import {
   clearAdminRestoreCookie,
 } from '@/lib/auth-cookie';
 
-/** Ends the view by signing out entirely; the admin signs in again. */
-function signedOut(message: string): NextResponse {
+/** Ends the view by signing out entirely; the admin signs in again. The admin session the browser drops here is revoked too. */
+async function signedOut(req: NextRequest, message: string): Promise<NextResponse> {
+  await authService.revokeSession(getAdminRestoreToken(req));
   const res = NextResponse.json({ success: false, error: { code: 'UNAUTHORIZED', message } }, { status: 401 });
   clearAuthCookie(res);
   clearAdminRestoreCookie(res);
@@ -22,21 +23,23 @@ function signedOut(message: string): NextResponse {
  * Deliberately not behind getSession: it is the one write allowed while viewing.
  */
 export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
+  const current = getTokenFromCookie(req);
+  // Every way out of here ends the view, so its token is revoked whatever happens next.
+  await authService.revokeSession(current);
   const restoreToken = getAdminRestoreToken(req);
-  if (!restoreToken) return signedOut('No admin session to return to. Sign in again.');
+  if (!restoreToken) return signedOut(req, 'No admin session to return to. Sign in again.');
 
   try {
     // A genuine, unrevoked admin session — not just any signed token.
     const admin = await authService.verifySession(restoreToken);
-    if (admin.role !== 'CONTRIBUTOR' || admin.impersonatorId) return signedOut('Sign in again.');
+    if (admin.role !== 'CONTRIBUTOR' || admin.impersonatorId) return signedOut(req, 'Sign in again.');
 
     // A tenant site can plant (and, by overflowing the cookie jar, evict) cookies
     // on the parent domain, but cannot plant the host-only session cookie. So the
     // restore cookie is only trusted for the live view of this same admin; once
     // the view has expired the admin signs in again.
-    const current = getTokenFromCookie(req);
     const viewing = current ? await authService.verifyToken(current).catch(() => null) : null;
-    if (viewing?.impersonatorId !== admin.userId) return signedOut('Sign in again.');
+    if (viewing?.impersonatorId !== admin.userId) return signedOut(req, 'Sign in again.');
 
     const { exp } = await authService.verifyToken(restoreToken);
     await prisma.platformEvent.create({
@@ -52,6 +55,6 @@ export async function POST(req: NextRequest): Promise<NextResponse<unknown>> {
     clearAdminRestoreCookie(res);
     return res;
   } catch {
-    return signedOut('Your admin session has ended. Sign in again.');
+    return signedOut(req, 'Your admin session has ended. Sign in again.');
   }
 }

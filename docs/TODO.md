@@ -51,7 +51,7 @@ graph TD
 ### Auth Hardening
 
 - [ ] Implement refresh token rotation (short-lived access + long-lived refresh)
-- [ ] Revoke the session on logout. `tokenVersion` revocation exists, but logout only clears the cookies, so a stolen JWT works until it expires.
+- [x] Revoke the session on logout. `tokenVersion` revocation exists, but logout only clears the cookies, so a stolen JWT works until it expires. (Each session JWT now has a `jti`; logout and leaving "view as user" put it on a Redis denylist until the token would expire. Other sessions stay signed in.)
 - [x] `httpOnly` and `secure` set consistently. The dashboard session is a host-only `__Host-auth-token` (#50). SameSite stays `Lax` on purpose, so links from email arrive signed in.
 - [x] Tenant sites can't read, plant or clear the dashboard session (#50). Private sites use a separately keyed `site-view` cookie.
 
