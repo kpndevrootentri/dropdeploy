@@ -371,7 +371,7 @@ Updates `buildStep` to `BUILDING_IMAGE`. Based on `project.type`, one of the fol
 | **SVELTE** | `node:18-alpine` | — | Vite/SvelteKit build + Nginx; container destroyed after extraction |
 | **NODEJS** | `node:18-alpine` | 3000 | `npm install --omit=dev` + `npm start` (persistent container) |
 | **NEXTJS** | `node:18-alpine` | 3000 | Multi-stage build (builder + runner) (persistent container) |
-| **DJANGO** | `python:3.12-slim` | 8000 | `pip install -r requirements.txt` + `manage.py runserver` (persistent container) |
+| **DJANGO** | `python:3.12-slim` | 8000 | `pip install -r requirements.txt` + `collectstatic` + `gunicorn` with WhiteNoise for static files (persistent container) |
 | **FASTAPI** | `python:3.12-slim` | 8000 | `pip install -r requirements.txt` + `uvicorn` (persistent container) |
 | **FLASK** | `python:3.12-slim` | 8000 | `pip install -r requirements.txt` + `flask run` (persistent container) |
 

@@ -557,7 +557,7 @@ DropDeploy auto-selects a Dockerfile template based on the `type` set on the pro
 | `SVELTE` | `node:18-alpine` | Static files on disk | Vite/SvelteKit build; extracted to `STATIC_SERVE_DIR/<slug>/`; container destroyed |
 | `NODEJS` | `node:18-alpine` | Container (port 4000–9999) | `npm install --omit=dev` + `npm start` |
 | `NEXTJS` | `node:18-alpine` | Container (port 4000–9999) | Multi-stage build (builder + runner) |
-| `DJANGO` | `python:3.12-slim` | Container (port 4000–9999) | `pip install -r requirements.txt` + `manage.py runserver` |
+| `DJANGO` | `python:3.12-slim` | Container (port 4000–9999) | `pip install -r requirements.txt` + `collectstatic` + `gunicorn` with WhiteNoise for static files |
 | `FASTAPI` | `python:3.12-slim` | Container (port 4000–9999) | `pip install -r requirements.txt` + `uvicorn` |
 | `FLASK` | `python:3.12-slim` | Container (port 4000–9999) | `pip install -r requirements.txt` + `flask run` |
 

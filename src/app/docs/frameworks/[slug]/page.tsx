@@ -418,11 +418,11 @@ npm run build
 
   django: {
     title: 'Django',
-    subtitle: 'Django projects using the development server. Suitable for demos and internal tools.',
+    subtitle: 'Django projects served by Gunicorn, with static files served by WhiteNoise.',
     port: 8000,
     requires: [
-      { label: 'requirements.txt in the repo root with django', detail: 'Entrify runs pip install -r requirements.txt.' },
-      { label: 'manage.py in the repo root', detail: 'Entrify identifies Django projects by manage.py and starts with it.' },
+      { label: 'requirements.txt in the repo root with django', detail: 'Entrify runs pip install -r requirements.txt and adds gunicorn (21 or newer) and whitenoise.' },
+      { label: 'manage.py in the repo root', detail: 'Entrify identifies Django projects by manage.py, and serves your WSGI_APPLICATION from the DJANGO_SETTINGS_MODULE it sets.' },
     ],
     demoApp: {
       quickstart: 'pip install django && django-admin startproject myproject . && python manage.py startapp hello',
@@ -483,8 +483,10 @@ def index(request):
       ],
       note: 'Run the quickstart command from your project root to scaffold the project, then add the files above.',
     },
-    buildCmd: `pip install -r requirements.txt
-python manage.py runserver 0.0.0.0:8000`,
+    buildCmd: `pip install -r requirements.txt && pip install 'gunicorn>=21' whitenoise
+python manage.py migrate --noinput
+python manage.py collectstatic --noinput
+gunicorn myproject.wsgi:application --bind 0.0.0.0:8000 --workers 2 --threads 4 --keep-alive 5`,
     envVars: [
       { name: 'SECRET_KEY', required: true, desc: 'Django requires a secret key. Never commit it — add via dashboard.' },
       { name: 'DEBUG', required: false, desc: 'Set to False in production.' },
@@ -493,7 +495,8 @@ python manage.py runserver 0.0.0.0:8000`,
     ],
     gotchas: [
       { title: 'DisallowedHost — 400 on every request', fix: 'Add your Entrify subdomain to ALLOWED_HOSTS, or read it from an env var as shown in the demo app.' },
-      { title: 'Static files not loading', fix: 'The dev server does not serve staticfiles/ in production. Set DEBUG=True for demos, or add WhiteNoise.' },
+      { title: 'Static files not loading', fix: 'Keep django.contrib.staticfiles in INSTALLED_APPS. Entrify runs collectstatic into your STATIC_ROOT (or its own folder if you set none, or one outside the project folder) and serves the result with WhiteNoise. Uploaded media is served only if your urls.py serves it.' },
+      { title: 'Build log says the site runs on runserver', fix: 'manage.py must name your settings as a string, e.g. os.environ.setdefault("DJANGO_SETTINGS_MODULE", "myproject.settings"), and must not assign os.environ["DJANGO_SETTINGS_MODULE"] directly. The settings module must be importable from the repository root (myproject/settings.py), and manage.py must not change sys.path (for a src/ or apps/ folder). Otherwise Entrify starts the development server instead of Gunicorn.' },
     ],
   },
 
