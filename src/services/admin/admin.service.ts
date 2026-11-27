@@ -456,6 +456,14 @@ export class AdminService {
     await this.record(actorId, 'PROJECT_RESTARTED', projectTarget(project), { slug: project.slug });
   }
 
+  /** Lets the project build from its repository's own Dockerfile; takes effect on its next deploy. */
+  async setRepoDockerfileAllowed(projectId: string, allowed: boolean, actorId: string): Promise<void> {
+    const project = await this.projectRepo.findById(projectId);
+    if (!project) throw new NotFoundError('Project');
+    await this.projectRepo.setAllowRepoDockerfile(projectId, allowed);
+    await this.record(actorId, allowed ? 'PROJECT_DOCKERFILE_ALLOWED' : 'PROJECT_DOCKERFILE_DISALLOWED', projectTarget(project), { slug: project.slug });
+  }
+
   /** Project and/or custom-domain allowance. Zero means the user cannot add any. */
   async updateUserQuotas(
     userId: string,

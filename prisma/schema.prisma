@@ -174,6 +174,10 @@ model Project {
   // because the proxy and rollback key off that status.
   stoppedAt DateTime? @map("stopped_at")
 
+  // Set by an admin: builds use the repo's own root Dockerfile instead of the
+  // generated one. Owners cannot change it.
+  allowRepoDockerfile Boolean @default(false) @map("allow_repo_dockerfile")
+
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -34,6 +34,8 @@ import { findDjangoEntry } from './django-entry';
 import { patchNextConfig } from './nextjs-config-patcher';
 import { redact } from '@/services/deployment/failure-reason';
 import { readRepoFile, writeRepoFile } from '@/lib/repo-fs';
+import { formatBytes } from '@/lib/utils';
+import { REPO_DOCKERFILE_LABEL, REPO_IMAGE_MAX_BYTES, REPO_IMAGE_USER, checkImage, exposedPort } from './repo-dockerfile';
 
 const log = createLogger('docker');
 
@@ -143,38 +145,52 @@ export class DockerService {
    * Writes Dockerfile to context path, then builds image using dockerode.
    * Context path must contain cloned repo files.
    * buildArgs are passed as Docker build args (used for NEXT_PUBLIC_* vars).
+   * With `useRepo` the repository's own Dockerfile is built as it is (the
+   * caller has scanned it and checked its base images), and the image is
+   * labelled so startContainer applies the repo-image rules.
    */
   async buildImage(
     project: Project,
     contextPath: string,
-    buildArgs: Record<string, string> = {},
-    secretValues: string[] = [],
-    onLog?: (line: string) => void,
-    signal?: AbortSignal,
+    {
+      buildArgs = {},
+      secretValues = [],
+      onLog,
+      signal,
+      useRepo = false,
+    }: {
+      buildArgs?: Record<string, string>;
+      secretValues?: string[];
+      onLog?: (line: string) => void;
+      signal?: AbortSignal;
+      useRepo?: boolean;
+    } = {},
   ): Promise<string> {
     const imageName = `dropdeploy/${project.slug}:latest`;
-    const dockerfilePath = path.join(contextPath, 'Dockerfile');
-    const django = project.type === 'DJANGO' ? await findDjangoEntry(contextPath, onLog) : null;
-    if (project.type === 'DJANGO' && !django) {
-      log.warn('No Django settings module found; using runserver', { slug: project.slug });
-      onLog?.('Could not find the settings module: manage.py needs os.environ.setdefault("DJANGO_SETTINGS_MODULE", "<package>.settings"), without assigning the variable elsewhere or changing sys.path, and that module must sit under the repository root. The site runs on manage.py runserver instead of gunicorn.\n');
-    }
-    const dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs), django);
-    await writeRepoFile(dockerfilePath, dockerfile);
-    if (project.type === 'WORDPRESS') {
-      await writeRepoFile(path.join(contextPath, WORDPRESS_CONFIG_FILE), WORDPRESS_CONFIG);
-    }
-    if (django) {
-      await writeRepoFile(path.join(contextPath, DJANGO_SETTINGS_FILE), DJANGO_SETTINGS);
-      await writeRepoFile(path.join(contextPath, DJANGO_WSGI_FILE), DJANGO_WSGI);
+    const django = !useRepo && project.type === 'DJANGO' ? await findDjangoEntry(contextPath, onLog) : null;
+    if (!useRepo) {
+      if (project.type === 'DJANGO' && !django) {
+        log.warn('No Django settings module found; using runserver', { slug: project.slug });
+        onLog?.('Could not find the settings module: manage.py needs os.environ.setdefault("DJANGO_SETTINGS_MODULE", "<package>.settings"), without assigning the variable elsewhere or changing sys.path, and that module must sit under the repository root. The site runs on manage.py runserver instead of gunicorn.\n');
+      }
+      const dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs), django);
+      await writeRepoFile(path.join(contextPath, 'Dockerfile'), dockerfile);
+      if (project.type === 'WORDPRESS') {
+        await writeRepoFile(path.join(contextPath, WORDPRESS_CONFIG_FILE), WORDPRESS_CONFIG);
+      }
+      if (django) {
+        await writeRepoFile(path.join(contextPath, DJANGO_SETTINGS_FILE), DJANGO_SETTINGS);
+        await writeRepoFile(path.join(contextPath, DJANGO_WSGI_FILE), DJANGO_WSGI);
+      }
     }
 
-    // Write .dockerignore to keep .env files and .git out of the image
-    await this.writeDockerignore(contextPath, django ? [DJANGO_SETTINGS_FILE, DJANGO_WSGI_FILE] : []);
+    // Write .dockerignore to keep .env files and .git out of the image.
+    // dockerode packs the context itself, so a repo that ignores its own Dockerfile would send none.
+    await this.writeDockerignore(contextPath, useRepo ? ['Dockerfile'] : django ? [DJANGO_SETTINGS_FILE, DJANGO_WSGI_FILE] : []);
 
     // Patch Next.js config to skip lint/type errors during build;
     // also inject output: 'export' for static builds so the out/ dir is generated
-    if (project.type === 'NEXTJS') {
+    if (!useRepo && project.type === 'NEXTJS') {
       await patchNextConfig(contextPath, { addStaticExport: project.useStaticHosting });
     }
 
@@ -187,7 +203,10 @@ export class DockerService {
         t: imageName,
         // Lets removeSupersededImages find this project's images once a
         // rebuild has moved the tag off them.
-        labels: { [SLUG_LABEL]: project.slug },
+        // Build-option labels are applied after the Dockerfile's own LABEL lines, so a repo cannot unset these.
+        labels: { [SLUG_LABEL]: project.slug, ...(useRepo && { [REPO_DOCKERFILE_LABEL]: 'repo' }) },
+        // Always from the registry: a repo FROM or COPY --from must not reach another project's local image.
+        ...(useRepo && { pull: true }),
         ...(Object.keys(buildArgs).length > 0 ? { buildargs: buildArgs } : {}),
         // Bound each RUN step. memswap equal to memory means no swap on top.
         memory: buildMemory,
@@ -238,15 +257,56 @@ export class DockerService {
     });
 
     // Verify the image exists (Docker build can "succeed" from stream perspective but fail to produce an image).
+    let size: number;
     try {
-      await this.docker.getImage(imageName).inspect();
+      ({ Size: size } = await this.docker.getImage(imageName).inspect());
     } catch {
       throw new Error(
         'Docker build did not produce an image. For Node.js: ensure package.json has a "start" script (e.g. "node index.js"). Check your repo and try again.'
       );
     }
+    if (useRepo && size > REPO_IMAGE_MAX_BYTES) {
+      await this.removeImage(imageName);
+      throw new Error(`The image is ${formatBytes(size)}, over the ${formatBytes(REPO_IMAGE_MAX_BYTES)} limit for images built from your Dockerfile.`);
+    }
 
     return imageName;
+  }
+
+  /**
+   * Pulls the base images of a repository's Dockerfile (see baseImages) and
+   * refuses one with ONBUILD triggers, which would run inside the build. They
+   * are pinned by digest, so the build's own pull gets these same images, and
+   * each must pass checkImage before the daemon contacts its registry.
+   */
+  async checkBaseImages(images: string[], signal?: AbortSignal): Promise<void> {
+    for (const image of new Set(images)) {
+      checkImage(image);
+      // The daemon ignores a tag written next to the digest, so look the image up without it.
+      const ref = image.replace(/:\w[\w.-]*(?=@)/, '');
+      try {
+        const stream = await this.docker.pull(ref, { abortSignal: signal });
+        await new Promise<void>((resolve, reject) => {
+          this.docker.modem.followProgress(stream, (err: Error | null, output: Array<{ error?: string }>) => {
+            const failed = err?.message ?? output?.find((o) => o.error)?.error;
+            if (failed) reject(new Error(failed));
+            else resolve();
+          });
+        });
+      } catch (err) {
+        throw new Error(`Could not pull the base image ${image}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      const { Config } = await this.docker.getImage(ref).inspect();
+      if (Config?.OnBuild?.length) {
+        throw new Error(`The base image ${image} has ONBUILD instructions, which Entrify does not allow. Use an image without them.`);
+      }
+    }
+  }
+
+  /** Whether the image was built from a repository's own Dockerfile; false when it is gone. */
+  async isRepoImage(imageName: string): Promise<boolean> {
+    const image = await this.docker.getImage(imageName).inspect().catch(() => null);
+    return image?.Config?.Labels?.[REPO_DOCKERFILE_LABEL] === 'repo';
   }
 
   /**
@@ -267,13 +327,19 @@ export class DockerService {
     excludePorts?: number[];
   }): Promise<number> {
     const { imageName, projectType, slug, containerName, envVars = {}, excludePorts = [] } = opts;
+    let image: Docker.ImageInspectInfo;
     try {
-      await this.docker.getImage(imageName).inspect();
+      image = await this.docker.getImage(imageName).inspect();
     } catch {
       throw new Error(
         `Image ${imageName} was not found. The Docker build likely failed. For Node.js: ensure package.json has a "start" script (e.g. "node index.js") and that the repo builds. Check deployment logs.`
       );
     }
+    // Keyed off the image, not the project, so a rollback keeps the rules its image was built under.
+    const repo = image.Config?.Labels?.[REPO_DOCKERFILE_LABEL] === 'repo';
+    const containerPort = repo
+      ? exposedPort(image.Config?.ExposedPorts)
+      : CONTAINER_PORTS[projectType as DockerfileProjectType] ?? 3000;
 
     // A leftover under this exact name (e.g. a candidate from a crashed
     // deploy) is replaced. Never the live container, which has another name.
@@ -281,17 +347,15 @@ export class DockerService {
 
     await this.ensureTenantNetwork();
 
-    const containerPort = CONTAINER_PORTS[projectType as DockerfileProjectType] ?? 3000;
+    // Convert env vars to Docker format: ["KEY=value", ...]. A repo image is told the port it EXPOSEs.
+    const envArray = Object.entries({
+      ...envVars,
+      DROPDEPLOY_DATA_DIR: DATA_MOUNT,
+      ...(repo && { PORT: String(containerPort) }),
+    }).map(([key, value]) => `${key}=${value}`);
 
-    // Convert env vars to Docker format: ["KEY=value", ...]
-    const envArray = Object.entries({ ...envVars, DROPDEPLOY_DATA_DIR: DATA_MOUNT }).map(
-      ([key, value]) => `${key}=${value}`,
-    );
-
-    const resources = CONTAINER_RESOURCES[projectType] ?? {
-      memory: this.memoryLimitBytes,
-      cpuShares: this.cpuShares,
-    };
+    const defaults = { memory: this.memoryLimitBytes, cpuShares: this.cpuShares };
+    const resources = repo ? defaults : CONTAINER_RESOURCES[projectType] ?? defaults;
 
     const tried = new Set<number>(excludePorts);
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -301,6 +365,8 @@ export class DockerService {
       const container = await this.docker.createContainer({
         Image: imageName,
         name: containerName,
+        // Numeric, so it overrides the image's USER even when that names root.
+        ...(repo && { User: REPO_IMAGE_USER }),
         Env: envArray.length > 0 ? envArray : undefined,
         ExposedPorts: { [`${containerPort}/tcp`]: {} },
         HostConfig: {

@@ -81,7 +81,8 @@ export default function LocalDevPage(): React.ReactElement {
         </p>
         <Callout>
           Delete the local <Code>Dockerfile</Code> after testing. Entrify generates its own at deploy time and
-          ignores any Dockerfile in your repo.
+          ignores the Dockerfile in your repo, unless an admin has switched your project to{' '}
+          <a href="#own-dockerfile" className="text-blue-500 hover:underline">build from it</a>.
         </Callout>
       </section>
 
@@ -136,6 +137,50 @@ docker run --rm -p 8080:<CONTAINER_PORT> my-app`}</Pre>
             </tbody>
           </table>
         </div>
+      </section>
+
+      {/* Own Dockerfile */}
+      <section id="own-dockerfile" className="space-y-3 scroll-mt-20">
+        <h2 className="text-xl font-semibold">Use your own Dockerfile</h2>
+        <p className="text-sm text-muted-foreground">
+          An admin can switch a Git project to build from the <Code>Dockerfile</Code> in its repository root instead
+          of the generated one. The project page then says so under Framework, and each
+          build log shows <Code>Using the repository&apos;s Dockerfile</Code>. The rules:
+        </p>
+        <ul className="list-disc pl-5 space-y-1.5 text-sm text-muted-foreground">
+          <li><Code>EXPOSE</Code> exactly one TCP port. The site is served from it, and <Code>PORT</Code> is set to it, so listen on <Code>0.0.0.0:$PORT</Code>.</li>
+          <li>
+            The app runs as uid 10001, whatever <Code>USER</Code> says. Give that user any directory it writes to.
+            Files kept across deploys go in <Code>/data</Code>: add <Code>RUN mkdir -p /data &amp;&amp; chown 10001 /data</Code>.
+            Data an earlier build wrote there may belong to another user.
+          </li>
+          <li><Code>HOME</Code> is <Code>/</Code>, which that user cannot write to. Add <Code>ENV HOME=/tmp</Code> for npm and similar tools.</li>
+          <li>Images that must start as root, such as the stock <Code>nginx</Code> and <Code>httpd</Code> images, will not start. Use <Code>nginxinc/nginx-unprivileged</Code> (port 8080) instead.</li>
+          <li><Code>ADD</Code>, <Code>ONBUILD</Code>, heredocs (<Code>&lt;&lt;</Code> in <Code>RUN</Code> or <Code>COPY</Code>) and the <Code># escape=</Code> directive are refused. Use <Code>COPY</Code>, and <Code>RUN curl</Code> or <Code>wget</Code> for downloads.</li>
+          <li>
+            Pin every base image by digest: <Code>FROM node:22-alpine@sha256:&lt;digest&gt;</Code>. <Code>docker pull node:22-alpine</Code> prints
+            the digest. A <Code>FROM</Code> line cannot use variables or <Code>--platform</Code>, and a base image with <Code>ONBUILD</Code> instructions is refused.
+            <Code>COPY --from</Code> takes a stage or an image, without variables or quotes.
+          </li>
+          <li>BuildKit-only syntax fails: <Code>RUN --mount</Code>, <Code>COPY --chmod</Code> and <Code>--link</Code>.</li>
+          <li>
+            Images in <Code>FROM</Code> and <Code>COPY --from</Code> must come from Docker Hub (<Code>docker.io</Code>, including names like <Code>node:22</Code>),{' '}
+            <Code>ghcr.io</Code>, <Code>quay.io</Code>, <Code>public.ecr.aws</Code>, <Code>mcr.microsoft.com</Code> or <Code>registry.gitlab.com</Code>, with the registry
+            written in lowercase. <Code>localhost</Code>, IP addresses and registries with a port are refused. Base images are always pulled from their registry.
+          </li>
+          <li>Only your framework&apos;s public variables (<Code>NEXT_PUBLIC_</Code>, <Code>VITE_</Code> and the like) are passed as build args; declare them with <Code>ARG</Code>. All other variables reach only the running app.</li>
+          <li>The site always runs as a container, so static hosting does not apply.</li>
+          <li>Limits: a 2 GB image, a 15-minute build with 3 GB of memory and 2 CPUs, and 512 MB of memory at runtime.</li>
+        </ul>
+        <Pre>{`FROM node:22-alpine@sha256:<digest>
+WORKDIR /app
+ENV HOME=/tmp
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY . .
+RUN mkdir -p /data && chown 10001 /data
+EXPOSE 3000
+CMD ["node", "server.js"]`}</Pre>
       </section>
 
       {/* Common issues */}

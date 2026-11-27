@@ -15,6 +15,8 @@ import { getRedisConnection } from '@/lib/redis';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
 import { scanPackages } from './package-scanner';
+import { baseImages, forbiddenInstruction } from '@/services/docker/repo-dockerfile';
+import { readRepoFile, repoFileExists } from '@/lib/repo-fs';
 import { failureReason, redact } from './failure-reason';
 import { detectFromFiles } from '@/lib/type-detector';
 import { NotFoundError, ConflictError, ValidationError } from '@/lib/errors';
@@ -366,6 +368,8 @@ export class DeploymentService {
       let imageName: string;
       let commitHash: string;
       let runtimeEnv: Record<string, string>;
+      // Whether the image comes from the repository's own Dockerfile (always a container).
+      let useRepoDockerfile = false;
 
       if (deployment.rollbackOfId) {
         // Rollback: re-run an earlier deployment's retained image with the
@@ -376,6 +380,8 @@ export class DeploymentService {
         }
         addMarker(`Rolling back to deployment ${source.id}${source.commitHash ? ` (${source.commitHash.slice(0, 7)})` : ''}...`);
         imageName = source.imageTag;
+        // From the image's label, as startContainer does, not the project's current flag.
+        useRepoDockerfile = await this.docker.isRepoImage(imageName);
         commitHash = source.commitHash ?? '';
         ({ runtimeEnv } = await this.resolveEnv(project.id, project.type));
         envValues = Object.values(runtimeEnv);
@@ -448,13 +454,34 @@ export class DeploymentService {
         }
         onLog(`✓ Package scan passed.\n`);
 
+        // Refuses a symlinked Dockerfile, like every file the platform reads in a repo.
+        const dockerfilePath = path.join(/*turbopackIgnore: true*/ workDir, 'Dockerfile');
+        const hasDockerfile = await repoFileExists(dockerfilePath);
+        useRepoDockerfile = hasDockerfile && project.allowRepoDockerfile;
+        if (useRepoDockerfile) {
+          const dockerfile = (await readRepoFile(dockerfilePath)) ?? '';
+          try {
+            const refused = forbiddenInstruction(dockerfile);
+            if (refused) {
+              throw new Error(`Your Dockerfile uses ${refused}, which Entrify does not allow (ADD, ONBUILD, heredocs, the escape directive, non-ASCII instructions and invalid UTF-8). Use COPY, and RUN curl for downloads.`);
+            }
+            await this.docker.checkBaseImages(baseImages(dockerfile), signal);
+          } catch (err) {
+            onLog(`✗ ${err instanceof Error ? err.message : String(err)}\n`);
+            throw err;
+          }
+          addMarker("Using the repository's Dockerfile");
+        } else if (hasDockerfile) {
+          onLog("Entrify builds with its own Dockerfile; the one in your repository is not used. An admin can switch this project to build from it.\n");
+        }
+
         const { buildArgs, runtimeEnv: builtRuntimeEnv } = await this.resolveEnv(project.id, project.type);
         envValues = [...Object.values(buildArgs), ...Object.values(builtRuntimeEnv)];
 
         await this.deploymentRepo.update(deploymentId, { buildStep: 'BUILDING_IMAGE' });
         addMarker('Building image...');
         const secretValues = Object.values(builtRuntimeEnv);
-        const builtImage = await this.docker.buildImage(project, workDir, buildArgs, secretValues, onLog, signal);
+        const builtImage = await this.docker.buildImage(project, workDir, { buildArgs, secretValues, onLog, signal, useRepo: useRepoDockerfile });
 
         // Clean up build artifacts from work directory
         await this.cleanBuildArtifacts(workDir);
@@ -466,7 +493,8 @@ export class DeploymentService {
         await this.deploymentRepo.update(deploymentId, { imageTag: createdTag });
       }
 
-      const isStaticDeploy = STATIC_CAPABLE_TYPES.has(project.type) && project.useStaticHosting;
+      // A repo Dockerfile's image always runs as a container.
+      const isStaticDeploy = STATIC_CAPABLE_TYPES.has(project.type) && project.useStaticHosting && !useRepoDockerfile;
 
       if (isStaticDeploy) {
         await this.deploymentRepo.update(deploymentId, { buildStep: 'EXTRACTING' });

@@ -113,7 +113,7 @@ graph TD
 
 - [ ] Enable Docker BuildKit (`DOCKER_BUILDKIT=1`) for layer caching
 - [ ] Cache `node_modules` and `pip` packages across builds via Docker volumes
-- [ ] Support custom Dockerfile (user-provided in repo root). Today the generated Dockerfile overwrites the repo's own.
+- [x] Support custom Dockerfile (user-provided in repo root). Today the generated Dockerfile overwrites the repo's own. (An admin enables it per project.)
 
 ### Custom Domains
 

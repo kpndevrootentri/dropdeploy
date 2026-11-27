@@ -313,7 +313,10 @@ describe('the build log', () => {
     jest.spyOn(docker, 'getImage').mockReturnValue({ inspect: async () => ({}) });
     const lines: string[] = [];
     const contextDir = fs.mkdtempSync(path.join(WORK_DIR, 'ctx-'));
-    await service.buildImage({ slug: 'shop', type: 'NODEJS' }, contextDir, {}, ['-----BEGIN KEY-----\nabcdef123456\n-----END KEY-----'], (l: string) => lines.push(l));
+    await service.buildImage({ slug: 'shop', type: 'NODEJS' }, contextDir, {
+      secretValues: ['-----BEGIN KEY-----\nabcdef123456\n-----END KEY-----'],
+      onLog: (l: string) => lines.push(l),
+    });
     expect(lines.join('')).toContain('key: [REDACTED]');
     expect(lines.join('')).not.toMatch(/BEGIN KEY|abcdef123456/);
   });

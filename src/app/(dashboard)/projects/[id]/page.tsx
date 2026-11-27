@@ -90,6 +90,8 @@ interface ProjectDetail {
   isPrivate: boolean;
   useStaticHosting: boolean;
   autoDeploy: boolean;
+  /** Set by an admin: builds use the repo's own Dockerfile. */
+  allowRepoDockerfile?: boolean;
   stoppedAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1323,6 +1325,17 @@ function SettingsPanel({
                 })}
               </div>
             </div>
+
+            {project.allowRepoDockerfile && project.source !== 'UPLOAD' && (
+              <div className="rounded-lg border p-4 space-y-0.5">
+                <p className="text-sm font-medium">Built from your repository&apos;s Dockerfile</p>
+                <p className="text-xs text-muted-foreground">
+                  An admin enabled this. The site runs as a container on the port your Dockerfile EXPOSEs, so static
+                  hosting does not apply.{' '}
+                  <Link href="/docs/local-dev#own-dockerfile" className="font-medium underline underline-offset-2">See the rules</Link>
+                </p>
+              </div>
+            )}
 
             {isStaticEligible && (
               type === 'NEXTJS' ? (
