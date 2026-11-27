@@ -3,6 +3,13 @@ import { prisma } from '@/lib/prisma';
 import { isReservedSlug } from '@/lib/reserved-slugs';
 import type { CreateProjectDto, UpdateProjectDto } from '@/types/project.types';
 
+/** A project for the admin pages: its owner, its batch's name and its latest deployment. */
+export type ProjectWithOwner = Project & {
+  user: { id: string; email: string; role: string };
+  cohort: { name: string } | null;
+  deployments: { id: string; status: string; createdAt: Date; containerPort: number | null }[];
+};
+
 export interface IProjectRepository {
   findById(id: string): Promise<Project | null>;
   findByIdWithDeployments(id: string): Promise<Project | null>;
@@ -10,7 +17,8 @@ export interface IProjectRepository {
   findBySlug(slug: string): Promise<Project | null>;
   /** Which of the given slugs belong to a project, in one query. */
   findExistingSlugs(slugs: string[]): Promise<string[]>;
-  findAll(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date; containerPort: number | null }[] })[]>;
+  /** Newest first; only the projects in `cohortId` when it is given. */
+  findAll(opts?: { cohortId?: string }): Promise<ProjectWithOwner[]>;
   /**
    * Creates the project unless its owner already has `quota` projects; returns
    * null when the quota is full. The count and the insert are atomic per user.
@@ -61,14 +69,16 @@ export class ProjectRepository implements IProjectRepository {
     return rows.map((r) => r.slug);
   }
 
-  async findAll(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date; containerPort: number | null }[] })[]> {
+  async findAll({ cohortId }: { cohortId?: string } = {}): Promise<ProjectWithOwner[]> {
     return prisma.project.findMany({
+      where: cohortId ? { cohortId } : undefined,
       include: {
         user: { select: { id: true, email: true, role: true } },
+        cohort: { select: { name: true } },
         deployments: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, status: true, createdAt: true, containerPort: true } },
       },
       orderBy: { createdAt: 'desc' },
-    }) as Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date; containerPort: number | null }[] })[]>;
+    });
   }
 
   async create(userId: string, data: CreateProjectDto & { cohortId?: string | null }, quota: number): Promise<Project | null> {

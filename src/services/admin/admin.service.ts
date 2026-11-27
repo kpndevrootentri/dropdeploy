@@ -1,9 +1,9 @@
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcryptjs';
-import type { User, UserRole, Project, Prisma, AdminAction } from '@prisma/client';
+import type { User, UserRole, CohortRole, Project, Prisma, AdminAction } from '@prisma/client';
 import type { IUserRepository, NewUserQuotas } from '@/repositories/user.repository';
 import { userRepository } from '@/repositories/user.repository';
-import type { IProjectRepository } from '@/repositories/project.repository';
+import type { IProjectRepository, ProjectWithOwner } from '@/repositories/project.repository';
 import { projectRepository } from '@/repositories/project.repository';
 import { deploymentRepository, type IDeploymentRepository } from '@/repositories/deployment.repository';
 import { dockerOps, containerNameFor, type IDockerOps, type ContainerInfo } from '@/lib/docker-ops';
@@ -52,6 +52,8 @@ export interface AdminUserRow {
   suspendedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  /** Batches they are in now (membership not ended), newest joined first. */
+  cohortMemberships: { role: CohortRole; cohort: { name: string } }[];
   _count: { projects: number; customDomains: number };
 }
 
@@ -156,11 +158,13 @@ export class AdminService {
    * reach them in one query. At this scale a second query and a tally is
    * cheaper and clearer than the join gymnastics that would avoid it.
    */
-  async listAllUsers(): Promise<AdminUserRow[]> {
+  async listAllUsers({ cohortId }: { cohortId?: string } = {}): Promise<AdminUserRow[]> {
     const { prisma } = await import('@/lib/prisma');
+    const current = { endedAt: null };
 
     const [users, domains] = await Promise.all([
       prisma.user.findMany({
+        where: cohortId ? { cohortMemberships: { some: { cohortId, ...current } } } : undefined,
         orderBy: { createdAt: 'asc' },
         select: {
           id: true,
@@ -173,6 +177,7 @@ export class AdminService {
           suspendedAt: true,
           createdAt: true,
           updatedAt: true,
+          cohortMemberships: { where: current, orderBy: { joinedAt: 'desc' }, select: { role: true, cohort: { select: { name: true } } } },
           _count: { select: { projects: true } },
         },
       }),
@@ -368,8 +373,8 @@ export class AdminService {
     return { token, email: user.email };
   }
 
-  async listAllProjects(): Promise<(Project & { user: { id: string; email: string; role: string }; deployments: { id: string; status: string; createdAt: Date }[] })[]> {
-    return this.projectRepo.findAll();
+  async listAllProjects(opts?: { cohortId?: string }): Promise<ProjectWithOwner[]> {
+    return this.projectRepo.findAll(opts);
   }
 
   async transferOwnership(projectId: string, newOwnerId: string, actorId: string): Promise<Project> {

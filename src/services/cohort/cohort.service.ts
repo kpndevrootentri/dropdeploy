@@ -14,6 +14,8 @@
  *   - GET /api/auth/session: `inCohort`, which shows the Batches menu item
  *   - admin settings (the switch) and the admin layout (the Batches tab)
  *   - UserRepository.createMany's `tx` argument: addStudents creates invited accounts inside its transaction
+ *   - /explore and GET /api/showcase: the batch filter (exploreFilter)
+ *   - the admin CSV exports: the batch column and ?cohortId= filter (ProjectRepository.findAll, AdminService.listAllUsers)
  *
  * The switch (PlatformSetting.cohortsEnabled) turns off joining, stamping, adding
  * projects and mentor access. Admins can still see and edit batches, and remove
@@ -278,6 +280,18 @@ export class CohortService {
   /** The mentor rule for private sites: an active mentor of the project's batch may view it. */
   async canMentorView(cohortId: string, userId: string): Promise<boolean> {
     return (await this.isEnabled()) && this.repo.isActiveMentor(cohortId, userId);
+  }
+
+  /**
+   * The batch filter on /explore. Batch names are internal: admins get every batch, mentors the
+   * batches they oversee now (see assertCanOversee), anyone else none. A batch the viewer may not
+   * use comes back as no filter, the same whether or not it exists.
+   */
+  async exploreFilter(viewer: CohortViewer | null, cohortId?: string | null): Promise<{ cohorts: Pick<Cohort, 'id' | 'name'>[]; cohortId?: string }> {
+    let cohorts: Cohort[] = [];
+    if (viewer?.role === 'CONTRIBUTOR') cohorts = await this.repo.findAll();
+    else if (viewer) cohorts = (await this.myMemberships(viewer.userId)).filter((m) => m.role === 'MENTOR').map((m) => m.cohort);
+    return { cohorts: cohorts.map(({ id, name }) => ({ id, name })), cohortId: cohorts.find((c) => c.id === cohortId)?.id };
   }
 
   // ── Members ──────────────────────────────────────────────────────────────

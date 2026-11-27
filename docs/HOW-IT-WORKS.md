@@ -667,8 +667,8 @@ flowchart LR
 | `POST` | `/api/admin/projects/:projectId/transfer` | Transfer project to another user |
 | `GET` | `/api/admin/analytics` | Platform-wide analytics (users, deployments, traffic, showcase, events); `?days=7\|14\|30\|90`, default 14 |
 | `GET` | `/api/admin/stats` | User and project totals for the admin overview |
-| `GET` | `/api/admin/users/export` | All users as CSV (no password hashes or tokens) |
-| `GET` | `/api/admin/projects/export` | All projects as CSV (no env values or secrets) |
+| `GET` | `/api/admin/users/export` | All users as CSV (no password hashes or tokens), with their current batches; `?cohortId=` for one batch's members |
+| `GET` | `/api/admin/projects/export` | All projects as CSV (no env values or secrets), with their batch; `?cohortId=` for one batch |
 
 ### View as user
 

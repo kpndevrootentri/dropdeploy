@@ -28,9 +28,10 @@ interface ExploreGridProps {
   initialTotal: number;
   tag?: string;
   q?: string;
+  cohortId?: string;
 }
 
-export function ExploreGrid({ initialItems, initialTotal, tag, q }: ExploreGridProps) {
+export function ExploreGrid({ initialItems, initialTotal, tag, q, cohortId }: ExploreGridProps) {
   const [items, setItems] = useState(initialItems);
   const [total, setTotal] = useState(initialTotal);
   const [loading, setLoading] = useState(false);
@@ -44,7 +45,7 @@ export function ExploreGrid({ initialItems, initialTotal, tag, q }: ExploreGridP
     setTotal(initialTotal);
     skipRef.current = initialItems.length;
     setError(null);
-  }, [initialItems, initialTotal, tag, q]);
+  }, [initialItems, initialTotal, tag, q, cohortId]);
 
   const hasMore = items.length < total;
 
@@ -58,6 +59,7 @@ export function ExploreGrid({ initialItems, initialTotal, tag, q }: ExploreGridP
         take: String(PAGE_SIZE),
         ...(tag ? { tag } : {}),
         ...(q ? { q } : {}),
+        ...(cohortId ? { cohortId } : {}),
       });
       const res = await fetch(`/api/showcase?${params.toString()}`);
       const data = await res.json() as {
@@ -77,7 +79,7 @@ export function ExploreGrid({ initialItems, initialTotal, tag, q }: ExploreGridP
     } finally {
       setLoading(false);
     }
-  }, [loading, hasMore, tag, q]);
+  }, [loading, hasMore, tag, q, cohortId]);
 
   // IntersectionObserver watches the sentinel div
   useEffect(() => {

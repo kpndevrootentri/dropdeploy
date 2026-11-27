@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { showcaseService } from '@/services/showcase/showcase.service';
+import { cohortService } from '@/services/cohort';
 import { SHOWCASE_TAGS, type ShowcaseTag } from '@/services/showcase/showcase.service';
 import { ExploreGrid } from '@/components/features/explore-grid';
 import { getSessionFromCookies } from '@/lib/get-session';
@@ -21,7 +22,13 @@ const TAG_LABELS: Record<ShowcaseTag, string> = {
 };
 
 interface PageProps {
-  searchParams: Promise<{ tag?: string; q?: string }>;
+  searchParams: Promise<{ tag?: string; q?: string; cohortId?: string }>;
+}
+
+/** An /explore link that keeps only the filters that are set. */
+function exploreHref(params: Record<string, string | undefined>): string {
+  const query = new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => !!e[1])).toString();
+  return query ? `/explore?${query}` : '/explore';
 }
 
 export const revalidate = 60;
@@ -34,14 +41,17 @@ export const metadata: Metadata = {
 };
 
 export default async function ExplorePage({ searchParams }: PageProps) {
-  const { tag, q } = await searchParams;
+  const { tag, q, cohortId: requestedCohort } = await searchParams;
   const session = await getSessionFromCookies();
+  // Batch names are internal: only admins and mentors get the filter (GET /api/showcase checks it the same way).
+  const { cohorts, cohortId } = await cohortService.exploreFilter(session?.mustResetPassword ? null : session, requestedCohort);
 
   const { items: initialItems, total: initialTotal } = await showcaseService.getPublished({
     skip: 0,
     take: 12,
     tag,
     q,
+    cohortId,
   });
 
   return (
@@ -94,16 +104,37 @@ export default async function ExplorePage({ searchParams }: PageProps) {
               placeholder="Search tools…"
               className="w-full rounded-md border bg-background pl-9 pr-3 py-2 text-sm focus:outline-hidden focus:ring-2 focus:ring-ring"
             />
+            {cohortId && <input type="hidden" name="cohortId" value={cohortId} />}
           </form>
 
+          {cohorts.length > 0 && (
+            <form method="GET" className="flex flex-wrap items-center justify-center gap-2 text-sm">
+              {tag && <input type="hidden" name="tag" value={tag} />}
+              {q && <input type="hidden" name="q" value={q} />}
+              <label htmlFor="explore-batch" className="text-muted-foreground">Batch</label>
+              <select
+                id="explore-batch"
+                name="cohortId"
+                defaultValue={cohortId ?? ''}
+                className="rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-hidden focus:ring-2 focus:ring-ring"
+              >
+                <option value="">All batches</option>
+                {cohorts.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <Button type="submit" variant="outline" size="sm">Filter</Button>
+            </form>
+          )}
+
           <div className="flex flex-wrap gap-2 justify-center">
-            <Link href="/explore">
+            <Link href={exploreHref({ cohortId })}>
               <Badge variant={!tag ? 'default' : 'outline'} className="cursor-pointer px-3 py-1 text-xs">
                 All
               </Badge>
             </Link>
             {SHOWCASE_TAGS.map((t) => (
-              <Link key={t} href={`/explore?tag=${t}${q ? `&q=${q}` : ''}`}>
+              <Link key={t} href={exploreHref({ tag: t, q, cohortId })}>
                 <Badge
                   variant={tag === t ? 'default' : 'outline'}
                   className="cursor-pointer px-3 py-1 text-xs"
@@ -128,6 +159,7 @@ export default async function ExplorePage({ searchParams }: PageProps) {
           initialTotal={initialTotal}
           tag={tag}
           q={q}
+          cohortId={cohortId}
         />
       </main>
     </div>
