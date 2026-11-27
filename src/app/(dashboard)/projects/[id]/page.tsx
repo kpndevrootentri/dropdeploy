@@ -53,6 +53,7 @@ import {
 } from 'lucide-react';
 import { PublishPanel } from '@/components/features/publish-panel';
 import { ReuploadCard } from '@/components/features/reupload-card';
+import { DeploymentFailure } from '@/components/features/deployment-failure';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,6 +65,7 @@ interface Deployment {
   subdomain: string | null;
   containerPort: number | null;
   buildStep: string | null;
+  failureReason: string | null;
   buildLog: string | null;
   commitHash: string | null;
   startedAt: string | null;
@@ -571,6 +573,9 @@ function DeploymentRow({
           </div>
           {isInProgress && deployment.status === 'BUILDING' && (
             <BuildProgress currentStep={deployment.buildStep} />
+          )}
+          {isFailed && (
+            <DeploymentFailure buildStep={deployment.buildStep} failureReason={deployment.failureReason} className="mt-1" />
           )}
           {cancelError && (
             <p className="text-xs text-destructive mt-1">{cancelError}</p>

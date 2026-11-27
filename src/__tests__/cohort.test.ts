@@ -409,6 +409,18 @@ describe('what mentors can read', () => {
     await expect(setup().service.listProjects('c1', student)).rejects.toThrow('Batch not found');
   });
 
+  it("gives mentors why a student's deployment failed, and a 404 to anyone else", async () => {
+    const failed = { id: 'p1', deployments: [{ id: 'd1', status: 'FAILED', buildStep: 'BUILDING_IMAGE', failureReason: 'npm error Missing script: "build"' }] };
+    const mentor = setup({ mentor: true });
+    mentor.repo.listProjects.mockResolvedValueOnce([failed] as never);
+    expect((await mentor.service.listProjects('c1', { userId: 'm1', role: 'USER' }))[0].deployments[0])
+      .toMatchObject({ buildStep: 'BUILDING_IMAGE', failureReason: 'npm error Missing script: "build"' });
+    const other = setup();
+    other.repo.listProjects.mockResolvedValueOnce([failed] as never);
+    await expect(other.service.listProjects('c1', student)).rejects.toThrow('Batch not found');
+    expect(other.repo.listProjects).not.toHaveBeenCalled();
+  });
+
   it("refuses a project or deployment from outside the batch", async () => {
     const { service } = setup({ mentor: true });
     const mentor = { userId: 'm1', role: 'USER' };

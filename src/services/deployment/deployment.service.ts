@@ -15,6 +15,7 @@ import { getRedisConnection } from '@/lib/redis';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
 import { scanPackages } from './package-scanner';
+import { failureReason, redact } from './failure-reason';
 import { detectFromFiles } from '@/lib/type-detector';
 import { NotFoundError, ConflictError, ValidationError } from '@/lib/errors';
 import { parseSafeRepoUrl } from '@/lib/git-url';
@@ -221,6 +222,7 @@ export class DeploymentService {
     const updated = await this.deploymentRepo.update(deploymentId, {
       status: 'QUEUED',
       buildStep: null,
+      failureReason: null,
       buildLog: null,
       completedAt: null,
     });
@@ -302,16 +304,18 @@ export class DeploymentService {
     }
     const { project } = deployment;
     if (!project.githubUrl) {
-      await this.deploymentRepo.update(deploymentId, { status: 'FAILED' });
+      await this.deploymentRepo.update(deploymentId, { status: 'FAILED', failureReason: 'The project has no repository to build from.' });
       return null;
     }
     // A project created before its slug was reserved: its container name is a platform
     // resource's (e.g. the edge `dropdeploy-caddy`). Fail before any container work.
     if (PLATFORM_RESOURCE_SLUGS.includes(project.slug)) {
+      const reason = `The slug "${project.slug}" is reserved for the platform's own Docker resources. ` +
+        'Ask an admin to rename the project\'s slug, then redeploy.';
       await this.deploymentRepo.update(deploymentId, {
         status: 'FAILED',
-        buildLog: `✗ The slug "${project.slug}" is reserved for the platform's own Docker resources. ` +
-          'Ask an admin to rename the project\'s slug, then redeploy.\n',
+        buildLog: `✗ ${reason}\n`,
+        failureReason: reason,
         completedAt: new Date(),
       });
       getRedisConnection().publish(`build:${deploymentId}`, '__DONE__').catch(() => {});
@@ -349,6 +353,8 @@ export class DeploymentService {
     // An image tag this run created; removed again if the deploy fails, since
     // only successful deployments are rollback targets (and pruned).
     let createdTag: string | null = null;
+    // Redacted from the failure reason and from the app's startup output in the log.
+    let envValues: string[] = [];
 
     try {
       await this.deploymentRepo.update(deploymentId, {
@@ -372,6 +378,7 @@ export class DeploymentService {
         imageName = source.imageTag;
         commitHash = source.commitHash ?? '';
         ({ runtimeEnv } = await this.resolveEnv(project.id, project.type));
+        envValues = Object.values(runtimeEnv);
         // Same image, so this deployment is itself a valid rollback target.
         await this.deploymentRepo.update(deploymentId, { commitHash: source.commitHash, imageTag: source.imageTag });
       } else {
@@ -398,7 +405,8 @@ export class DeploymentService {
             msg.includes('could not read Username') ||
             msg.includes('repository not found') ||
             msg.includes('Repository not found') ||
-            msg.includes('fatal: unable to access');
+            // Other 'unable to access' errors (DNS, timeouts, TLS) are not the token's fault; git's own line says why.
+            /fatal: unable to access .*returned error: 40[13]/.test(msg);
           if (isAuthFailure) {
             throw new Error(
               `Git authentication failed for ${project.source}. ` +
@@ -441,6 +449,7 @@ export class DeploymentService {
         onLog(`✓ Package scan passed.\n`);
 
         const { buildArgs, runtimeEnv: builtRuntimeEnv } = await this.resolveEnv(project.id, project.type);
+        envValues = [...Object.values(buildArgs), ...Object.values(builtRuntimeEnv)];
 
         await this.deploymentRepo.update(deploymentId, { buildStep: 'BUILDING_IMAGE' });
         addMarker('Building image...');
@@ -499,7 +508,8 @@ export class DeploymentService {
           await this.docker.waitUntilReady(candidate, containerPort, getConfig().CONTAINER_READY_TIMEOUT_MS);
         } catch (err) {
           await this.docker.stopAndRemoveContainer(candidate);
-          onLog(`✗ ${err instanceof Error ? err.message : String(err)}\n`);
+          // Holds the app's own output, which can print its env vars.
+          onLog(`✗ ${redact(err instanceof Error ? err.message : String(err), envValues)}\n`);
           onLog('  The previous deployment is still live.\n');
           throw err;
         }
@@ -530,6 +540,9 @@ export class DeploymentService {
       // buildStep is kept: it records where the build stopped (admin analytics groups failures by it).
       await this.deploymentRepo.update(deploymentId, {
         status: 'FAILED',
+        failureReason: signal?.aborted
+          ? `Stopped after ${Math.round(getConfig().BULLMQ_JOB_TIMEOUT_MS / 60_000)} minutes, the longest a build may run.`
+          : failureReason(err instanceof Error ? err.message : String(err), envValues),
         buildLog: logLines.join(''),
         completedAt: new Date(),
         ...(createdTag ? { imageTag: null } : {}),

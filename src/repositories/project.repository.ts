@@ -7,7 +7,7 @@ import type { CreateProjectDto, UpdateProjectDto } from '@/types/project.types';
 export type ProjectWithOwner = Project & {
   user: { id: string; email: string; role: string };
   cohort: { name: string } | null;
-  deployments: { id: string; status: string; createdAt: Date; containerPort: number | null }[];
+  deployments: { id: string; status: string; createdAt: Date; containerPort: number | null; buildStep: string | null; failureReason: string | null }[];
 };
 
 export interface IProjectRepository {
@@ -75,7 +75,7 @@ export class ProjectRepository implements IProjectRepository {
       include: {
         user: { select: { id: true, email: true, role: true } },
         cohort: { select: { name: true } },
-        deployments: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, status: true, createdAt: true, containerPort: true } },
+        deployments: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, status: true, createdAt: true, containerPort: true, buildStep: true, failureReason: true } },
       },
       orderBy: { createdAt: 'desc' },
     });

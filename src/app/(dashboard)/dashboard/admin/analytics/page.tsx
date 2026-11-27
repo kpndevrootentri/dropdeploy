@@ -427,8 +427,8 @@ export default function AdminAnalyticsPage(): React.ReactElement {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Where builds fail</CardTitle>
             <CardDescription className="text-xs">
-              Failed deploys in the last {data.range} days by the step they stopped at. Error messages aren&apos;t
-              stored, so open a deploy&apos;s log for the cause.
+              Failed deploys in the last {data.range} days by the step they stopped at. Projects shows why each
+              one failed.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">

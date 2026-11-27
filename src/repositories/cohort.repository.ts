@@ -19,7 +19,10 @@ export interface CohortProjectRow {
   type: string;
   isPrivate: boolean;
   user: { id: string; email: string; name: string | null };
-  deployments: Array<{ id: string; status: string; subdomain: string | null; containerPort: number | null; createdAt: Date }>;
+  deployments: Array<{
+    id: string; status: string; subdomain: string | null; containerPort: number | null; createdAt: Date;
+    buildStep: string | null; failureReason: string | null;
+  }>;
 }
 
 /** An account, and its membership in one batch: active, ended, or null if never in it. */
@@ -166,7 +169,7 @@ export class CohortRepository implements ICohortRepository {
         deployments: {
           orderBy: { createdAt: 'desc' },
           take: 1,
-          select: { id: true, status: true, subdomain: true, containerPort: true, createdAt: true },
+          select: { id: true, status: true, subdomain: true, containerPort: true, createdAt: true, buildStep: true, failureReason: true },
         },
       },
       orderBy: { createdAt: 'asc' },

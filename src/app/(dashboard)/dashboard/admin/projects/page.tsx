@@ -15,6 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import { ProjectDetailsDrawer } from '@/components/admin/project-details-drawer';
+import { DeploymentFailure } from '@/components/features/deployment-failure';
 import { ProjectBulkBar, SelectAllCheckbox, RowCheckbox } from '@/components/admin/bulk-actions';
 import { cn, formatBytes } from '@/lib/utils';
 
@@ -23,6 +24,8 @@ interface Deployment {
   status: string;
   createdAt: string;
   containerPort: number | null;
+  buildStep: string | null;
+  failureReason: string | null;
 }
 
 interface ProjectOwner {
@@ -161,6 +164,7 @@ interface DeploymentSummary {
   completedAt: string | null;
   commitHash: string | null;
   buildStep: string | null;
+  failureReason: string | null;
   rollbackOfId: string | null;
 }
 
@@ -252,6 +256,7 @@ function DeploymentHistory({ projectId, latestStatus }: { projectId: string; lat
               {openLogId === d.id ? 'Hide log' : 'View log'}
             </button>
           </div>
+          {d.status === 'FAILED' && <DeploymentFailure buildStep={d.buildStep} failureReason={d.failureReason} className="mt-1" />}
           {openLogId === d.id && <LogText>{logs[d.id] ?? 'Loading…'}</LogText>}
         </li>
       ))}
@@ -587,6 +592,9 @@ export default function AdminProjectsPage(): React.ReactElement {
                         </span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
+                      )}
+                      {latestDeployment?.status === 'FAILED' && (
+                        <DeploymentFailure buildStep={latestDeployment.buildStep} failureReason={latestDeployment.failureReason} className="mt-1 max-w-xs" />
                       )}
                     </td>
                     <td className="py-3 pr-4">
