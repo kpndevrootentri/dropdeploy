@@ -534,6 +534,7 @@ export class AdminService {
       userId: p.userId,
       ownerEmail: p.user.email,
       lastStatus: p.deployments[0]?.status ?? null,
+      stoppedAt: p.stoppedAt,
     }));
     const { eligible, skipped } = planRedeployAll(candidates, new Set(active.map((d) => d.projectId)), filters);
 

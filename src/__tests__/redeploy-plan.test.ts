@@ -11,6 +11,7 @@ function project(overrides: Partial<RedeployCandidate>): RedeployCandidate {
     userId: 'u1',
     ownerEmail: 'dev@entri.me',
     lastStatus: 'DEPLOYED',
+    stoppedAt: null,
     ...overrides,
   };
 }
@@ -24,6 +25,9 @@ describe('planRedeployAll', () => {
     project({ id: 'never', lastStatus: null }),
     project({ id: 'busy' }),
     project({ id: 'gitlab-django', source: 'GITLAB', type: 'DJANGO' }),
+    project({ id: 'stopped', stoppedAt: new Date('2026-11-01T00:00:00Z') }),
+    // A later deploy failed, so the stopped container never came back.
+    project({ id: 'stopped-then-failed', lastStatus: 'FAILED', stoppedAt: new Date('2026-11-01T00:00:00Z') }),
   ];
 
   it('rebuilds deployed repository projects and says why it skips the rest', () => {
@@ -34,6 +38,8 @@ describe('planRedeployAll', () => {
       'no-repo': 'No repository URL',
       never: 'Never deployed',
       busy: 'A deploy is already queued or building',
+      stopped: 'Stopped by an admin; restart it first',
+      'stopped-then-failed': 'Stopped by an admin; restart it first',
     });
   });
 
@@ -41,6 +47,12 @@ describe('planRedeployAll', () => {
     const { eligible, skipped } = planRedeployAll(projects, new Set(['busy']), { projectIds: ['ok', 'busy'] });
     expect(eligible.map((p) => p.id)).toEqual(['ok']);
     expect(skipped.map((s) => s.project.id)).toEqual(['busy']);
+  });
+
+  it('skips a previewed project that an admin stopped before the run was confirmed', () => {
+    const { eligible, skipped } = planRedeployAll(projects, new Set(), { projectIds: ['ok', 'stopped'] });
+    expect(eligible.map((p) => p.id)).toEqual(['ok']);
+    expect(skipped).toEqual([{ project: expect.objectContaining({ id: 'stopped' }), reason: 'Stopped by an admin; restart it first' }]);
   });
 
   it('leaves projects outside the filters out of both lists', () => {
