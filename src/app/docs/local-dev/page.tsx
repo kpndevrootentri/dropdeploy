@@ -163,7 +163,11 @@ docker run --rm -p 8080:<CONTAINER_PORT> my-app`}</Pre>
             <Code>COPY --from</Code> takes a stage or an image, without variables or quotes.
           </li>
           <li>BuildKit-only syntax fails: <Code>RUN --mount</Code>, <Code>COPY --chmod</Code> and <Code>--link</Code>.</li>
-          <li>Base images are always pulled from their registry. Any public image works.</li>
+          <li>
+            Images in <Code>FROM</Code> and <Code>COPY --from</Code> must come from Docker Hub (<Code>docker.io</Code>, including names like <Code>node:22</Code>),{' '}
+            <Code>ghcr.io</Code>, <Code>quay.io</Code>, <Code>public.ecr.aws</Code>, <Code>mcr.microsoft.com</Code> or <Code>registry.gitlab.com</Code>, with the registry
+            written in lowercase. <Code>localhost</Code>, IP addresses and registries with a port are refused. Base images are always pulled from their registry.
+          </li>
           <li>Only your framework&apos;s public variables (<Code>NEXT_PUBLIC_</Code>, <Code>VITE_</Code> and the like) are passed as build args; declare them with <Code>ARG</Code>. All other variables reach only the running app.</li>
           <li>The site always runs as a container, so static hosting does not apply.</li>
           <li>Limits: a 2 GB image, a 15-minute build with 3 GB of memory and 2 CPUs, and 512 MB of memory at runtime.</li>

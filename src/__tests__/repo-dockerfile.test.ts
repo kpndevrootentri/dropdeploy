@@ -24,7 +24,7 @@ jest.mock('@/lib/docker-ops', () => ({ dockerOps: {}, containerNameFor: (slug: s
 
 // Required, not imported: the env above must be set before the services read their config.
 /* eslint-disable @typescript-eslint/no-require-imports */
-const { forbiddenInstruction, baseImages, exposedPort, REPO_IMAGE_MAX_BYTES } = require('@/services/docker/repo-dockerfile');
+const { forbiddenInstruction, baseImages, checkImage, exposedPort, REPO_IMAGE_MAX_BYTES } = require('@/services/docker/repo-dockerfile');
 const { DockerService } = require('@/services/docker/docker.service');
 const { DeploymentService } = require('@/services/deployment/deployment.service');
 const { AdminService } = require('@/services/admin/admin.service');
@@ -108,6 +108,28 @@ describe('baseImages', () => {
     expect(() => baseImages(dockerfile)).toThrow(message);
   });
 
+  // The daemon contacts the registry an image names, so only public registries with their own token servers.
+  it.each([
+    `127.0.0.1:45672/some/path@${DIGEST}`, `localhost/x@${DIGEST}`, `localhost:5000/x@${DIGEST}`, `10.0.0.5/x@${DIGEST}`,
+    `[::1]:5000/x@${DIGEST}`, `ghcr.io:443/x@${DIGEST}`, `ghcr.io.evil.com/x@${DIGEST}`, `docker.io@evil.com/x@${DIGEST}`,
+    `GHCR.IO/x@${DIGEST}`, `Library/node@${DIGEST}`, `ghcr.io./x@${DIGEST}`, `registry.example.com/x@${DIGEST}`,
+  ])('refuses an image from another registry: %s', (image) => {
+    expect(() => checkImage(image)).toThrow('Images must come from docker.io, ghcr.io, quay.io, public.ecr.aws, mcr.microsoft.com, registry.gitlab.com');
+  });
+
+  it('allows images from the listed registries, Docker Hub under each of its names', () => {
+    for (const image of [
+      `node:22@${DIGEST}`, `library/node@${DIGEST}`, `docker.io/library/node@${DIGEST}`, `index.docker.io/x/y@${DIGEST}`,
+      `registry-1.docker.io/x/y@${DIGEST}`, `ghcr.io/x/y@${DIGEST}`, `quay.io/x/y@${DIGEST}`, `public.ecr.aws/x/y@${DIGEST}`,
+      `mcr.microsoft.com/dotnet/runtime@${DIGEST}`, `registry.gitlab.com/x/y@${DIGEST}`,
+    ]) expect(() => checkImage(image)).not.toThrow();
+  });
+
+  it('checks the registry of every FROM and COPY --from image', () => {
+    expect(() => baseImages(`FROM 127.0.0.1:45672/some/path@${DIGEST}`)).toThrow('Images must come from');
+    expect(() => baseImages(`FROM node@${DIGEST}\nCOPY --from=localhost:5000/x /a /a`)).toThrow('Images must come from');
+  });
+
   it('allows COPY --from an earlier stage, a stage index or another image', () => {
     expect(baseImages([
       `FROM node@${DIGEST} AS build`, `FROM nginx@${DIGEST}`,
@@ -181,6 +203,13 @@ describe('DockerService.checkBaseImages', () => {
     await run();
     expect(pull.mock.calls).toEqual([[`node@${DIGEST}`, { abortSignal: undefined }]]);
     expect(getImage).toHaveBeenCalledWith(`node@${DIGEST}`);
+  });
+
+  it('refuses an image from another registry before the daemon pulls it', async () => {
+    const { service, docker } = stubbedDocker({ Config: { OnBuild: null } });
+    const pull = jest.spyOn(docker, 'pull').mockResolvedValue({});
+    await expect(service.checkBaseImages([`127.0.0.1:45672/some/path@${DIGEST}`])).rejects.toThrow('Images must come from');
+    expect(pull).not.toHaveBeenCalled();
   });
 
   it('refuses a base image with ONBUILD triggers, which would run inside the build', async () => {

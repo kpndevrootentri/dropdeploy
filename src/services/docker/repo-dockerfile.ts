@@ -79,20 +79,38 @@ export function forbiddenInstruction(text: string): string | null {
 // docker.io/dropdeploy/<slug>: a pull of one of these names would re-tag a project's local image.
 const PLATFORM_IMAGE = /^(?:(?:index\.)?docker\.io\/)?dropdeploy\//i;
 
+/** The registries a repo Dockerfile's images may come from: public ones whose token servers are their own. */
+const ALLOWED_REGISTRIES = ['docker.io', 'ghcr.io', 'quay.io', 'public.ecr.aws', 'mcr.microsoft.com', 'registry.gitlab.com'];
+const REGISTRY_HOSTS = new Set([...ALLOWED_REGISTRIES, 'index.docker.io', 'registry-1.docker.io']);
+
+/**
+ * Throws unless the daemon would pull the image from one of ALLOWED_REGISTRIES,
+ * and for the platform's own images. The registry is found the way Docker's
+ * reference parser finds it: the part before the first `/` when it has a `.`
+ * or `:`, is `localhost` or is not all lowercase; Docker Hub otherwise. It must
+ * match exactly, so localhost, IP addresses, ports, uppercase hosts and a
+ * trailing dot are all refused.
+ */
+export function checkImage(image: string): void {
+  if (PLATFORM_IMAGE.test(image)) throw new Error(`Your Dockerfile uses the image ${image}: use a public image, not one of Entrify's own images.`);
+  const first = image.split('/')[0];
+  const hub = first === image || (!/[.:]/.test(first) && first !== 'localhost' && first === first.toLowerCase());
+  if (!hub && !REGISTRY_HOSTS.has(first)) {
+    throw new Error(`Your Dockerfile uses the image ${image}. Images must come from ${ALLOWED_REGISTRIES.join(', ')}, with the registry written in lowercase as shown; localhost, IP addresses and hosts with a port are refused.`);
+  }
+}
+
 /**
  * The images a Dockerfile builds FROM, leaving out scratch and earlier stages.
  * Each must be written out and pinned by digest, so the image checked for
  * ONBUILD triggers before the build is the one the build pulls; throws with
- * the rule otherwise. Neither FROM nor COPY --from may name the platform's own
- * images. Run forbiddenInstruction first: it refuses the non-ASCII keywords
- * and invalid UTF-8 this reads past.
+ * the rule otherwise. Every FROM and COPY --from image must pass checkImage.
+ * Run forbiddenInstruction first: it refuses the non-ASCII keywords and
+ * invalid UTF-8 this reads past.
  */
 export function baseImages(text: string): string[] {
   const stages = new Set(['scratch']);
   const images: string[] = [];
-  const own = (image: string) => {
-    if (PLATFORM_IMAGE.test(image)) throw new Error(`Your Dockerfile uses the image ${image}: use a public image, not one of Entrify's own images.`);
-  };
   for (const [keyword, rest] of instructions(text)) {
     if (keyword.toUpperCase() === 'COPY') {
       // Flags end at the first word without `--`. Docker unquotes and unescapes them, so neither is allowed.
@@ -102,7 +120,7 @@ export function baseImages(text: string): string[] {
         const from = /^--from=(.*)$/i.exec(word)?.[1];
         if (from === undefined || stages.has(from.toLowerCase()) || /^\d+$/.test(from)) continue;
         if (from.includes('$')) throw new Error(`Your Dockerfile has "COPY --from=${from}". Name a stage or an image without variables.`);
-        own(from);
+        checkImage(from);
       }
       continue;
     }
@@ -112,7 +130,7 @@ export function baseImages(text: string): string[] {
       throw new Error(`Your Dockerfile has "FROM ${rest}". Write FROM <image>@sha256:<digest>, optionally followed by AS <name>, without variables or --platform.`);
     }
     if (!stages.has(image.toLowerCase())) {
-      own(image);
+      checkImage(image);
       if (!/@sha256:[a-f0-9]{64}$/.test(image)) {
         throw new Error(`Pin each base image by digest: write FROM ${image}@sha256:<digest> (docker pull ${image} prints the digest).`);
       }

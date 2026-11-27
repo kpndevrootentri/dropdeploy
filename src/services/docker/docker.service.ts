@@ -35,7 +35,7 @@ import { patchNextConfig } from './nextjs-config-patcher';
 import { redact } from '@/services/deployment/failure-reason';
 import { readRepoFile, writeRepoFile } from '@/lib/repo-fs';
 import { formatBytes } from '@/lib/utils';
-import { REPO_DOCKERFILE_LABEL, REPO_IMAGE_MAX_BYTES, REPO_IMAGE_USER, exposedPort } from './repo-dockerfile';
+import { REPO_DOCKERFILE_LABEL, REPO_IMAGE_MAX_BYTES, REPO_IMAGE_USER, checkImage, exposedPort } from './repo-dockerfile';
 
 const log = createLogger('docker');
 
@@ -276,10 +276,12 @@ export class DockerService {
   /**
    * Pulls the base images of a repository's Dockerfile (see baseImages) and
    * refuses one with ONBUILD triggers, which would run inside the build. They
-   * are pinned by digest, so the build's own pull gets these same images.
+   * are pinned by digest, so the build's own pull gets these same images, and
+   * each must pass checkImage before the daemon contacts its registry.
    */
   async checkBaseImages(images: string[], signal?: AbortSignal): Promise<void> {
     for (const image of new Set(images)) {
+      checkImage(image);
       // The daemon ignores a tag written next to the digest, so look the image up without it.
       const ref = image.replace(/:\w[\w.-]*(?=@)/, '');
       try {
