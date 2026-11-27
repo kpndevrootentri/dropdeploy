@@ -41,8 +41,7 @@ graph LR
 ## Prerequisites
 
 - **Node.js** 18+
-- **PostgreSQL** (local or remote)
-- **Redis** (for BullMQ job queue)
+- **PostgreSQL** and **Redis** (BullMQ job queue): `docker compose up -d` runs both, or bring your own
 - **Docker** daemon running
 
 ---
@@ -63,7 +62,7 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` and configure:
+Edit `.env` and configure (the database and Redis values already match `docker compose`; set `ENV_ENCRYPTION_KEY`):
 
 | Variable | Description |
 |----------|-------------|
@@ -75,14 +74,27 @@ See [.env.example](.env.example) for all options.
 
 ### 3. Database setup
 
+**With Docker** (PostgreSQL 17 and Redis 7 from [docker-compose.yml](docker-compose.yml)):
+
+```bash
+docker compose up -d --wait   # Postgres on 127.0.0.1:54329, Redis on 127.0.0.1:63799
+```
+
+The host ports are not the defaults, so a Postgres or Redis you already run on 5432/6379 is left alone. `docker compose down` stops them; `docker compose down -v` also deletes their data.
+
+**Or with your own PostgreSQL and Redis**, set `DATABASE_URL` and `REDIS_*` in `.env` to point at them, then:
+
 ```bash
 # Create DB (if it doesn't exist)
 createdb dropdeploy
 
 # If your DB user needs schema permissions:
 psql -d dropdeploy -f scripts/fix-db-permissions.sql
+```
 
-# Apply schema and generate client
+Either way, apply the schema and generate the client:
+
+```bash
 npx prisma generate
 npx prisma db push
 ```
@@ -96,7 +108,15 @@ npm run dev      # Terminal 1: Next.js dev server
 npm run worker   # Terminal 2: BullMQ deployment worker
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Sign up to access the dashboard.
+Public sign-up is off by default (`ALLOW_PUBLIC_REGISTRATION="false"`), so create your first account (a contributor, the admin role) with the seed script:
+
+```bash
+CONTRIBUTOR_EMAIL=you@example.com CONTRIBUTOR_PASSWORD='at-least-8-chars' npx tsx scripts/seed-contributor.ts
+```
+
+Open [http://localhost:3001](http://localhost:3001) and sign in with it. You are asked to choose a new password first.
+
+**VS Code dev container:** run *Dev Containers: Reopen in Container*. It starts the same Postgres and Redis plus a Node 24 container ([.devcontainer/](.devcontainer/)), runs `npm ci && npx prisma generate && npx prisma db push`, and forwards port 3001. Inside it, `DATABASE_URL` and `REDIS_*` already point at the compose services; copy `.env.example` to `.env` for the rest. The container is for dashboard and API work only. Docker is not available inside it, and a dev server in the container can't serve sites that a worker on the host builds: those land in the host's `STATIC_SERVE_DIR` and on the host's `127.0.0.1`. To work on deployments, run both `npm run dev` and `npm run worker` on the host against the same `docker compose` services.
 
 **Production:**
 

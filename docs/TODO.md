@@ -155,9 +155,9 @@ graph TD
 
 ### Developer Experience
 
-- [ ] `docker-compose.yml` for local dev (PostgreSQL + Redis)
+- [x] `docker-compose.yml` for local dev (PostgreSQL + Redis) (PostgreSQL 17 + Redis 7 on 127.0.0.1:54329/63799)
 - [x] Pre-commit hooks (lint + type-check) (opt-in: `npm run hooks:install`)
-- [ ] `.devcontainer.json` for VS Code dev containers
+- [x] `.devcontainer.json` for VS Code dev containers (`.devcontainer/devcontainer.json`, Node 24 + the compose services)
 
 ### API & Integrations
 

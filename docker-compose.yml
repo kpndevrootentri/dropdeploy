@@ -1,0 +1,40 @@
+# Local development only: Postgres and Redis for `npm run dev` and the workers.
+# `docker compose up -d --wait`, then `npx prisma db push`. .env.example points here.
+# Host ports are bound to 127.0.0.1 and are not the defaults, so a Postgres or Redis
+# you already run on 5432/6379 keeps working. `docker compose down -v` wipes the data.
+services:
+  postgres:
+    # 17: a current major (supported to 2029) and the newest one released before
+    # the Prisma 5.22 this repo uses; 18 came out after it.
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: dropdeploy
+      POSTGRES_PASSWORD: dropdeploy
+      POSTGRES_DB: dropdeploy
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dropdeploy -d dropdeploy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    # Production Redis requires a password (docs/deployment.md); keep dev the same.
+    command: ["redis-server", "--requirepass", "dropdeploy-dev"]
+    ports:
+      - "127.0.0.1:63799:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "dropdeploy-dev", "--no-auth-warning", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
+  redis-data:

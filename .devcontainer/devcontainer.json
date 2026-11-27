@@ -1,0 +1,10 @@
+{
+  "name": "Entrify",
+  "dockerComposeFile": ["../docker-compose.yml", "docker-compose.yml"],
+  "service": "app",
+  "workspaceFolder": "/workspaces/dropdeploy",
+  "forwardPorts": [3001],
+  // The node_modules volume starts out root-owned and npm ci runs as the node user.
+  "onCreateCommand": "sudo chown node node_modules",
+  "postCreateCommand": "npm ci && npx prisma generate && npx prisma db push"
+}
