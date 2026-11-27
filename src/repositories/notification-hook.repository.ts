@@ -7,8 +7,8 @@ export interface INotificationHookRepository {
   /** Oldest first. */
   listByProject(projectId: string): Promise<NotificationHook[]>;
   findById(id: string): Promise<NotificationHook | null>;
-  countByProject(projectId: string): Promise<number>;
-  create(data: NewNotificationHook): Promise<NotificationHook>;
+  /** Null when the project already has `limit` hooks. */
+  create(data: NewNotificationHook, limit: number): Promise<NotificationHook | null>;
   /** False when the project has no hook with that id. */
   delete(id: string, projectId: string): Promise<boolean>;
   /** A no-op if the hook was deleted while it was being delivered. */
@@ -24,12 +24,13 @@ export class NotificationHookRepository implements INotificationHookRepository {
     return prisma.notificationHook.findUnique({ where: { id } });
   }
 
-  async countByProject(projectId: string): Promise<number> {
-    return prisma.notificationHook.count({ where: { projectId } });
-  }
-
-  async create(data: NewNotificationHook): Promise<NotificationHook> {
-    return prisma.notificationHook.create({ data });
+  async create(data: NewNotificationHook, limit: number): Promise<NotificationHook | null> {
+    return prisma.$transaction(async (tx) => {
+      // Held until the transaction ends, so parallel creates cannot all pass the count.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${data.projectId}))`;
+      if ((await tx.notificationHook.count({ where: { projectId: data.projectId } })) >= limit) return null;
+      return tx.notificationHook.create({ data });
+    });
   }
 
   async delete(id: string, projectId: string): Promise<boolean> {

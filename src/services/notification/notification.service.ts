@@ -78,9 +78,6 @@ export class NotificationService {
   /** Adds a hook and queues a ping to it. The secret is returned here only. */
   async create(projectId: string, userId: string, dto: CreateNotificationHookDto): Promise<NotificationHookView & { secret: string }> {
     const project = await this.assertOwner(projectId, userId);
-    if ((await this.hooks.countByProject(projectId)) >= MAX_HOOKS_PER_PROJECT) {
-      throw new ValidationError(`A project can have up to ${MAX_HOOKS_PER_PROJECT} notification hooks. Delete one to add another.`);
-    }
     const url = parseHookUrl(dto.url);
     const secret = randomBytes(32).toString('hex');
     const enc = this.encryption.encrypt(JSON.stringify({ url: url.href, secret }));
@@ -91,7 +88,10 @@ export class NotificationService {
       configIv: enc.iv,
       configTag: enc.authTag,
       events: dto.events,
-    });
+    }, MAX_HOOKS_PER_PROJECT);
+    if (!hook) {
+      throw new ValidationError(`A project can have up to ${MAX_HOOKS_PER_PROJECT} notification hooks. Delete one to add another.`);
+    }
     // The ping's result shows on the hook's row, which is how the owner tests the URL.
     void this.queue.add({ hookId: hook.id, event: 'ping', payload: payloadFor('ping', project) }).catch((err) =>
       log.warn('Could not queue the ping', { hookId: hook.id, error: String(err) }),

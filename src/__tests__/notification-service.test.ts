@@ -9,8 +9,9 @@ jest.mock('@/lib/outbound-webhook', () => ({
   postJson: (...args: unknown[]) => mockPost(...args),
 }));
 const mockPrisma = {
-  $transaction: jest.fn(async (ops: unknown[]) => ops),
-  notificationHook: { deleteMany: jest.fn(() => 'delete-hooks') },
+  $transaction: jest.fn(async (ops: unknown[] | ((tx: unknown) => unknown)): Promise<unknown> => (typeof ops === 'function' ? ops(mockPrisma) : ops)),
+  $executeRaw: jest.fn(async () => 1),
+  notificationHook: { deleteMany: jest.fn(() => 'delete-hooks'), count: jest.fn(async () => 0), create: jest.fn(async () => ({ id: 'h1' })) },
   project: { update: jest.fn(() => 'update-owner') },
 };
 jest.mock('@/lib/prisma', () => ({ prisma: mockPrisma }));
@@ -20,6 +21,7 @@ import { EncryptionService } from '@/services/encryption';
 import { BlockedAddressError } from '@/lib/outbound-webhook';
 import { NotFoundError, ValidationError } from '@/lib/errors';
 import { ProjectRepository } from '@/repositories/project.repository';
+import { NotificationHookRepository } from '@/repositories/notification-hook.repository';
 import type { NotificationJob } from '@/lib/queue';
 
 type HookRow = { id: string; projectId: string; host: string; configEnc: string; configIv: string; configTag: string; events: string[]; lastStatus: string | null; lastAttemptAt: Date | null; createdAt: Date };
@@ -32,8 +34,8 @@ function setup(deployment: Record<string, unknown> = {}) {
   const hooks = {
     listByProject: jest.fn(async (projectId: string) => rows.filter((r) => r.projectId === projectId)),
     findById: jest.fn(async (id: string) => rows.find((r) => r.id === id) ?? null),
-    countByProject: jest.fn(async (projectId: string) => rows.filter((r) => r.projectId === projectId).length),
-    create: jest.fn(async (data: Omit<HookRow, 'id' | 'lastStatus' | 'lastAttemptAt' | 'createdAt'>) => {
+    create: jest.fn(async (data: Omit<HookRow, 'id' | 'lastStatus' | 'lastAttemptAt' | 'createdAt'>, limit: number) => {
+      if (rows.filter((r) => r.projectId === data.projectId).length >= limit) return null;
       const row = { id: `h${rows.length + 1}`, lastStatus: null, lastAttemptAt: null, createdAt: new Date(), ...data };
       rows.push(row);
       return row;
@@ -88,6 +90,19 @@ describe('managing hooks', () => {
     await expect(s.service.create('p1', 'intruder', { url: 'https://example.com/x', events: ['deployment.failed'] })).rejects.toBeInstanceOf(NotFoundError);
     await expect(s.service.remove('p1', 'intruder', id)).rejects.toBeInstanceOf(NotFoundError);
     expect(s.rows).toHaveLength(1);
+  });
+
+  it('are counted and created under a per-project lock, so parallel adds cannot pass the limit', async () => {
+    const repo = new NotificationHookRepository();
+    const data = { projectId: 'p1', host: 'example.com', configEnc: 'e', configIv: 'i', configTag: 't', events: ['deployment.failed'] };
+    await expect(repo.create(data, 3)).resolves.toEqual({ id: 'h1' });
+    expect(mockPrisma.$executeRaw.mock.calls[0]).toEqual([expect.arrayContaining([expect.stringContaining('pg_advisory_xact_lock(hashtext(')]), 'p1']);
+    expect(mockPrisma.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(mockPrisma.notificationHook.count.mock.invocationCallOrder[0]);
+
+    mockPrisma.notificationHook.count.mockResolvedValueOnce(3);
+    mockPrisma.notificationHook.create.mockClear();
+    await expect(repo.create(data, 3)).resolves.toBeNull();
+    expect(mockPrisma.notificationHook.create).not.toHaveBeenCalled();
   });
 
   it('are deleted with the owner change, in the same transaction', async () => {
