@@ -2,10 +2,9 @@
  * Seed script: creates or upserts a CONTRIBUTOR account.
  *
  * Usage:
- *   CONTRIBUTOR_EMAIL=admin@example.com CONTRIBUTOR_PASSWORD=secret123 npx ts-node scripts/seed-contributor.ts
+ *   CONTRIBUTOR_EMAIL=admin@example.com CONTRIBUTOR_PASSWORD=secret123 npx tsx scripts/seed-contributor.ts
  */
 import bcrypt from 'bcryptjs';
-import { PrismaClient } from '@prisma/client';
 
 // Like dotenv: read .env if present, never overriding variables already set.
 try {
@@ -27,22 +26,24 @@ if (password.length < 8) {
   process.exit(1);
 }
 
-const prisma = new PrismaClient();
-
 async function main(): Promise<void> {
-  const passwordHash = await bcrypt.hash(password!, 10);
-  const user = await prisma.user.upsert({
-    where: { email: email!.toLowerCase() },
-    // An operator-chosen password must be changed at first login, for new and existing accounts alike.
-    update: { passwordHash, role: 'CONTRIBUTOR', mustResetPassword: true },
-    create: { email: email!.toLowerCase(), passwordHash, role: 'CONTRIBUTOR', mustResetPassword: true },
-  });
-  console.log(`✓ Contributor account ready: ${user.email} (id: ${user.id})`);
+  // Imported only after .env is loaded: the app's client reads DATABASE_URL and the DB_* limits when created.
+  const { prisma } = await import('@/lib/prisma');
+  try {
+    const passwordHash = await bcrypt.hash(password!, 10);
+    const user = await prisma.user.upsert({
+      where: { email: email!.toLowerCase() },
+      // An operator-chosen password must be changed at first login, for new and existing accounts alike.
+      update: { passwordHash, role: 'CONTRIBUTOR', mustResetPassword: true },
+      create: { email: email!.toLowerCase(), passwordHash, role: 'CONTRIBUTOR', mustResetPassword: true },
+    });
+    console.log(`✓ Contributor account ready: ${user.email} (id: ${user.id})`);
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
-main()
-  .catch((err) => {
-    console.error('Seed failed:', err);
-    process.exit(1);
-  })
-  .finally(() => prisma.$disconnect());
+main().catch((err) => {
+  console.error('Seed failed:', err);
+  process.exit(1);
+});

@@ -1,5 +1,5 @@
 // A trailing slash, to check the link does not come out as `//invite`.
-jest.mock('@/lib/config', () => ({ getConfig: () => ({ NEXT_PUBLIC_APP_URL: 'https://app.example.com/' }) }));
+jest.mock('@/lib/config', () => ({ ...jest.requireActual('@/lib/config'), getConfig: () => ({ NEXT_PUBLIC_APP_URL: 'https://app.example.com/' }) }));
 
 import { InviteService, RESET_TTL_MS, hashInviteToken } from '@/services/invite/invite.service';
 import type { IInviteRepository } from '@/repositories/invite.repository';
