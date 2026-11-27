@@ -5,6 +5,19 @@ export type DeploymentWithProject = Deployment & { project: Project };
 /** A deployment without `buildLog`, an unbounded TEXT column that lists never show. */
 export type DeploymentSummary = Omit<Deployment, 'buildLog'>;
 
+const LIVE_CONTAINER_SELECT = {
+  containerPort: true,
+  project: {
+    select: {
+      id: true, slug: true, stoppedAt: true, unhealthySince: true, healthReason: true, healthAlertedAt: true, updatedAt: true,
+      user: { select: { email: true, suspendedAt: true } },
+    },
+  },
+} satisfies Prisma.DeploymentSelect;
+
+/** A container the proxy is serving, with what the health sweep needs about its project. */
+export type LiveContainer = Prisma.DeploymentGetPayload<{ select: typeof LIVE_CONTAINER_SELECT }>;
+
 const SUMMARY_SELECT = {
   id: true, status: true, containerPort: true, subdomain: true, buildStep: true, failureReason: true, commitHash: true,
   servingMethod: true, imageTag: true, rollbackOfId: true, startedAt: true, completedAt: true,
@@ -65,6 +78,8 @@ export interface IDeploymentRepository {
   findLastDeployedCommitBefore(projectId: string, before: Date): Promise<string | null>;
   /** The deployment the proxy serves for this subdomain (a project's slug), or null. */
   findLiveDeployment(subdomain: string): Promise<Deployment | null>;
+  /** Every container the proxy serves (live, not static), in one query. */
+  findLiveContainers(): Promise<LiveContainer[]>;
 }
 
 export class DeploymentRepository implements IDeploymentRepository {
@@ -126,6 +141,8 @@ export class DeploymentRepository implements IDeploymentRepository {
       // A deployment going live (a build, a rollback, a switch to static) is serving again.
       // Filtered so a deploy of a running project leaves its updatedAt alone.
       prisma.project.updateMany({ where: { id: projectId, stoppedAt: { not: null } }, data: { stoppedAt: null } }),
+      // It has just passed the readiness gate, so a redeploy clears "Down" at once.
+      prisma.project.updateMany({ where: { id: projectId, unhealthySince: { not: null } }, data: { unhealthySince: null, healthReason: null } }),
     ]);
     return activated;
   }
@@ -234,6 +251,14 @@ export class DeploymentRepository implements IDeploymentRepository {
 
   async findLiveDeployment(subdomain: string): Promise<Deployment | null> {
     return prisma.deployment.findFirst({ where: { subdomain, status: 'DEPLOYED' } });
+  }
+
+  async findLiveContainers(): Promise<LiveContainer[]> {
+    return prisma.deployment.findMany({
+      // Live as the proxy reads it: activate() leaves older deployments DEPLOYED without a subdomain.
+      where: { status: 'DEPLOYED', servingMethod: 'CONTAINER', subdomain: { not: null }, containerPort: { not: null } },
+      select: LIVE_CONTAINER_SELECT,
+    });
   }
 }
 

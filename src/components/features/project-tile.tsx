@@ -22,6 +22,9 @@ export interface ProjectItem {
   githubUrl: string | null;
   createdAt: string;
   stoppedAt?: string | null;
+  /** Set by the health sweep while the live container is not answering. */
+  unhealthySince?: string | null;
+  healthReason?: string | null;
   deployments?: Array<{
     id: string;
     status: string;
@@ -54,6 +57,12 @@ export function ProjectTile({
   const isInProgress = status === 'QUEUED' || status === 'BUILDING';
   const isFailed = status === 'FAILED';
   const url = getProjectUrl(project.slug, latestDeployment?.containerPort ?? undefined);
+  // Also shown when the latest deployment failed: the older live container is still the one that is down.
+  const downBadge = !project.stoppedAt && project.unhealthySince ? (
+    <Badge variant="destructive" className="text-xs font-normal" title={project.healthReason ?? undefined}>
+      Down
+    </Badge>
+  ) : null;
   const isCopied = copiedUrl === url;
 
   const handleDeploy = useCallback((): void => {
@@ -93,6 +102,7 @@ export function ProjectTile({
 
         {!hasDeployed ? (
           <div className="mt-auto space-y-3">
+            {downBadge}
             {isInProgress && (
               <div className="rounded-md border border-dashed bg-muted/30 px-3 py-2">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -183,7 +193,7 @@ export function ProjectTile({
                 <Badge variant="outline" className="text-xs font-normal" title="Stopped by an admin. Redeploy to start it again.">
                   Stopped
                 </Badge>
-              ) : (
+              ) : downBadge ?? (
                 <Badge variant="secondary" className="text-xs font-normal">
                   Deployed
                 </Badge>

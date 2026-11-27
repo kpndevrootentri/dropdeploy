@@ -101,9 +101,9 @@ graph TD
 
 ### Container Health Monitoring
 
-- [ ] Add health check to generated Dockerfiles
-- [ ] Poll container health status and expose in UI (only the admin drawer shows container state)
-- [ ] Alert user when container is unhealthy or stopped
+- [x] Add health check to generated Dockerfiles (replaced by a host probe from the build worker)
+- [x] Poll container health status and expose in UI (only the admin drawer shows container state) (a Down badge on the dashboard, project page and Admin → Projects)
+- [x] Alert user when container is unhealthy or stopped (one email per incident, at most one per site per day)
 
 ---
 

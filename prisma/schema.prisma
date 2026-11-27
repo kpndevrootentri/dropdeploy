@@ -174,6 +174,14 @@ model Project {
   // because the proxy and rollback key off that status.
   stoppedAt DateTime? @map("stopped_at")
 
+  // Written by the deployment worker's health sweep (src/services/health): when the
+  // live container stopped answering, and why, in platform words (never tenant
+  // output). Cleared when it answers again or a deployment goes live.
+  unhealthySince  DateTime? @map("unhealthy_since")
+  healthReason    String?   @map("health_reason")
+  /// The last "your site is down" email, so an owner gets at most one a day per site.
+  healthAlertedAt DateTime? @map("health_alerted_at")
+
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -500,7 +508,7 @@ model PlatformSetting {
 /// email quotas; failed rows are listed on the admin Email page.
 model EmailLog {
   id        String   @id @default(cuid())
-  /// "invite", "reset" or "test".
+  /// "invite", "reset", "test" or "health" (a site is down).
   kind      String
   recipient String
   /// "sent" or "failed".

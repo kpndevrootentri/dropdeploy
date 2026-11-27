@@ -91,6 +91,9 @@ interface ProjectDetail {
   useStaticHosting: boolean;
   autoDeploy: boolean;
   stoppedAt?: string | null;
+  /** Set by the health sweep while the live container is not answering. */
+  unhealthySince?: string | null;
+  healthReason?: string | null;
   createdAt: string;
   updatedAt: string;
   deployments: Deployment[];
@@ -134,6 +137,9 @@ function StatusIcon({ status }: { status: string }): React.ReactElement {
       return <CheckCircle2 className="h-4 w-4 text-green-500" />;
     case 'FAILED':
       return <XCircle className="h-4 w-4 text-destructive" />;
+    case 'DOWN':
+      // Only drawn inside the red badge, so it takes the badge's text colour.
+      return <XCircle className="h-4 w-4" />;
     case 'BUILDING':
       return <Hammer className="h-4 w-4 text-yellow-500" />;
     case 'QUEUED':
@@ -147,7 +153,7 @@ function StatusBadge({ status }: { status: string }): React.ReactElement {
   const variant =
     status === 'DEPLOYED'
       ? 'secondary'
-      : status === 'FAILED'
+      : status === 'FAILED' || status === 'DOWN'
         ? 'destructive'
         : 'outline';
 
@@ -1997,6 +2003,14 @@ function OverviewPanel({
         <p className="text-sm text-destructive" role="alert">{deployError}</p>
       )}
 
+      {/* Outside the banner: after a failed redeploy the older live container is still the one that is down. */}
+      {!project.stoppedAt && project.unhealthySince && (
+        <p className="text-sm text-destructive" role="alert">
+          Stopped responding {formatRelative(project.unhealthySince)}: {project.healthReason} Redeploy to start a fresh
+          container{isDeployed && ', or open Advanced → Terminal'}.
+        </p>
+      )}
+
       {/* Live URL banner */}
       {isDeployed && (
         <div className="space-y-2">
@@ -2006,7 +2020,7 @@ function OverviewPanel({
               {deployUrl}
             </span>
             {project.isPrivate && <PrivateBadge />}
-            <StatusBadge status={project.stoppedAt ? 'STOPPED' : 'DEPLOYED'} />
+            <StatusBadge status={project.stoppedAt ? 'STOPPED' : project.unhealthySince ? 'DOWN' : 'DEPLOYED'} />
             <div className="flex shrink-0 gap-1">
               <Button
                 variant="ghost"
