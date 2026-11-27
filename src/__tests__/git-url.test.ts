@@ -1,4 +1,4 @@
-import { parseSafeRepoUrl, hostMatchesSource, repoFullNameFromUrl, compareUrl } from '@/lib/git-url';
+import { parseSafeRepoUrl, hostMatchesSource, repoFullNameFromUrl, gitlabPathFromUrl, compareUrl } from '@/lib/git-url';
 import { ValidationError } from '@/lib/errors';
 
 describe('parseSafeRepoUrl', () => {
@@ -38,6 +38,23 @@ describe('repoFullNameFromUrl', () => {
   it('throws on an unsafe URL', () => {
     expect(() => repoFullNameFromUrl('https://evil.example.com/o/r')).toThrow(ValidationError);
   });
+});
+
+describe('gitlabPathFromUrl', () => {
+  it.each([
+    ['https://gitlab.com/Group/Repo.git', 'group/repo'],
+    ['https://www.gitlab.com/group/sub/deeper/repo', 'group/sub/deeper/repo'],
+    ['https://gitlab.com/group/sub/repo/-/tree/main', 'group/sub/repo'],
+  ])('returns the full lowercased project path of %s', (url, path) => {
+    expect(gitlabPathFromUrl(url)).toBe(path);
+  });
+
+  it.each(['https://github.com/owner/repo', 'https://evil.example.com/group/repo', 'https://gitlab.com/group/-/tree'])(
+    'throws for %s',
+    (url) => {
+      expect(() => gitlabPathFromUrl(url)).toThrow(ValidationError);
+    },
+  );
 });
 
 describe('hostMatchesSource', () => {

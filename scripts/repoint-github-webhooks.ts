@@ -28,7 +28,8 @@ async function main(): Promise<void> {
 
   const target = `${getConfig().APP_URL}/api/webhooks/github`;
   const projects = await prisma.project.findMany({
-    where: { autoDeploy: true },
+    // GitLab hooks are added by hand; re-enabling would rotate their secret and break them.
+    where: { autoDeploy: true, source: 'GITHUB' },
     select: { id: true, slug: true, userId: true },
     orderBy: { slug: 'asc' },
   });

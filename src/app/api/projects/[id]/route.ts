@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/get-session';
 import { projectService } from '@/services/project';
-import { webhookService } from '@/services/webhook';
+import { webhookService, type GitLabWebhookSetup } from '@/services/webhook';
 import { deploymentService } from '@/services/deployment';
 import { handleApiError } from '@/lib/api-error';
 import { toPublicProject } from '@/lib/public-project';
@@ -46,18 +46,23 @@ export async function PATCH(
       throw new ValidationError(parsed.error.issues[0]?.message ?? 'Invalid input');
     }
 
-    // autoDeploy has side effects (registers/removes a GitHub webhook), so it is
-    // handled by the webhook service rather than the generic field update.
+    // autoDeploy has side effects (registers/removes a GitHub webhook, or creates the
+    // secret for a GitLab one), so it is handled by the webhook service rather than the
+    // generic field update.
     const { autoDeploy, ...fields } = parsed.data;
 
     let project: Project | undefined;
+    // Only when GitLab auto-deploy is being turned on: the URL and the one-time secret to paste into GitLab.
+    let gitlabWebhook: GitLabWebhookSetup | undefined;
     if (Object.keys(fields).length > 0) {
       project = await projectService.update(id, session.userId, fields);
     }
     if (autoDeploy !== undefined) {
-      project = autoDeploy
-        ? await webhookService.enableAutoDeploy(id, session.userId)
-        : await webhookService.disableAutoDeploy(id, session.userId);
+      if (autoDeploy) {
+        ({ project, gitlabWebhook } = await webhookService.enableAutoDeploy(id, session.userId));
+      } else {
+        project = await webhookService.disableAutoDeploy(id, session.userId);
+      }
     }
 
     // Non-blocking audit log
@@ -68,7 +73,7 @@ export async function PATCH(
       projectId: id,
     }).catch(() => {});
 
-    return NextResponse.json({ success: true, data: project && toPublicProject(project) });
+    return NextResponse.json({ success: true, data: project && { ...toPublicProject(project), gitlabWebhook } });
   } catch (error) {
     return handleApiError(error);
   }

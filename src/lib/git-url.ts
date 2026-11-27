@@ -76,6 +76,28 @@ export function repoFullNameFromUrl(raw: string): string {
   return `${owner}/${repo.replace(/\.git$/, '')}`.toLowerCase();
 }
 
+/** GitLab paths are group/subgroup.../project; anything after "/-/" is a page inside it. */
+function gitlabPath(url: URL): string {
+  const segments = url.pathname.split('/').filter(Boolean);
+  const dash = segments.indexOf('-');
+  return (dash === -1 ? segments : segments.slice(0, dash)).join('/').replace(/\.git$/, '');
+}
+
+/**
+ * Returns the lowercased "group/subgroup.../project" path of a gitlab.com repo URL,
+ * without ".git" or a "/-/..." page suffix. Used to match an incoming GitLab push's
+ * `project.path_with_namespace` against a project's stored `githubUrl`.
+ * Throws {@link ValidationError} for an unsafe URL or any host other than gitlab.com.
+ */
+export function gitlabPathFromUrl(raw: string): string {
+  const { url, host } = parseSafeRepoUrl(raw);
+  const path = gitlabPath(url).toLowerCase();
+  if (host !== 'gitlab.com' || !path.includes('/')) {
+    throw new ValidationError('Repository URL must point to a gitlab.com project');
+  }
+  return path;
+}
+
 /** True when the URL host matches the declared source (github.com ↔ GITHUB, etc.). */
 export function hostMatchesSource(host: string, source: GitSource): boolean {
   const normalized = host.replace(/^www\./, '');
@@ -105,13 +127,11 @@ export function compareUrl({ source, repoUrl, fromSha, toSha }: {
     return null;
   }
   if (!hostMatchesSource(parsed.host, source)) return null;
-  const segments = parsed.url.pathname.split('/').filter(Boolean);
   const range = `${fromSha}...${toSha}`;
   if (source === 'GITHUB') {
+    const segments = parsed.url.pathname.split('/').filter(Boolean);
     return `https://github.com/${segments[0]}/${segments[1].replace(/\.git$/, '')}/compare/${range}`;
   }
-  // GitLab paths are group/subgroup.../project; anything after "/-/" is a page inside it.
-  const dash = segments.indexOf('-');
-  const path = (dash === -1 ? segments : segments.slice(0, dash)).join('/').replace(/\.git$/, '');
+  const path = gitlabPath(parsed.url);
   return path.includes('/') ? `https://gitlab.com/${path}/-/compare/${range}` : null;
 }
