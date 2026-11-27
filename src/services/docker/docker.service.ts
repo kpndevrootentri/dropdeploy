@@ -30,6 +30,7 @@ import {
   djangoDockerfile,
   injectBuildArgs,
 } from './dockerfile.templates';
+import { packBuildContext } from './build-context';
 import { findDjangoEntry } from './django-entry';
 import { patchNextConfig } from './nextjs-config-patcher';
 import { redact } from '@/services/deployment/failure-reason';
@@ -170,7 +171,10 @@ export class DockerService {
     }
 
     // Write .dockerignore to keep .env files and .git out of the image
-    await this.writeDockerignore(contextPath, django ? [DJANGO_SETTINGS_FILE, DJANGO_WSGI_FILE] : []);
+    await this.writeDockerignore(contextPath, [
+      ...(project.type === 'WORDPRESS' ? [WORDPRESS_CONFIG_FILE] : []),
+      ...(django ? [DJANGO_SETTINGS_FILE, DJANGO_WSGI_FILE] : []),
+    ]);
 
     // Patch Next.js config to skip lint/type errors during build;
     // also inject output: 'export' for static builds so the out/ dir is generated
@@ -182,7 +186,7 @@ export class DockerService {
     const { BUILD_MEMORY_MB, BUILD_CPUS } = getConfig();
     const buildMemory = BUILD_MEMORY_MB * 1024 * 1024;
     const stream = await this.docker.buildImage(
-      { context: contextPath, src: ['.'] },
+      await packBuildContext(contextPath),
       {
         t: imageName,
         // Lets removeSupersededImages find this project's images once a
