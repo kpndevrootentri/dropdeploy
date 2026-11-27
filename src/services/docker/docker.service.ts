@@ -146,8 +146,8 @@ export class DockerService {
    * Context path must contain cloned repo files.
    * buildArgs are passed as Docker build args (used for NEXT_PUBLIC_* vars).
    * With `useRepo` the repository's own Dockerfile is built as it is (the
-   * caller has scanned it), and the image is labelled so startContainer
-   * applies the repo-image rules.
+   * caller has scanned it and checked its base images), and the image is
+   * labelled so startContainer applies the repo-image rules.
    */
   async buildImage(
     project: Project,
@@ -271,6 +271,34 @@ export class DockerService {
     }
 
     return imageName;
+  }
+
+  /**
+   * Pulls the base images of a repository's Dockerfile (see baseImages) and
+   * refuses one with ONBUILD triggers, which would run inside the build. They
+   * are pinned by digest, so the build's own pull gets these same images.
+   */
+  async checkBaseImages(images: string[], signal?: AbortSignal): Promise<void> {
+    for (const image of new Set(images)) {
+      // The daemon ignores a tag written next to the digest, so look the image up without it.
+      const ref = image.replace(/:\w[\w.-]*(?=@)/, '');
+      try {
+        const stream = await this.docker.pull(ref, { abortSignal: signal });
+        await new Promise<void>((resolve, reject) => {
+          this.docker.modem.followProgress(stream, (err: Error | null, output: Array<{ error?: string }>) => {
+            const failed = err?.message ?? output?.find((o) => o.error)?.error;
+            if (failed) reject(new Error(failed));
+            else resolve();
+          });
+        });
+      } catch (err) {
+        throw new Error(`Could not pull the base image ${image}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      const { Config } = await this.docker.getImage(ref).inspect();
+      if (Config?.OnBuild?.length) {
+        throw new Error(`The base image ${image} has ONBUILD instructions, which Entrify does not allow. Use an image without them.`);
+      }
+    }
   }
 
   /** Whether the image was built from a repository's own Dockerfile; false when it is gone. */

@@ -24,7 +24,7 @@ jest.mock('@/lib/docker-ops', () => ({ dockerOps: {}, containerNameFor: (slug: s
 
 // Required, not imported: the env above must be set before the services read their config.
 /* eslint-disable @typescript-eslint/no-require-imports */
-const { forbiddenInstruction, exposedPort, REPO_IMAGE_MAX_BYTES } = require('@/services/docker/repo-dockerfile');
+const { forbiddenInstruction, baseImages, exposedPort, REPO_IMAGE_MAX_BYTES } = require('@/services/docker/repo-dockerfile');
 const { DockerService } = require('@/services/docker/docker.service');
 const { DeploymentService } = require('@/services/deployment/deployment.service');
 const { AdminService } = require('@/services/admin/admin.service');
@@ -50,6 +50,16 @@ describe('forbiddenInstruction', () => {
     // Docker joins a continuation as is, so the keyword can be split across lines.
     ['FROM alpine\nAD\\\nD https://example.com/x /x', 'ADD'],
     ['FROM alpine\nADD \\\n  https://example.com/x /x \\', 'ADD'],
+    // Docker trims with Go's spaces (U+0085 is one, U+FEFF is not) and lowercases with Go's rules.
+    ['FROM alpine\n\u0085ADD https://example.com/x /x', 'ADD'],
+    ['FROM alpine\nONBU\u0130LD ADD https://example.com/x /x', 'ONBU\u0130LD'],
+    ['FROM alpine\nRUN echo \\\n\uFEFF\nADD https://example.com/x /x', 'ADD'],
+    // A lone `\` starts an instruction whose next line keeps its indent.
+    ['FROM alpine\n\\\n ADD https://example.com/x /x', 'ADD'],
+    ['FROM alpine\n  \\\n\tONBUILD RUN id', 'ONBUILD'],
+    // Docker reads a heredoc's lines as its body; a `#EOF` terminator would otherwise hide the ADD after it.
+    ['FROM alpine\nRUN <<"#EOF"\necho \\\n#EOF\nADD https://example.com/x /x', 'RUN <<'],
+    ['FROM alpine\ncopy <<EOF /x\nhi\nEOF', 'COPY <<'],
   ])('refuses %j', (dockerfile, hit) => {
     expect(forbiddenInstruction(dockerfile)).toBe(hit);
   });
@@ -61,6 +71,41 @@ describe('forbiddenInstruction', () => {
       'FROM node:22-alpine AS build', 'WORKDIR /app', 'COPY package*.json ./', 'RUN npm ci', 'COPY . .', 'RUN npm run build',
       'FROM nginxinc/nginx-unprivileged:alpine', 'COPY --from=build /app/dist /usr/share/nginx/html', 'EXPOSE 8080',
     ].join('\r\n'))).toBeNull();
+    expect(forbiddenInstruction('\uFEFFFROM alpine\nRUN true')).toBeNull();
+  });
+});
+
+describe('baseImages', () => {
+  const DIGEST = `sha256:${'a'.repeat(64)}`;
+
+  it('lists each pinned image, leaving out scratch and earlier stages', () => {
+    expect(baseImages([
+      `FROM node:22-alpine@${DIGEST} AS build`, 'RUN npm ci', `from nginxinc/nginx-unprivileged@${DIGEST}`,
+      'COPY --from=build /app/dist /usr/share/nginx/html', 'FROM BUILD', 'FROM scratch',
+    ].join('\n'))).toEqual([`node:22-alpine@${DIGEST}`, `nginxinc/nginx-unprivileged@${DIGEST}`]);
+  });
+
+  it.each([
+    ['FROM node:22-alpine', 'Pin each base image by digest'],
+    ['FROM build', 'Pin each base image by digest'],
+    [`ARG BASE=node@${DIGEST}\nFROM $BASE`, 'without variables'],
+    [`FROM --platform=linux/amd64 node@${DIGEST}`, 'without variables or --platform'],
+    [`FROM "node@${DIGEST}"`, 'without variables'],
+    // A build pull must never re-tag one of the platform's own images.
+    [`FROM dropdeploy/other@${DIGEST}`, "not one of Entrify's own images"],
+    [`FROM node@${DIGEST}\nCOPY --from=dropdeploy/other:d-1 /app /app`, "not one of Entrify's own images"],
+    [`FROM node@${DIGEST}\nCOPY --chown=1 --from=docker.io/dropdeploy/other /app /app`, "not one of Entrify's own images"],
+    [`FROM node@${DIGEST}\nARG IMG=dropdeploy/other\nCOPY --from=$IMG /app /app`, 'without variables'],
+    [`FROM node@${DIGEST}\nCOPY --from="dropdeploy/other" /app /app`, 'without quotes'],
+  ])('refuses %j', (dockerfile, message) => {
+    expect(() => baseImages(dockerfile)).toThrow(message);
+  });
+
+  it('allows COPY --from an earlier stage, a stage index or another image', () => {
+    expect(baseImages([
+      `FROM node@${DIGEST} AS build`, `FROM nginx@${DIGEST}`,
+      'COPY --from=BUILD /a /a', 'COPY --from=0 /a /a', 'COPY --chown=101 --from=busybox:1.36 /bin/sh /sh',
+    ].join('\n'))).toEqual([`node@${DIGEST}`, `nginx@${DIGEST}`]);
   });
 });
 
@@ -115,6 +160,28 @@ describe('DockerService.buildImage', () => {
   });
 });
 
+describe('DockerService.checkBaseImages', () => {
+  const DIGEST = `sha256:${'b'.repeat(64)}`;
+  const check = (Config: Record<string, unknown>) => {
+    const { service, docker } = stubbedDocker({ Config });
+    const pull = jest.spyOn(docker, 'pull').mockResolvedValue({});
+    const getImage = docker.getImage as jest.Mock;
+    return { run: () => service.checkBaseImages([`node:22-alpine@${DIGEST}`, `node:22-alpine@${DIGEST}`]), pull, getImage };
+  };
+
+  it('pulls each base image once, by digest, and passes one without ONBUILD', async () => {
+    const { run, pull, getImage } = check({ OnBuild: null });
+    await run();
+    expect(pull.mock.calls).toEqual([[`node@${DIGEST}`, { abortSignal: undefined }]]);
+    expect(getImage).toHaveBeenCalledWith(`node@${DIGEST}`);
+  });
+
+  it('refuses a base image with ONBUILD triggers, which would run inside the build', async () => {
+    const { run } = check({ OnBuild: ['ADD http://127.0.0.1:4001/ /x'] });
+    await expect(run()).rejects.toThrow(`The base image node:22-alpine@${DIGEST} has ONBUILD instructions`);
+  });
+});
+
 describe('DockerService.startContainer', () => {
   const start = async (Config: Record<string, unknown>) => {
     const service = new DockerService({ socketPath: '/nonexistent.sock' });
@@ -165,6 +232,7 @@ function deploy(workDir: string, project: Record<string, unknown>, rollbackOfId:
     findWithRetainedImages: jest.fn(async () => []),
   };
   const docker = {
+    checkBaseImages: jest.fn(async () => undefined),
     isRepoImage: jest.fn(async () => true),
     buildImage: jest.fn(async () => 'dropdeploy/shop:latest'),
     tagForDeployment: jest.fn(async () => 'dropdeploy/shop:d-dep-1'),
@@ -183,11 +251,13 @@ function deploy(workDir: string, project: Record<string, unknown>, rollbackOfId:
 }
 
 describe('DeploymentService.buildAndDeploy with a repo Dockerfile', () => {
+  const PINNED = `FROM alpine@sha256:${'c'.repeat(64)}\n`;
   const buildOpts = (docker: { buildImage: jest.Mock }) => (docker.buildImage.mock.calls[0] as unknown[])[2] as { useRepo: boolean };
 
   it('builds from it when an admin allowed it, and runs a container even for a static-hosted type', async () => {
-    const { run, row, docker } = deploy(repoDir({ Dockerfile: 'FROM alpine\nEXPOSE 80\n' }), { type: 'REACT', useStaticHosting: true, allowRepoDockerfile: true });
+    const { run, row, docker } = deploy(repoDir({ Dockerfile: `${PINNED}EXPOSE 80\n` }), { type: 'REACT', useStaticHosting: true, allowRepoDockerfile: true });
     await expect(run()).resolves.toMatchObject({ servingMethod: 'CONTAINER' });
+    expect(docker.checkBaseImages).toHaveBeenCalledWith([`alpine@sha256:${'c'.repeat(64)}`], undefined);
     expect(buildOpts(docker).useRepo).toBe(true);
     expect(docker.extractStaticFiles).not.toHaveBeenCalled();
     expect(row.buildLog).toContain("▶ Using the repository's Dockerfile");
@@ -197,7 +267,17 @@ describe('DeploymentService.buildAndDeploy with a repo Dockerfile', () => {
     const { run, row, docker } = deploy(repoDir({ Dockerfile: 'FROM alpine\n' }), { allowRepoDockerfile: false });
     await run();
     expect(buildOpts(docker).useRepo).toBe(false);
+    expect(docker.checkBaseImages).not.toHaveBeenCalled();
     expect(row.buildLog).toContain('the one in your repository is not used. An admin can switch');
+  });
+
+  it('fails at SCANNING on an unpinned base image, before pulling or building', async () => {
+    const { run, row, docker } = deploy(repoDir({ Dockerfile: 'FROM alpine\n' }), { allowRepoDockerfile: true });
+    await expect(run()).rejects.toThrow();
+    expect(row).toMatchObject({ status: 'FAILED', buildStep: 'SCANNING', failureReason: expect.stringContaining('Pin each base image by digest') });
+    expect(row.buildLog).toContain('✗ Pin each base image by digest');
+    expect(docker.checkBaseImages).not.toHaveBeenCalled();
+    expect(docker.buildImage).not.toHaveBeenCalled();
   });
 
   it("rolls back to a repo-built image as a container, whatever the project's static hosting says", async () => {

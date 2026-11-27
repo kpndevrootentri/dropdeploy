@@ -156,14 +156,19 @@ docker run --rm -p 8080:<CONTAINER_PORT> my-app`}</Pre>
           </li>
           <li><Code>HOME</Code> is <Code>/</Code>, which that user cannot write to. Add <Code>ENV HOME=/tmp</Code> for npm and similar tools.</li>
           <li>Images that must start as root, such as the stock <Code>nginx</Code> and <Code>httpd</Code> images, will not start. Use <Code>nginxinc/nginx-unprivileged</Code> (port 8080) instead.</li>
-          <li><Code>ADD</Code>, <Code>ONBUILD</Code> and the <Code># escape=</Code> directive are refused. Use <Code>COPY</Code>, and <Code>RUN curl</Code> or <Code>wget</Code> for downloads.</li>
-          <li>BuildKit-only syntax fails: <Code>RUN --mount</Code>, heredocs, <Code>COPY --chmod</Code> and <Code>--link</Code>.</li>
+          <li><Code>ADD</Code>, <Code>ONBUILD</Code>, heredocs (<Code>&lt;&lt;</Code> in <Code>RUN</Code> or <Code>COPY</Code>) and the <Code># escape=</Code> directive are refused. Use <Code>COPY</Code>, and <Code>RUN curl</Code> or <Code>wget</Code> for downloads.</li>
+          <li>
+            Pin every base image by digest: <Code>FROM node:22-alpine@sha256:&lt;digest&gt;</Code>. <Code>docker pull node:22-alpine</Code> prints
+            the digest. A <Code>FROM</Code> line cannot use variables or <Code>--platform</Code>, and a base image with <Code>ONBUILD</Code> instructions is refused.
+            <Code>COPY --from</Code> takes a stage or an image, without variables or quotes.
+          </li>
+          <li>BuildKit-only syntax fails: <Code>RUN --mount</Code>, <Code>COPY --chmod</Code> and <Code>--link</Code>.</li>
           <li>Base images are always pulled from their registry. Any public image works.</li>
           <li>Only your framework&apos;s public variables (<Code>NEXT_PUBLIC_</Code>, <Code>VITE_</Code> and the like) are passed as build args; declare them with <Code>ARG</Code>. All other variables reach only the running app.</li>
           <li>The site always runs as a container, so static hosting does not apply.</li>
           <li>Limits: a 2 GB image, a 15-minute build with 3 GB of memory and 2 CPUs, and 512 MB of memory at runtime.</li>
         </ul>
-        <Pre>{`FROM node:22-alpine
+        <Pre>{`FROM node:22-alpine@sha256:<digest>
 WORKDIR /app
 ENV HOME=/tmp
 COPY package*.json ./

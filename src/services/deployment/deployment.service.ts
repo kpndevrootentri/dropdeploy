@@ -15,7 +15,7 @@ import { getRedisConnection } from '@/lib/redis';
 import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
 import { scanPackages } from './package-scanner';
-import { forbiddenInstruction } from '@/services/docker/repo-dockerfile';
+import { baseImages, forbiddenInstruction } from '@/services/docker/repo-dockerfile';
 import { readRepoFile, repoFileExists } from '@/lib/repo-fs';
 import { failureReason, redact } from './failure-reason';
 import { detectFromFiles } from '@/lib/type-detector';
@@ -459,11 +459,16 @@ export class DeploymentService {
         const hasDockerfile = await repoFileExists(dockerfilePath);
         useRepoDockerfile = hasDockerfile && project.allowRepoDockerfile;
         if (useRepoDockerfile) {
-          const refused = forbiddenInstruction((await readRepoFile(dockerfilePath)) ?? '');
-          if (refused) {
-            const reason = `Your Dockerfile uses ${refused}, which Entrify does not allow (ADD, ONBUILD and the escape directive). Use COPY, and RUN curl for downloads.`;
-            onLog(`✗ ${reason}\n`);
-            throw new Error(reason);
+          const dockerfile = (await readRepoFile(dockerfilePath)) ?? '';
+          try {
+            const refused = forbiddenInstruction(dockerfile);
+            if (refused) {
+              throw new Error(`Your Dockerfile uses ${refused}, which Entrify does not allow (ADD, ONBUILD, heredocs, the escape directive and non-ASCII instructions). Use COPY, and RUN curl for downloads.`);
+            }
+            await this.docker.checkBaseImages(baseImages(dockerfile), signal);
+          } catch (err) {
+            onLog(`✗ ${err instanceof Error ? err.message : String(err)}\n`);
+            throw err;
           }
           addMarker("Using the repository's Dockerfile");
         } else if (hasDockerfile) {
