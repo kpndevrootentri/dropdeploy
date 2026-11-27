@@ -25,11 +25,13 @@ const ESCAPE_DIRECTIVE = new RegExp(`^[${SPACE}\\uFEFF]*#\\s*escape\\s*=`, 'im')
 /**
  * A Dockerfile's instructions as [keyword, arguments], read the way Docker's
  * parser reads them: a BOM at the start is dropped, a trailing `\` joins the
- * next line as is (no space, its indent kept), blank and comment lines are
- * skipped, and the keyword ends at the first ASCII space or tab.
+ * next line as is (no space, its indent kept) unless another `\` comes right
+ * before it, blank and comment lines are skipped, and the keyword ends at the
+ * first ASCII space or tab.
  */
 function instructions(text: string): Array<[string, string]> {
-  const CONTINUATION = /\\[ \t]*$/;
+  // Docker's lineContinuationRegex: `a\\` ends the instruction, `a\` and a lone `\` continue it.
+  const CONTINUATION = /(?:^|[^\\])\\[ \t]*$/;
   const found: Array<[string, string]> = [];
   const add = (instruction: string) => {
     const [, keyword, rest] = /^([^\t\v\f\r ]*)[\t\v\f\r ]*([\s\S]*)$/.exec(instruction.replace(OUTER_SPACE, ''))!;
@@ -41,8 +43,9 @@ function instructions(text: string): Array<[string, string]> {
     const stripped = line.replace(LEADING_SPACE, '');
     if (stripped === '' || stripped.startsWith('#')) continue;
     const part: string = instruction === null ? stripped : line;
-    instruction = (instruction ?? '') + part.replace(CONTINUATION, '');
-    if (CONTINUATION.test(part)) continue;
+    const continues = CONTINUATION.test(part);
+    instruction = (instruction ?? '') + (continues ? part.replace(/\\[ \t]*$/, '') : part);
+    if (continues) continue;
     add(instruction);
     instruction = null;
   }
@@ -58,8 +61,11 @@ function instructions(text: string): Array<[string, string]> {
  * body lines Docker does not read as instructions) are refused so the line
  * joining above always holds, and a keyword with a non-ASCII character because
  * Docker lowercases it with Go's rules (to Docker, ONBU\u0130LD is ONBUILD).
+ * Invalid UTF-8 (read here as U+FFFD) is refused because Docker reads some
+ * stray bytes as spaces.
  */
 export function forbiddenInstruction(text: string): string | null {
+  if (text.includes('\uFFFD')) return 'invalid UTF-8';
   if (ESCAPE_DIRECTIVE.test(text)) return '# escape=';
   for (const [keyword, rest] of instructions(text)) {
     if (/[^\x21-\x7e]/.test(keyword)) return keyword;
@@ -79,7 +85,7 @@ const PLATFORM_IMAGE = /^(?:(?:index\.)?docker\.io\/)?dropdeploy\//i;
  * ONBUILD triggers before the build is the one the build pulls; throws with
  * the rule otherwise. Neither FROM nor COPY --from may name the platform's own
  * images. Run forbiddenInstruction first: it refuses the non-ASCII keywords
- * this reads past.
+ * and invalid UTF-8 this reads past.
  */
 export function baseImages(text: string): string[] {
   const stages = new Set(['scratch']);

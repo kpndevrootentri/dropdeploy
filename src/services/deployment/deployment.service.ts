@@ -463,7 +463,7 @@ export class DeploymentService {
           try {
             const refused = forbiddenInstruction(dockerfile);
             if (refused) {
-              throw new Error(`Your Dockerfile uses ${refused}, which Entrify does not allow (ADD, ONBUILD, heredocs, the escape directive and non-ASCII instructions). Use COPY, and RUN curl for downloads.`);
+              throw new Error(`Your Dockerfile uses ${refused}, which Entrify does not allow (ADD, ONBUILD, heredocs, the escape directive, non-ASCII instructions and invalid UTF-8). Use COPY, and RUN curl for downloads.`);
             }
             await this.docker.checkBaseImages(baseImages(dockerfile), signal);
           } catch (err) {

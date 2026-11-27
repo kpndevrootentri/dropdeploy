@@ -57,6 +57,11 @@ describe('forbiddenInstruction', () => {
     // A lone `\` starts an instruction whose next line keeps its indent.
     ['FROM alpine\n\\\n ADD https://example.com/x /x', 'ADD'],
     ['FROM alpine\n  \\\n\tONBUILD RUN id', 'ONBUILD'],
+    // A `\` after another `\` ends the instruction, on its first line or a continuation line.
+    ['FROM alpine\nRUN echo a\\\\\nADD https://example.com/x /x', 'ADD'],
+    ['FROM alpine\nRUN a \\\n  b\\\\\nADD https://example.com/x /x', 'ADD'],
+    // readRepoFile decodes a stray byte as U+FFFD; Docker reads 0x85 before a flag as a space.
+    [Buffer.from('FROM alpine\nCOPY \x85--from=dropdeploy/x /a /a', 'latin1').toString('utf8'), 'invalid UTF-8'],
     // Docker reads a heredoc's lines as its body; a `#EOF` terminator would otherwise hide the ADD after it.
     ['FROM alpine\nRUN <<"#EOF"\necho \\\n#EOF\nADD https://example.com/x /x', 'RUN <<'],
     ['FROM alpine\ncopy <<EOF /x\nhi\nEOF', 'COPY <<'],
@@ -72,6 +77,7 @@ describe('forbiddenInstruction', () => {
       'FROM nginxinc/nginx-unprivileged:alpine', 'COPY --from=build /app/dist /usr/share/nginx/html', 'EXPOSE 8080',
     ].join('\r\n'))).toBeNull();
     expect(forbiddenInstruction('\uFEFFFROM alpine\nRUN true')).toBeNull();
+    expect(forbiddenInstruction('FROM alpine\nRUN a\\\\x\\\nADD https://example.com/x /x')).toBeNull();
   });
 });
 
@@ -91,6 +97,7 @@ describe('baseImages', () => {
     [`ARG BASE=node@${DIGEST}\nFROM $BASE`, 'without variables'],
     [`FROM --platform=linux/amd64 node@${DIGEST}`, 'without variables or --platform'],
     [`FROM "node@${DIGEST}"`, 'without variables'],
+    [`FROM node@${DIGEST}\nRUN a\\\\\nFROM evil/x`, 'Pin each base image by digest'],
     // A build pull must never re-tag one of the platform's own images.
     [`FROM dropdeploy/other@${DIGEST}`, "not one of Entrify's own images"],
     [`FROM node@${DIGEST}\nCOPY --from=dropdeploy/other:d-1 /app /app`, "not one of Entrify's own images"],
