@@ -10,12 +10,18 @@ export interface CreateAuditLogData {
 
 export interface IAuditLogRepository {
   create(data: CreateAuditLogData): Promise<AuditLog>;
+  /** Writes every row in one insert. */
+  createMany(rows: CreateAuditLogData[]): Promise<void>;
   findByProjectId(projectId: string, limit?: number): Promise<AuditLog[]>;
 }
 
 export class AuditLogRepository implements IAuditLogRepository {
   async create(data: CreateAuditLogData): Promise<AuditLog> {
     return prisma.auditLog.create({ data });
+  }
+
+  async createMany(rows: CreateAuditLogData[]): Promise<void> {
+    await prisma.auditLog.createMany({ data: rows });
   }
 
   async findByProjectId(projectId: string, limit = 50): Promise<AuditLog[]> {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,15 +18,19 @@ import {
   AlertTriangle,
   Lock,
   Globe,
+  FileUp,
 } from 'lucide-react';
+
+// Loaded on first open: its .env check runs the server's zod schemas, which most visits never need.
+const ImportEnvFileForm = dynamic(() => import('./import-env-file-form').then((m) => m.ImportEnvFileForm));
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type EnvEnvironment = 'ALL' | 'DEVELOPMENT' | 'STAGING' | 'PRODUCTION';
+export type EnvEnvironment = 'ALL' | 'DEVELOPMENT' | 'STAGING' | 'PRODUCTION';
 
-interface EnvVar {
+export interface EnvVar {
   id: string;
   key: string;
   environment: EnvEnvironment;
@@ -39,6 +44,32 @@ const ENV_OPTIONS: { value: EnvEnvironment; label: string }[] = [
   { value: 'STAGING', label: 'Staging' },
   { value: 'PRODUCTION', label: 'Production' },
 ];
+
+export function EnvironmentSelect({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: EnvEnvironment;
+  onChange: (value: EnvEnvironment) => void;
+}): React.ReactElement {
+  return (
+    <select
+      id={id}
+      value={value}
+      onChange={(e) => onChange(e.target.value as EnvEnvironment)}
+      className={cn(
+        'flex h-8 w-full max-w-[200px] rounded-md border border-input bg-background px-3 text-sm',
+        'ring-offset-background focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+      )}
+    >
+      {ENV_OPTIONS.map((opt) => (
+        <option key={opt.value} value={opt.value}>{opt.label}</option>
+      ))}
+    </select>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // EnvVarRow
@@ -309,19 +340,7 @@ function AddEnvVarForm({
 
           <div className="space-y-1.5">
             <Label htmlFor="env-environment" className="text-xs">Environment</Label>
-            <select
-              id="env-environment"
-              value={environment}
-              onChange={(e) => setEnvironment(e.target.value as EnvEnvironment)}
-              className={cn(
-                'flex h-8 w-full max-w-[200px] rounded-md border border-input bg-background px-3 text-sm',
-                'ring-offset-background focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-              )}
-            >
-              {ENV_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
+            <EnvironmentSelect id="env-environment" value={environment} onChange={setEnvironment} />
           </div>
 
           {isPublic && (
@@ -385,6 +404,9 @@ export function EnvVarsPanel({
   const [envVars, setEnvVars] = useState<EnvVar[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  // The import preview marks overwrites from this list, so it waits until the list is loaded.
+  const listReady = !loading && !error;
 
   const fetchEnvVars = useCallback(() => {
     setError(null);
@@ -409,7 +431,7 @@ export function EnvVarsPanel({
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base">Environment Variables</CardTitle>
               <CardDescription>
@@ -417,9 +439,23 @@ export function EnvVarsPanel({
                 baked into Docker images.
               </CardDescription>
             </div>
+            {!importing && listReady && (
+              <Button variant="outline" size="sm" onClick={() => setImporting(true)} className="gap-1.5 shrink-0">
+                <FileUp className="h-3.5 w-3.5" />
+                Import .env
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
+          {importing && (
+            <ImportEnvFileForm
+              projectId={projectId}
+              envVars={listReady ? envVars : null}
+              onSaved={fetchEnvVars}
+              onClose={() => setImporting(false)}
+            />
+          )}
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />

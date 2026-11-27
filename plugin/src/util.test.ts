@@ -71,7 +71,12 @@ test('parseDotenv reads keys and values the way .env files are written', () => {
     'EMPTY=',
     'URL=postgres://u:p@h/db?x=1',
     'not a pair',
-  ].join('\n');
+    'MY-KEY=skipped',
+    'QUOTED="x" # comment',
+    'ESCAPED="say \\"hi\\""',
+    'MULTI="line one',
+    'line two"',
+  ].join('\r\n');
   assert.deepEqual(parseDotenv(text), [
     ['PLAIN', 'value'],
     ['EXPORTED', '1'],
@@ -82,7 +87,11 @@ test('parseDotenv reads keys and values the way .env files are written', () => {
     ['TRAILING', 'x'],
     ['EMPTY', ''],
     ['URL', 'postgres://u:p@h/db?x=1'],
+    ['QUOTED', 'x'],
+    ['ESCAPED', 'say "hi"'],
+    ['MULTI', 'line one\nline two'],
   ]);
+  assert.throws(() => parseDotenv('A="never closed\nB=1'), /never closed/);
 });
 
 test('projectNameFromRepo takes the repo name and keeps it within 3-50 characters', () => {

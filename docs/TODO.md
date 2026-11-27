@@ -86,7 +86,7 @@ graph TD
 
 ### Environment Variables
 
-- [ ] Support `.env` file upload or paste (the panel adds one variable at a time)
+- [x] Support `.env` file upload or paste (the panel adds one variable at a time). The panel imports a pasted or picked .env file with a preview, saved in one transaction by `POST /api/projects/:id/env-vars/bulk`. A project holds at most 500 variables
 
 ### Rate Limiting & Resource Quotas
 
