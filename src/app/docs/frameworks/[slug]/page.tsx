@@ -561,7 +561,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000`,
     subtitle: 'Flask applications served by Gunicorn.',
     port: 5000,
     requires: [
-      { label: 'requirements.txt with flask', detail: 'Entrify also installs gunicorn automatically alongside your requirements.' },
+      { label: 'requirements.txt with flask', detail: 'Entrify also installs gunicorn (21 or newer) after your requirements.' },
       { label: 'app.py in the repo root with app = Flask(__name__)', detail: 'Gunicorn starts with app:app — module is app.py, instance is app.' },
     ],
     demoApp: {
@@ -598,7 +598,7 @@ def health():
       ],
       note: 'Two files — requirements.txt and app.py. Gunicorn is installed automatically by Entrify.',
     },
-    buildCmd: `pip install -r requirements.txt gunicorn
+    buildCmd: `pip install -r requirements.txt && pip install 'gunicorn>=21'
 gunicorn app:app --bind 0.0.0.0:5000 --workers 2`,
     envVars: [
       { name: 'SECRET_KEY', required: true, desc: 'Required for sessions and flash messages.' },

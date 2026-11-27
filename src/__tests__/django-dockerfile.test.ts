@@ -111,6 +111,15 @@ describe('Django Dockerfile', () => {
   });
 });
 
+describe('Flask Dockerfile', () => {
+  it('installs gunicorn 21 or newer in its own pip run', () => {
+    // A requirements.txt pin of gunicorn 20.x would satisfy a bare `gunicorn`, and 20.x crashes on python:3.13-slim.
+    expect(DOCKERFILE_TEMPLATES.FLASK).toContain(
+      "RUN pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir 'gunicorn>=21'\n",
+    );
+  });
+});
+
 describe('DockerService.buildImage for Django', () => {
   it('writes the wrapper modules and re-includes them after the repo .dockerignore rules', async () => {
     const repo = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'django-'));

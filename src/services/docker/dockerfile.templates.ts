@@ -282,13 +282,14 @@ EXPOSE 8000
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 `.trim(),
 
+  // gunicorn's own pip run keeps a hash-pinned requirements.txt from demanding its hash; >=21 replaces a 20.x pin, which crashes on python:3.13-slim (no pkg_resources).
   FLASK: `
 FROM python:3.13-slim
 WORKDIR /app
 RUN useradd --system --uid 10001 --home-dir /app app && chown app /app
 ${dataDir('app')}
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt gunicorn
+RUN pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir 'gunicorn>=21'
 COPY --chown=app . .
 USER app
 EXPOSE 5000

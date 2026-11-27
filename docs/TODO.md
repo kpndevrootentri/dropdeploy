@@ -213,7 +213,7 @@ Found on 2026-11-26 by checking `main` and the production host.
 ### Deploys and running sites
 
 - [x] Run Django on gunicorn instead of `manage.py runserver` (Flask already uses gunicorn). Static files are collected at build and again at every container start, and served by WhiteNoise; a project whose manage.py doesn't name a settings module importable from the repo root, or changes sys.path, keeps runserver.
-- [ ] Flask: install `'gunicorn>=21'` like the Django template. A requirements.txt pinning gunicorn 20.x satisfies the current `gunicorn` extra, and 20.x crashes on python:3.13-slim (no `pkg_resources`).
+- [x] Flask: install `'gunicorn>=21'` like the Django template. A requirements.txt pinning gunicorn 20.x satisfies the current `gunicorn` extra, and 20.x crashes on python:3.13-slim (no `pkg_resources`).
 - [x] Show students and mentors why a build failed (`buildStep`, or a short reason field). The step it stopped at plus a capped, env-redacted `failureReason`, on the project page, the mentor batch page and admin Projects.
 - [x] Make redeploy-all skip sites an admin stopped. `stoppedAt` now exists; see the `ponytail:` comment in `redeploy-plan.ts`. (Done: the preview lists them as "Stopped by an admin; restart it first".)
 - [ ] WebSocket support through the proxy (it strips `Upgrade`)
