@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 import type { WorkerHeartbeat } from '@/lib/worker-health';
@@ -128,6 +129,10 @@ export default function AdminSystemPage(): React.ReactElement {
                 ) : (
                   <p className="text-xs text-destructive">Could not reach Redis to read the queue.</p>
                 )}
+                {/* Failed builds are kept as FAILED deployments, with the redacted reason and log. */}
+                <Link href="/dashboard/admin/projects?status=failed" className="mt-3 inline-block text-xs underline-offset-4 hover:underline">
+                  Review failed deploys →
+                </Link>
               </CardContent>
             </Card>
           </div>

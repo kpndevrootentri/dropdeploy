@@ -20,6 +20,8 @@ export function getDeploymentQueue(): Queue<DeploymentJob> {
         // one would burn 3x the timeout). Users retry explicitly instead.
         attempts: 1,
         removeOnComplete: { count: 100 },
+        // The Deployment row keeps the redacted reason and log; BullMQ's copy is raw build output.
+        removeOnFail: { count: 100 },
       },
     });
   }

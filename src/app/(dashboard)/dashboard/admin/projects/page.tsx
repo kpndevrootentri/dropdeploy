@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { Suspense, useEffect, useState, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { getProjectUrl } from '@/components/ui/framework-logo';
 import { Button } from '@/components/ui/button';
@@ -440,8 +441,11 @@ function TransferDialog({
   );
 }
 
-export default function AdminProjectsPage(): React.ReactElement {
+function AdminProjects(): React.ReactElement {
+  const router = useRouter();
   const [projects, setProjects] = useState<AdminProject[]>([]);
+  // The URL is the filter (the System tab links here with ?status=failed), so reloads, links and the tab agree.
+  const failedOnly = useSearchParams().get('status') === 'failed';
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
@@ -508,16 +512,23 @@ export default function AdminProjectsPage(): React.ReactElement {
 
   if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
 
+  const failed = projects.filter((p) => p.deployments[0]?.status === 'FAILED');
+  // Select-all and the bulk bar use this too, so a bulk action never reaches rows the filter hides.
+  const visible = failedOnly ? failed : projects;
+
   return (
     <div className="space-y-4">
       <ProjectBulkBar
         // Only rows still listed: a project deleted or gone since it was ticked drops out.
-        selected={projects.filter((p) => selected.has(p.id)).map((p) => p.id)}
+        selected={visible.filter((p) => selected.has(p.id)).map((p) => p.id)}
         names={new Map(projects.map((p) => [p.id, p.name]))}
         onChange={setSelected}
         onDone={() => void load()}
       />
       <div className="flex justify-end gap-2">
+        <Button variant={failedOnly ? 'default' : 'outline'} aria-pressed={failedOnly} onClick={() => router.replace(failedOnly ? '/dashboard/admin/projects' : '/dashboard/admin/projects?status=failed', { scroll: false })}>
+          Failed ({failed.length})
+        </Button>
         <Button variant="outline" asChild>
           <a href="/api/admin/projects/export" download>Export CSV</a>
         </Button>
@@ -530,7 +541,7 @@ export default function AdminProjectsPage(): React.ReactElement {
           <thead>
             <tr className="border-b text-left text-muted-foreground">
               <th className="pb-2 pr-2 w-6">
-                <SelectAllCheckbox ids={projects.map((p) => p.id)} selected={selected} onChange={setSelected} />
+                <SelectAllCheckbox ids={visible.map((p) => p.id)} selected={selected} onChange={setSelected} />
               </th>
               <th className="pb-2 w-6" />
               <th className="pb-2 pr-4">Name</th>
@@ -542,7 +553,7 @@ export default function AdminProjectsPage(): React.ReactElement {
             </tr>
           </thead>
           <tbody>
-            {projects.map((p) => {
+            {visible.map((p) => {
               const latestDeployment = p.deployments[0];
               const isActing = acting?.startsWith(p.id + ':');
               const isStopping   = acting === `${p.id}:stop`;
@@ -712,10 +723,10 @@ export default function AdminProjectsPage(): React.ReactElement {
                 </React.Fragment>
               );
             })}
-            {projects.length === 0 && !error && (
+            {visible.length === 0 && !error && (
               <tr>
                 <td colSpan={8} className="py-8 text-center text-muted-foreground">
-                  No projects found.
+                  {failedOnly ? 'No project has a failed latest deploy.' : 'No projects found.'}
                 </td>
               </tr>
             )}
@@ -731,5 +742,13 @@ export default function AdminProjectsPage(): React.ReactElement {
       <ContainerLogsDialog project={logsTarget} onClose={() => setLogsTarget(null)} />
       <ProjectDetailsDrawer key={detailsFor?.id} project={detailsFor} onClose={() => setDetailsFor(null)} />
     </div>
+  );
+}
+
+export default function AdminProjectsPage(): React.ReactElement {
+  return (
+    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading…</p>}>
+      <AdminProjects />
+    </Suspense>
   );
 }

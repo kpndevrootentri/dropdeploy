@@ -27,6 +27,14 @@ export interface RedeploySkip {
   reason: string;
 }
 
+/** Why a project cannot be rebuilt from source, or null when it can. */
+export function unbuildableReason(project: Pick<RedeployCandidate, 'source' | 'githubUrl'>): string | null {
+  // The worker marks a deploy with no repository FAILED; an upload is redeployed by uploading again.
+  if (project.source === 'UPLOAD') return 'Upload — nothing to pull; the owner uploads a new version';
+  if (!project.githubUrl) return 'No repository URL';
+  return null;
+}
+
 /**
  * Splits the projects that match the filters into those "redeploy all" will
  * rebuild and those it will leave alone, with the reason. Pure, so the rules
@@ -44,15 +52,13 @@ export function planRedeployAll(
     if (filters.source && project.source !== filters.source) continue;
     if (filters.projectIds && !filters.projectIds.includes(project.id)) continue;
     const reason =
-      // The worker marks a deploy with no repository FAILED; an upload is redeployed by uploading again.
-      project.source === 'UPLOAD' ? 'Upload — nothing to pull; the owner uploads a new version'
-      : !project.githubUrl ? 'No repository URL'
-      : project.lastStatus === null ? 'Never deployed'
+      unbuildableReason(project)
+      ?? (project.lastStatus === null ? 'Never deployed'
       // A deploy going live starts the container, undoing the stop.
       : project.stoppedAt ? 'Stopped by an admin; restart it first'
       // A new deploy would cancel a queued one (supersede) or wait behind a running one.
       : activeProjectIds.has(project.id) ? 'A deploy is already queued or building'
-      : null;
+      : null);
     if (reason) skipped.push({ project, reason });
     else eligible.push(project);
   }
