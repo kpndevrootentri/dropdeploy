@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/get-session';
 import { projectService } from '@/services/project';
 import { webhookService } from '@/services/webhook';
+import { deploymentService } from '@/services/deployment';
 import { handleApiError } from '@/lib/api-error';
 import { toPublicProject } from '@/lib/public-project';
 import { updateProjectSchema } from '@/validators/project.validator';
@@ -22,7 +23,8 @@ export async function GET(
     const session = await getSession(req);
     const { id } = await params;
     const project = await projectService.getByIdWithDeployments(id, session.userId);
-    return NextResponse.json({ success: true, data: toPublicProject(project) });
+    const previousDeployedCommit = await deploymentService.previousDeployedCommit(id, project.deployments);
+    return NextResponse.json({ success: true, data: { ...toPublicProject(project), previousDeployedCommit } });
   } catch (error) {
     return handleApiError(error);
   }

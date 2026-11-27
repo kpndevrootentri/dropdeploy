@@ -20,6 +20,7 @@ import { AccessListPanel } from '@/components/features/access-list-panel';
 import { AddToBatchCard } from '@/components/features/add-to-batch-card';
 import { DomainsPanel } from '@/components/features/domains-panel';
 import { getLocalIP } from '@/lib/local-ip';
+import { compareUrl } from '@/lib/git-url';
 import {
   ArrowLeft,
   ExternalLink,
@@ -91,6 +92,8 @@ interface ProjectDetail {
   createdAt: string;
   updatedAt: string;
   deployments: Deployment[];
+  /** Commit of the newest successful deployment older than `deployments`. */
+  previousDeployedCommit?: string | null;
 }
 
 type FrameworkType = 'STATIC' | 'NODEJS' | 'NEXTJS' | 'DJANGO' | 'REACT' | 'FASTAPI' | 'FLASK' | 'VUE' | 'SVELTE' | 'WORDPRESS';
@@ -388,6 +391,7 @@ function DeploymentRow({
   isDeployInProgress,
   onRetried,
   source,
+  changesUrl,
 }: {
   deployment: Deployment;
   projectId: string;
@@ -395,6 +399,8 @@ function DeploymentRow({
   isDeployInProgress: boolean;
   onRetried: () => void;
   source?: string;
+  /** Code changes since the previous successful deployment, when there is one. */
+  changesUrl?: string | null;
 }): React.ReactElement {
   const isUpload = source === 'UPLOAD';
   const isInProgress = deployment.status === 'QUEUED' || deployment.status === 'BUILDING';
@@ -546,6 +552,20 @@ function DeploymentRow({
             {!isUpload && deployment.commitHash && (
               <span className="text-xs font-mono text-muted-foreground">
                 &middot; {deployment.commitHash.slice(0, 7)}
+              </span>
+            )}
+            {changesUrl && (
+              <span className="text-xs text-muted-foreground">
+                &middot;{' '}
+                <a
+                  href={changesUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 hover:text-foreground hover:underline"
+                  title="Code changes since the previous successful deployment"
+                >
+                  Compare <ExternalLink className="h-3 w-3" />
+                </a>
               </span>
             )}
           </div>
@@ -1770,6 +1790,8 @@ function DeploymentsPanel({
   const [deploymentTotal, setDeploymentTotal] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  // previousDeployedCommit of the last page loaded through "Load more".
+  const [extraPreviousCommit, setExtraPreviousCommit] = useState<string | null>(null);
 
   const firstDeploymentId = project.deployments[0]?.id;
   const prevFirstDeploymentIdRef = useRef<string | undefined>(firstDeploymentId);
@@ -1782,6 +1804,8 @@ function DeploymentsPanel({
   }, [firstDeploymentId]);
 
   const allDeployments = [...project.deployments, ...extraDeployments];
+  // The newest successful commit older than every loaded row, from the server.
+  const olderDeployedCommit = extraDeployments.length > 0 ? extraPreviousCommit : project.previousDeployedCommit;
   const hasMoreDeployments =
     deploymentTotal !== null
       ? allDeployments.length < deploymentTotal
@@ -1796,7 +1820,7 @@ function DeploymentsPanel({
       );
       const data = await res.json() as {
         success: boolean;
-        data?: { deployments: Deployment[]; total: number };
+        data?: { deployments: Deployment[]; total: number; previousDeployedCommit?: string | null };
         error?: { message: string };
       };
       if (!res.ok) {
@@ -1804,6 +1828,7 @@ function DeploymentsPanel({
       } else if (data.data) {
         setExtraDeployments((prev) => [...prev, ...data.data!.deployments]);
         setDeploymentTotal(data.data.total);
+        setExtraPreviousCommit(data.data.previousDeployedCommit ?? null);
       }
     } catch {
       setLoadMoreError('Failed to load more deployments');
@@ -1858,7 +1883,7 @@ function DeploymentsPanel({
           </div>
         ) : (
           <div className="space-y-2">
-            {allDeployments.map((deployment) => (
+            {allDeployments.map((deployment, i) => (
               <DeploymentRow
                 key={deployment.id}
                 deployment={deployment}
@@ -1867,6 +1892,14 @@ function DeploymentsPanel({
                 isDeployInProgress={isInProgress}
                 onRetried={onRetried}
                 source={project.source}
+                // A rollback goes back to an older commit, so a compare against the live one would be empty.
+                changesUrl={deployment.rollbackOfId ? null : compareUrl({
+                  source: project.source,
+                  repoUrl: project.githubUrl,
+                  fromSha: allDeployments.slice(i + 1).find((d) => d.status === 'DEPLOYED' && d.commitHash)?.commitHash
+                    ?? olderDeployedCommit,
+                  toSha: deployment.commitHash,
+                })}
               />
             ))}
             {hasMoreDeployments && (

@@ -132,7 +132,7 @@ graph TD
 ### Deployment History UI
 
 - [x] Paginated deployment history per project
-- [ ] Diff view between deployments
+- [x] Diff view between deployments. Done as a "Compare" link: each Git deployment in the history opens the GitHub or GitLab compare page against the previous successful deployment.
 
 ---
 

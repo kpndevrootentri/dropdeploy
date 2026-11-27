@@ -154,6 +154,16 @@ export class DeploymentService {
   }
 
   /**
+   * Commit of the newest successful deployment older than every row of a
+   * history page (newest first), so the dashboard can link the page's oldest
+   * rows to their code changes. Null for an empty page or when there is none.
+   */
+  async previousDeployedCommit(projectId: string, page: { createdAt: Date }[]): Promise<string | null> {
+    const oldest = page[page.length - 1];
+    return oldest ? this.deploymentRepo.findLastDeployedCommitBefore(projectId, oldest.createdAt) : null;
+  }
+
+  /**
    * Fetches deployment by id; ensures user owns the project.
    */
   async getById(deploymentId: string, userId: string): Promise<Deployment> {

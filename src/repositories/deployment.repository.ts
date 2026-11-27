@@ -61,6 +61,8 @@ export interface IDeploymentRepository {
   markBuildingAsFailed(): Promise<number>;
   /** Returns true if the project has at least one DEPLOYED deployment. */
   hasDeployedStatus(projectId: string): Promise<boolean>;
+  /** Commit of the newest DEPLOYED deployment created before `before`, or null. */
+  findLastDeployedCommitBefore(projectId: string, before: Date): Promise<string | null>;
   /** The deployment the proxy serves for this subdomain (a project's slug), or null. */
   findLiveDeployment(subdomain: string): Promise<Deployment | null>;
 }
@@ -215,6 +217,15 @@ export class DeploymentRepository implements IDeploymentRepository {
       where: { projectId, status: 'DEPLOYED' },
     });
     return count > 0;
+  }
+
+  async findLastDeployedCommitBefore(projectId: string, before: Date): Promise<string | null> {
+    const row = await prisma.deployment.findFirst({
+      where: { projectId, status: 'DEPLOYED', commitHash: { not: null }, createdAt: { lt: before } },
+      orderBy: { createdAt: 'desc' },
+      select: { commitHash: true },
+    });
+    return row?.commitHash ?? null;
   }
 
   async findLiveDeployment(subdomain: string): Promise<Deployment | null> {
