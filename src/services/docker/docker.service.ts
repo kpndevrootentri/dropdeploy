@@ -152,11 +152,19 @@ export class DockerService {
   async buildImage(
     project: Project,
     contextPath: string,
-    buildArgs: Record<string, string> = {},
-    secretValues: string[] = [],
-    onLog?: (line: string) => void,
-    signal?: AbortSignal,
-    useRepo = false,
+    {
+      buildArgs = {},
+      secretValues = [],
+      onLog,
+      signal,
+      useRepo = false,
+    }: {
+      buildArgs?: Record<string, string>;
+      secretValues?: string[];
+      onLog?: (line: string) => void;
+      signal?: AbortSignal;
+      useRepo?: boolean;
+    } = {},
   ): Promise<string> {
     const imageName = `dropdeploy/${project.slug}:latest`;
     const django = !useRepo && project.type === 'DJANGO' ? await findDjangoEntry(contextPath, onLog) : null;

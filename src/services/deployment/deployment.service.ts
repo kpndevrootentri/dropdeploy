@@ -474,7 +474,7 @@ export class DeploymentService {
         await this.deploymentRepo.update(deploymentId, { buildStep: 'BUILDING_IMAGE' });
         addMarker('Building image...');
         const secretValues = Object.values(builtRuntimeEnv);
-        const builtImage = await this.docker.buildImage(project, workDir, buildArgs, secretValues, onLog, signal, useRepoDockerfile);
+        const builtImage = await this.docker.buildImage(project, workDir, { buildArgs, secretValues, onLog, signal, useRepo: useRepoDockerfile });
 
         // Clean up build artifacts from work directory
         await this.cleanBuildArtifacts(workDir);

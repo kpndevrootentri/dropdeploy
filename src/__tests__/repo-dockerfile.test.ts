@@ -90,7 +90,7 @@ describe('DockerService.buildImage', () => {
   it("builds the repository's Dockerfile untouched, labelled, always pulling, with the platform's ignore rules", async () => {
     const dir = repoDir({ Dockerfile: OWN, '.dockerignore': 'Dockerfile\n', 'next.config.js': 'module.exports = {};\n' });
     const { service, buildOptions } = stubbedDocker();
-    await service.buildImage({ slug: 'shop', type: 'NEXTJS', useStaticHosting: true }, dir, {}, [], undefined, undefined, true);
+    await service.buildImage({ slug: 'shop', type: 'NEXTJS', useStaticHosting: true }, dir, { useRepo: true });
     expect(fs.readFileSync(path.join(dir, 'Dockerfile'), 'utf8')).toBe(OWN);
     expect(fs.readFileSync(path.join(dir, 'next.config.js'), 'utf8')).toBe('module.exports = {};\n');
     expect(fs.readFileSync(path.join(dir, '.dockerignore'), 'utf8')).toMatch(/^Dockerfile\n[^]*\n\.env\*\n\.git\n!Dockerfile\n$/);
@@ -109,7 +109,7 @@ describe('DockerService.buildImage', () => {
   it('removes a repo-built image over the size cap', async () => {
     const dir = repoDir({ Dockerfile: OWN });
     const { service, remove } = stubbedDocker({ Size: REPO_IMAGE_MAX_BYTES + 512 * 1024 ** 2 });
-    await expect(service.buildImage({ slug: 'shop', type: 'NODEJS' }, dir, {}, [], undefined, undefined, true))
+    await expect(service.buildImage({ slug: 'shop', type: 'NODEJS' }, dir, { useRepo: true }))
       .rejects.toThrow('The image is 2.5 GB, over the 2.0 GB limit');
     expect(remove).toHaveBeenCalledWith({ force: true });
   });
@@ -181,10 +181,12 @@ function deploy(workDir: string, project: Record<string, unknown>) {
 }
 
 describe('DeploymentService.buildAndDeploy with a repo Dockerfile', () => {
+  const buildOpts = (docker: { buildImage: jest.Mock }) => (docker.buildImage.mock.calls[0] as unknown[])[2] as { useRepo: boolean };
+
   it('builds from it when an admin allowed it, and runs a container even for a static-hosted type', async () => {
     const { run, row, docker } = deploy(repoDir({ Dockerfile: 'FROM alpine\nEXPOSE 80\n' }), { type: 'REACT', useStaticHosting: true, allowRepoDockerfile: true });
     await expect(run()).resolves.toMatchObject({ servingMethod: 'CONTAINER' });
-    expect((docker.buildImage.mock.calls[0] as unknown[])[6]).toBe(true);
+    expect(buildOpts(docker).useRepo).toBe(true);
     expect(docker.extractStaticFiles).not.toHaveBeenCalled();
     expect(row.buildLog).toContain("▶ Using the repository's Dockerfile");
   });
@@ -192,7 +194,7 @@ describe('DeploymentService.buildAndDeploy with a repo Dockerfile', () => {
   it('uses the template when not allowed, and says why', async () => {
     const { run, row, docker } = deploy(repoDir({ Dockerfile: 'FROM alpine\n' }), { allowRepoDockerfile: false });
     await run();
-    expect((docker.buildImage.mock.calls[0] as unknown[])[6]).toBe(false);
+    expect(buildOpts(docker).useRepo).toBe(false);
     expect(row.buildLog).toContain('the one in your repository is not used. An admin can switch');
   });
 
