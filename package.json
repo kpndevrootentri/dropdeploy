@@ -8,6 +8,8 @@
     "start": "next start -H 127.0.0.1",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
+    "hooks:install": "git config core.hooksPath .githooks",
+    "hooks:uninstall": "git config --unset core.hooksPath",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",

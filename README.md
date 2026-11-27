@@ -146,6 +146,10 @@ sequenceDiagram
 | `npm run db:migrate` | Run Prisma migrations |
 | `npm run db:studio` | Open Prisma Studio |
 | `npm run worker` | Start deployment queue worker |
+| `npm run hooks:install` | Enable the optional pre-commit hook |
+| `npm run hooks:uninstall` | Disable it again |
+
+The pre-commit hook (`.githooks/pre-commit`) is opt-in: `npm run hooks:install` points `core.hooksPath` at `.githooks` for this clone and all its worktrees. On each commit it runs ESLint on the staged `.ts`/`.tsx`/`.js`/`.jsx`/`.mjs` files and, when TypeScript files are staged, `tsc --noEmit`. It checks the working-tree copy of each file. Skip it for one commit with `git commit --no-verify`.
 
 ---
 

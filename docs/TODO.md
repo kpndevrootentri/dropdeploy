@@ -156,7 +156,7 @@ graph TD
 ### Developer Experience
 
 - [ ] `docker-compose.yml` for local dev (PostgreSQL + Redis)
-- [ ] Pre-commit hooks (lint + type-check)
+- [x] Pre-commit hooks (lint + type-check) (opt-in: `npm run hooks:install`)
 - [ ] `.devcontainer.json` for VS Code dev containers
 
 ### API & Integrations
