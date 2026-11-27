@@ -71,6 +71,14 @@ describe('upload versions', () => {
     expect(statuses).toEqual(['DEPLOYED']);
   });
 
+  it('tells the notification hooks when an upload fails', async () => {
+    const { service, rows } = makeService();
+    const statuses: string[] = [];
+    mockFinished.mockReset().mockImplementationOnce(async (id: string) => { statuses.push(rows.find((r) => r.id === id)!.status); });
+    await expect(service.deploy(Buffer.from('not a zip'), 'zip', project)).rejects.toThrow();
+    expect(statuses).toEqual(['FAILED']);
+  });
+
   it('refuses a pruned upload, the live one, and another project\'s', async () => {
     const { service } = makeService();
     for (let v = 1; v <= KEPT_UPLOADS + 1; v++) {

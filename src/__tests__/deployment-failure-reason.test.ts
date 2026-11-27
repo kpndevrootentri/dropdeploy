@@ -279,6 +279,15 @@ describe('each way a deployment fails records where and why', () => {
     expect(mockFinished.mock.calls).toEqual([['dep-a'], ['dep-b']]);
   });
 
+  it('a static site going live tells the hooks after it is activated', async () => {
+    const { service, deploymentRepo, docker } = setup({ project: { type: 'REACT', useStaticHosting: true } });
+    docker.extractStaticFiles.mockImplementationOnce((async (_image: string, dir: string) => { fs.mkdirSync(dir); }) as never);
+    mockFinished.mockReset();
+    await expect(service.buildAndDeploy('dep-1')).resolves.toMatchObject({ servingMethod: 'STATIC_FILES' });
+    expect(mockFinished).toHaveBeenCalledWith('dep-1');
+    expect(mockFinished.mock.invocationCallOrder[0]).toBeGreaterThan(deploymentRepo.activate.mock.invocationCallOrder[0]);
+  });
+
   it('an upload that cannot be extracted', async () => {
     const row: Record<string, unknown> = {};
     const repo = { create: async () => ({ id: 'dep-u' }), update: async (_id: string, data: Record<string, unknown>) => Object.assign(row, data) };

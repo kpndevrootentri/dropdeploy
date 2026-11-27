@@ -201,6 +201,16 @@ describe('deliver', () => {
     expect(s.rows[0].lastStatus).toBe(status);
   });
 
+  it('checks the stored URL again before sending, so an IP literal is never posted to', async () => {
+    const s = setup();
+    const enc = encryption.encrypt(JSON.stringify({ url: 'https://127.0.0.1/x', secret: 's' }));
+    s.rows.push({ id: 'h-ip', projectId: 'p1', host: '127.0.0.1', configEnc: enc.encryptedValue, configIv: enc.iv, configTag: enc.authTag, events: ['deployment.failed'], lastStatus: null, lastAttemptAt: null, createdAt: new Date() });
+
+    await expect(s.service.deliver(s.job('h-ip'))).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(s.rows[0].lastStatus).toBe('blocked');
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
   it('sends nothing for a hook deleted after it was queued', async () => {
     const s = setup();
     await expect(s.service.deliver(s.job('gone'))).resolves.toBeUndefined();
