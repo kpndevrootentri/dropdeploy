@@ -46,6 +46,12 @@ const envSchema = z.object({
   // Next.js builds are capped at a 2 GB heap, so leave headroom above that.
   BUILD_MEMORY_MB: z.coerce.number().int().min(512).default(3072),
   BUILD_CPUS: z.coerce.number().min(0.5).default(2),
+  // BuildKit builds, with a package cache per project: `*` or comma-separated
+  // project slugs. Unset means the classic builder for every project. The
+  // daemon runs BuildKit's RUN steps without BUILD_MEMORY_MB/BUILD_CPUS.
+  BUILDKIT_PROJECTS: z.string().optional(),
+  // The build cache is trimmed to this after each BuildKit build.
+  BUILD_CACHE_MAX_MB: z.coerce.number().int().min(512).default(4096),
   // How long a new container gets to start listening before the deploy fails
   // and the previous deployment stays live.
   CONTAINER_READY_TIMEOUT_MS: z.coerce.number().int().min(5_000).default(90_000),

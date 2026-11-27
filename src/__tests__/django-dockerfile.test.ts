@@ -2,7 +2,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { DJANGO_SETTINGS, DJANGO_WSGI, DOCKERFILE_TEMPLATES, djangoDockerfile } from '@/services/docker/dockerfile.templates';
+import { DJANGO_SETTINGS, DJANGO_WSGI, DOCKERFILE_TEMPLATES, djangoDockerfile, withCacheMounts } from '@/services/docker/dockerfile.templates';
 import { findDjangoEntry } from '@/services/docker/django-entry';
 
 Object.assign(process.env, {
@@ -30,7 +30,7 @@ function startScript(dockerfile: string): string {
 
 describe('Django Dockerfile', () => {
   it('runs gunicorn on the wrapper WSGI, keeping the SQLite volume and migrations', () => {
-    const dockerfile = djangoDockerfile({ settings: 'mysite.settings' });
+    const dockerfile = withCacheMounts(djangoDockerfile({ settings: 'mysite.settings' }), null);
     // Its own pip run: a hash-pinned requirements.txt would make pip demand hashes for these too.
     // The floor upgrades a pinned gunicorn 20.x, which crashes without pkg_resources.
     expect(dockerfile).toContain(
@@ -96,7 +96,7 @@ describe('Django Dockerfile', () => {
   });
 
   it('falls back to the unchanged runserver command', () => {
-    const dockerfile = DOCKERFILE_TEMPLATES.DJANGO;
+    const dockerfile = withCacheMounts(DOCKERFILE_TEMPLATES.DJANGO, null);
     expect(dockerfile).toContain('RUN pip install --no-cache-dir -r requirements.txt\n');
     expect(dockerfile).not.toMatch(/gunicorn|whitenoise|collectstatic/);
     expect(startScript(dockerfile)).toBe(`${SQLITE}; exec python manage.py runserver 0.0.0.0:8000`);
@@ -105,9 +105,9 @@ describe('Django Dockerfile', () => {
   it('picks gunicorn only for a Django project whose settings module was found', () => {
     const docker = new DockerService({ socketPath: '/nonexistent.sock' });
     const entry = { settings: 'mysite.settings' };
-    expect(docker.getDockerfileForProject({ type: 'DJANGO' }, [], entry)).toBe(djangoDockerfile(entry));
-    expect(docker.getDockerfileForProject({ type: 'DJANGO' }, [], null)).toBe(DOCKERFILE_TEMPLATES.DJANGO);
-    expect(docker.getDockerfileForProject({ type: 'FLASK' }, [], entry)).toBe(DOCKERFILE_TEMPLATES.FLASK);
+    expect(docker.getDockerfileForProject({ type: 'DJANGO' }, { django: entry })).toBe(withCacheMounts(djangoDockerfile(entry), null));
+    expect(docker.getDockerfileForProject({ type: 'DJANGO' }, { django: null })).toBe(withCacheMounts(DOCKERFILE_TEMPLATES.DJANGO, null));
+    expect(docker.getDockerfileForProject({ type: 'FLASK' }, { django: entry })).toBe(withCacheMounts(DOCKERFILE_TEMPLATES.FLASK, null));
   });
 });
 

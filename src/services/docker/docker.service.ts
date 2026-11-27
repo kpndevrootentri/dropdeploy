@@ -13,6 +13,7 @@ import { getConfig } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
 import { assertNotPlatformResource } from '@/lib/docker-ops';
 import { demuxLogs } from '@/lib/container-logs';
+import { buildkitTraceText } from '@/lib/buildkit-trace';
 import { diskUsageFromDf, type DiskUsage } from '@/lib/disk-usage';
 import { containerUsageFromStats, type ContainerUsage, type RawContainerStats } from '@/lib/container-usage';
 import type { DanglingImage, LabelledContainer } from '@/lib/docker-ops';
@@ -29,6 +30,7 @@ import {
   type DockerfileProjectType,
   djangoDockerfile,
   injectBuildArgs,
+  withCacheMounts,
 } from './dockerfile.templates';
 import { findDjangoEntry } from './django-entry';
 import { patchNextConfig } from './nextjs-config-patcher';
@@ -105,6 +107,10 @@ export const dataVolumeName = (slug: string): string => `dropdeploy-data-${slug}
 /** Image label naming the project an image was built for. */
 const SLUG_LABEL = 'dropdeploy.slug';
 
+/** Whether BUILDKIT_PROJECTS (`*` or comma-separated slugs) builds this project with BuildKit. */
+const usesBuildKit = (projects: string | undefined, slug: string): boolean =>
+  (projects ?? '').split(',').some((entry) => ['*', slug].includes(entry.trim()));
+
 export interface DockerServiceConfig {
   socketPath?: string;
   memoryLimitBytes?: number;
@@ -115,6 +121,8 @@ export class DockerService {
   private docker: Docker;
   private memoryLimitBytes: number;
   private cpuShares: number;
+  /** Set once the daemon refuses a BuildKit build; the worker then builds classic until it restarts. */
+  private buildKitRefused = false;
 
   constructor (config: DockerServiceConfig = {}) {
     const socketPath =
@@ -128,15 +136,20 @@ export class DockerService {
    * Returns Dockerfile content for the given project type.
    * For NEXTJS projects, injects ARG/ENV lines for NEXT_PUBLIC_* build args.
    * A Django project runs on gunicorn when manage.py names its settings module, else on runserver.
+   * Package-cache mounts are kept only for a BuildKit build.
    */
-  getDockerfileForProject(project: Project, buildArgKeys: string[] = [], django: DjangoEntry | null = null): string {
-    if (project.type === 'DJANGO' && django) return djangoDockerfile(django);
+  getDockerfileForProject(
+    project: Project,
+    { buildArgKeys = [], django = null, buildkit = false }: { buildArgKeys?: string[]; django?: DjangoEntry | null; buildkit?: boolean } = {},
+  ): string {
+    const cacheId = buildkit ? project.id : null;
+    if (project.type === 'DJANGO' && django) return withCacheMounts(djangoDockerfile(django), cacheId);
     let key: keyof typeof DOCKERFILE_TEMPLATES =
       project.type in DOCKERFILE_TEMPLATES ? project.type as keyof typeof DOCKERFILE_TEMPLATES : 'STATIC';
     if (project.type === 'NEXTJS' && project.useStaticHosting) {
       key = 'NEXTJS_STATIC';
     }
-    return injectBuildArgs(DOCKERFILE_TEMPLATES[key], buildArgKeys);
+    return withCacheMounts(injectBuildArgs(DOCKERFILE_TEMPLATES[key], buildArgKeys), cacheId);
   }
 
   /**
@@ -159,8 +172,6 @@ export class DockerService {
       log.warn('No Django settings module found; using runserver', { slug: project.slug });
       onLog?.('Could not find the settings module: manage.py needs os.environ.setdefault("DJANGO_SETTINGS_MODULE", "<package>.settings"), without assigning the variable elsewhere or changing sys.path, and that module must sit under the repository root. The site runs on manage.py runserver instead of gunicorn.\n');
     }
-    const dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs), django);
-    await writeRepoFile(dockerfilePath, dockerfile);
     if (project.type === 'WORDPRESS') {
       await writeRepoFile(path.join(contextPath, WORDPRESS_CONFIG_FILE), WORDPRESS_CONFIG);
     }
@@ -179,25 +190,49 @@ export class DockerService {
     }
 
     log.info('Building image', { imageName });
-    const { BUILD_MEMORY_MB, BUILD_CPUS } = getConfig();
+    const { BUILD_MEMORY_MB, BUILD_CPUS, BUILDKIT_PROJECTS } = getConfig();
     const buildMemory = BUILD_MEMORY_MB * 1024 * 1024;
-    const stream = await this.docker.buildImage(
-      { context: contextPath, src: ['.'] },
-      {
-        t: imageName,
-        // Lets removeSupersededImages find this project's images once a
-        // rebuild has moved the tag off them.
-        labels: { [SLUG_LABEL]: project.slug },
-        ...(Object.keys(buildArgs).length > 0 ? { buildargs: buildArgs } : {}),
-        // Bound each RUN step. memswap equal to memory means no swap on top.
-        memory: buildMemory,
-        memswap: buildMemory,
-        cpuperiod: 100_000,
-        cpuquota: Math.round(BUILD_CPUS * 100_000),
-        // Aborting closes the connection, which makes the daemon cancel the build.
-        abortSignal: signal,
-      } as Record<string, unknown>,
-    );
+    const wantsBuildKit = usesBuildKit(BUILDKIT_PROJECTS, project.slug);
+    let buildkit = wantsBuildKit && !this.buildKitRefused;
+    const start = async (): Promise<NodeJS.ReadableStream> => {
+      await writeRepoFile(dockerfilePath, this.getDockerfileForProject(project, { buildArgKeys: Object.keys(buildArgs), django, buildkit }));
+      return this.docker.buildImage(
+        { context: contextPath, src: ['.'] },
+        {
+          t: imageName,
+          // Lets removeSupersededImages find this project's images once a
+          // rebuild has moved the tag off them.
+          labels: { [SLUG_LABEL]: project.slug },
+          ...(Object.keys(buildArgs).length > 0 ? { buildargs: buildArgs } : {}),
+          // Bound each RUN step. memswap equal to memory means no swap on top.
+          // The daemon applies these to the classic builder only.
+          memory: buildMemory,
+          memswap: buildMemory,
+          cpuperiod: 100_000,
+          cpuquota: Math.round(BUILD_CPUS * 100_000),
+          ...(buildkit ? { version: '2' } : {}),
+          // Aborting closes the connection, which makes the daemon cancel the build.
+          abortSignal: signal,
+        } as Record<string, unknown>,
+      );
+    };
+
+    let stream: NodeJS.ReadableStream;
+    try {
+      stream = await start();
+    } catch (err) {
+      // Refused before any output (no session, BuildKit off in the daemon): build classic.
+      // A failure inside the stream is the project's own and is not retried.
+      if (!buildkit || signal?.aborted) throw err;
+      // dockerode leaves a refused build's session open (the daemon dropped it ~10 s later on 29.7.2), so stop asking.
+      // ponytail: an abort during the context upload leaves its session open the same way; open the session ourselves if that matters.
+      this.buildKitRefused = true;
+      log.warn('BuildKit build refused; using the classic builder until the worker restarts', { slug: project.slug, error: err instanceof Error ? err.message : String(err) });
+      buildkit = false;
+      stream = await start();
+    }
+    if (buildkit) onLog?.('Building with BuildKit\n');
+    else if (wantsBuildKit) onLog?.('BuildKit is unavailable; building with the classic builder\n');
 
     // The same redaction as the failure reason, so a value hidden there is hidden here too.
     const scrub = (text: string): string => redact(text, secretValues);
@@ -209,6 +244,8 @@ export class DockerService {
         stream,
         (err: Error | null, output: Array<{ stream?: string; error?: string; errorDetail?: { message?: string } }>) => {
           if (err) {
+            // dockerode closes a BuildKit build's session when the stream ends, which an aborted one never does.
+            if (buildkit) stream.emit('end');
             reject(err);
             return;
           }
@@ -225,16 +262,21 @@ export class DockerService {
           }
           resolve();
         },
-        (event: { stream?: string; error?: string }) => {
-          if (event.stream) {
+        (event: { stream?: string; error?: string; id?: string; aux?: unknown }) => {
+          // BuildKit sends its output as trace events instead of stream lines.
+          const output = event.id === 'moby.buildkit.trace' && typeof event.aux === 'string' ? buildkitTraceText(event.aux) : event.stream;
+          if (output) {
             const now = new Date();
             const ts = `[${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}]`;
-            const formatted = `${ts} ${scrub(event.stream)}`;
+            const formatted = `${ts} ${scrub(output)}`;
             buildLog.push(formatted);
             onLog?.(formatted);
           }
         }
       );
+    }).finally(() => {
+      // Failed builds leave cache too.
+      if (buildkit) void this.pruneBuildCache();
     });
 
     // Verify the image exists (Docker build can "succeed" from stream perspective but fail to produce an image).
@@ -247,6 +289,34 @@ export class DockerService {
     }
 
     return imageName;
+  }
+
+  /**
+   * Trims the build cache to BUILD_CACHE_MAX_MB, least recently used first;
+   * records a running build uses are kept. keep-storage (read as
+   * reserved-space from API 1.48) and max-used-space (1.48+) both set the
+   * amount kept, so the cap holds whichever the daemon reads. Dialled
+   * directly: dockerode's pruneBuilder drops its options, which would prune
+   * everything. Never throws.
+   */
+  async pruneBuildCache(): Promise<void> {
+    const bytes = getConfig().BUILD_CACHE_MAX_MB * 1024 * 1024;
+    try {
+      const result = await new Promise<{ SpaceReclaimed?: number } | undefined>((resolve, reject) => {
+        this.docker.modem.dial(
+          {
+            path: '/build/prune?',
+            method: 'POST',
+            options: { 'keep-storage': bytes, 'max-used-space': bytes },
+            statusCodes: { 200: true, 500: 'server error' },
+          },
+          (err, data) => (err ? reject(err) : resolve(data as { SpaceReclaimed?: number } | undefined)),
+        );
+      });
+      log.info('Build cache pruned', { maxBytes: bytes, reclaimedBytes: result?.SpaceReclaimed ?? 0 });
+    } catch (err) {
+      log.warn('Build cache prune failed', { error: err instanceof Error ? err.message : String(err) });
+    }
   }
 
   /**

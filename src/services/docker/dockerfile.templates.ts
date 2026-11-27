@@ -9,6 +9,13 @@
  */
 
 /**
+ * Package-cache mounts, filled in per build by withCacheMounts: the project's
+ * id under BuildKit, removed for the classic builder, which can't read them.
+ */
+const CACHE_ID = '{{CACHE_ID}}';
+const pipCache = `--mount=type=cache,id=${CACHE_ID}-pip,target=/root/.cache/pip `;
+
+/**
  * Copies the manifest and whichever lockfile the repo has, then installs with
  * the package manager that lockfile belongs to. pnpm and yarn run through
  * corepack (bundled with Node 22) without `corepack enable`, which needs root.
@@ -17,10 +24,14 @@
  */
 const nodeInstall = (owner?: string): string => {
   const chown = owner ? `--chown=${owner} ` : '';
+  // Its own id for the node user: a root-made cache dir (after a type change) would not be writable by uid 1000.
+  const npmCache = owner
+    ? `--mount=type=cache,id=${CACHE_ID}-npm-node,target=/home/node/.npm,uid=1000,gid=1000 `
+    : `--mount=type=cache,id=${CACHE_ID}-npm,target=/root/.npm `;
   return [
     'ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0',
     `COPY ${chown}package.json package-lock.json* yarn.lock* pnpm-lock.yaml* ./`,
-    'RUN if [ -f pnpm-lock.yaml ]; then corepack pnpm install --frozen-lockfile; \\',
+    `RUN ${npmCache}if [ -f pnpm-lock.yaml ]; then corepack pnpm install --frozen-lockfile; \\`,
     '    elif [ -f yarn.lock ]; then corepack yarn install --frozen-lockfile; \\',
     '    else (npm ci || npm install); fi',
   ].join('\n');
@@ -159,7 +170,7 @@ WORKDIR /app
 RUN useradd --system --uid 10001 --home-dir /app app && chown app /app
 ${dataDir('app')}
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir 'gunicorn>=21' whitenoise
+RUN ${pipCache}pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir 'gunicorn>=21' whitenoise
 COPY --chown=app . .
 USER app
 ENV DJANGO_SETTINGS_MODULE=dropdeploy_settings DROPDEPLOY_DJANGO_SETTINGS=${settings}
@@ -247,7 +258,7 @@ WORKDIR /app
 RUN useradd --system --uid 10001 --home-dir /app app && chown app /app
 ${dataDir('app')}
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN ${pipCache}pip install --no-cache-dir -r requirements.txt
 COPY --chown=app . .
 USER app
 EXPOSE 8000
@@ -275,7 +286,7 @@ WORKDIR /app
 RUN useradd --system --uid 10001 --home-dir /app app && chown app /app
 ${dataDir('app')}
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN ${pipCache}pip install --no-cache-dir -r requirements.txt
 COPY --chown=app . .
 USER app
 EXPOSE 8000
@@ -288,7 +299,7 @@ WORKDIR /app
 RUN useradd --system --uid 10001 --home-dir /app app && chown app /app
 ${dataDir('app')}
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt gunicorn
+RUN ${pipCache}pip install --no-cache-dir -r requirements.txt gunicorn
 COPY --chown=app . .
 USER app
 EXPOSE 5000
@@ -483,4 +494,16 @@ export function injectBuildArgs(template: string, buildArgKeys: string[]): strin
     .map((key) => `ARG ${key}\nENV ${key}=$${key}`)
     .join('\n');
   return template.replace('{{BUILD_ARGS}}', lines);
+}
+
+/**
+ * Fills in the package-cache mounts for a BuildKit build, keyed by the
+ * project's id: never reused, unlike a slug, so no project reads or seeds
+ * another's cache. pip then keeps its cache in the mount, outside the image.
+ * With no id (the classic builder) the mounts are removed, which gives back
+ * the Dockerfile as it was before BuildKit.
+ */
+export function withCacheMounts(dockerfile: string, projectId: string | null): string {
+  if (!projectId) return dockerfile.replace(/--mount=\S+ /g, '');
+  return dockerfile.replaceAll(CACHE_ID, projectId).replaceAll(' --no-cache-dir', '');
 }
