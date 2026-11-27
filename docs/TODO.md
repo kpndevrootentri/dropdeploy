@@ -192,7 +192,8 @@ Found on 2026-11-26 by checking `main` and the production host.
 ### Security: host settings (no code change)
 
 - [ ] Review the production host against `scripts/harden-host.sh`, `scripts/split-web-user.sh` and `docs/deployment.md`, then redeploy all projects (`scripts/redeploy-all.ts`) so every container runs with the current limits. The details are tracked privately, not in this public repo.
-- [ ] Bind Next to 127.0.0.1. First fix the tenant 404s that `next start -H 127.0.0.1` causes: `npm start` passes that flag, and the rewrite then loses the Host header.
+- [x] Make tenant sites work under `next start -H 127.0.0.1` (`npm start` passes that flag). Every tenant host answered 404 because the rewrite lost the Host header, and behind the TLS edge (`X-Forwarded-Proto: https`) Next's replay of the rewrite would have failed with 500.
+- [ ] Bind the production Next process to 127.0.0.1 (ops step, now that the item above has landed).
 
 ### Reliability and operations
 

@@ -30,7 +30,9 @@ function envFlag(value: string | undefined): boolean {
 
 /** Rewrites the current request into the in-app proxy route for `slug`. */
 function rewriteToProxy(request: NextRequest, slug: string): NextResponse {
-  const url = request.nextUrl.clone();
+  // Not nextUrl, which renames 127.0.0.1 to localhost: under `next start -H 127.0.0.1` a rewrite to
+  // another origin than the bound one is proxied and loses its Host. Needs skipProxyUrlNormalize.
+  const url = new URL(request.url);
   const originalPath = url.pathname;
   url.pathname = `/api/proxy/${slug}${originalPath === '/' ? '' : originalPath}`;
   return NextResponse.rewrite(url);
