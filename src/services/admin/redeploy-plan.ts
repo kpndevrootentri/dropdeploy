@@ -11,6 +11,8 @@ export interface RedeployCandidate {
   ownerEmail: string;
   /** Status of the most recent deployment, or null if it was never deployed. */
   lastStatus: string | null;
+  /** When an admin stopped the live container, or null while it runs. */
+  stoppedAt: Date | null;
 }
 
 export interface RedeployFilters {
@@ -41,12 +43,13 @@ export function planRedeployAll(
     if (filters.type && project.type !== filters.type) continue;
     if (filters.source && project.source !== filters.source) continue;
     if (filters.projectIds && !filters.projectIds.includes(project.id)) continue;
-    // ponytail: a site an admin stopped is rebuilt and started again; skip `stoppedAt` projects once #21 adds that column.
     const reason =
       // The worker marks a deploy with no repository FAILED; an upload is redeployed by uploading again.
       project.source === 'UPLOAD' ? 'Upload — nothing to pull; the owner uploads a new version'
       : !project.githubUrl ? 'No repository URL'
       : project.lastStatus === null ? 'Never deployed'
+      // A deploy going live starts the container, undoing the stop.
+      : project.stoppedAt ? 'Stopped by an admin; restart it first'
       // A new deploy would cancel a queued one (supersede) or wait behind a running one.
       : activeProjectIds.has(project.id) ? 'A deploy is already queued or building'
       : null;

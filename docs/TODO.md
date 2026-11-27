@@ -213,7 +213,7 @@ Found on 2026-11-26 by checking `main` and the production host.
 
 - [ ] Run Django on gunicorn instead of `manage.py runserver` (Flask already uses gunicorn)
 - [ ] Show students and mentors why a build failed (`buildStep`, or a short reason field)
-- [ ] Make redeploy-all skip sites an admin stopped. `stoppedAt` now exists; see the `ponytail:` comment in `redeploy-plan.ts`.
+- [x] Make redeploy-all skip sites an admin stopped. `stoppedAt` now exists; see the `ponytail:` comment in `redeploy-plan.ts`. (Done: the preview lists them as "Stopped by an admin; restart it first".)
 - [ ] WebSocket support through the proxy (it strips `Upgrade`)
 
 ### Students and batches
