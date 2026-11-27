@@ -81,3 +81,37 @@ export function hostMatchesSource(host: string, source: GitSource): boolean {
   const normalized = host.replace(/^www\./, '');
   return source === 'GITHUB' ? normalized === 'github.com' : normalized === 'gitlab.com';
 }
+
+const SHA = /^[0-9a-f]{7,64}$/i;
+
+/**
+ * Link to the code changes between two commits of a project's repo on
+ * github.com or gitlab.com, or null when there is nothing to link (an upload,
+ * no previous commit, the same commit, or a repo URL outside the allowlist).
+ * Accepts https, `.git` and ssh (`git@host:owner/repo`) forms of the repo URL.
+ */
+export function compareUrl({ source, repoUrl, fromSha, toSha }: {
+  source: string | undefined;
+  repoUrl: string | null;
+  fromSha: string | null | undefined;
+  toSha: string | null;
+}): string | null {
+  if ((source !== 'GITHUB' && source !== 'GITLAB') || !repoUrl || !fromSha || !toSha) return null;
+  if (!SHA.test(fromSha) || !SHA.test(toSha) || fromSha === toSha) return null;
+  let parsed: ParsedRepoUrl;
+  try {
+    parsed = parseSafeRepoUrl(repoUrl.trim().replace(/^(?:ssh:\/\/)?git@([^:/]+)[:/]/, 'https://$1/'));
+  } catch {
+    return null;
+  }
+  if (!hostMatchesSource(parsed.host, source)) return null;
+  const segments = parsed.url.pathname.split('/').filter(Boolean);
+  const range = `${fromSha}...${toSha}`;
+  if (source === 'GITHUB') {
+    return `https://github.com/${segments[0]}/${segments[1].replace(/\.git$/, '')}/compare/${range}`;
+  }
+  // GitLab paths are group/subgroup.../project; anything after "/-/" is a page inside it.
+  const dash = segments.indexOf('-');
+  const path = (dash === -1 ? segments : segments.slice(0, dash)).join('/').replace(/\.git$/, '');
+  return path.includes('/') ? `https://gitlab.com/${path}/-/compare/${range}` : null;
+}

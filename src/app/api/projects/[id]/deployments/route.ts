@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/get-session';
 import { projectService } from '@/services/project';
+import { deploymentService } from '@/services/deployment';
 import { deploymentRepository } from '@/repositories/deployment.repository';
 import { handleApiError } from '@/lib/api-error';
 
@@ -9,6 +10,8 @@ const PAGE_LIMIT = 5;
 /**
  * GET /api/projects/:id/deployments?skip=N&limit=N
  * Returns a paginated list of deployments for a project (excludes buildLog for size).
+ * `previousDeployedCommit` is the commit of the newest successful deployment older
+ * than this page, so the dashboard can link the page's last rows to their changes.
  */
 export async function GET(
   req: NextRequest,
@@ -32,8 +35,9 @@ export async function GET(
       deploymentRepository.findByProjectId(id, limit, skip),
       deploymentRepository.countByProjectId(id),
     ]);
+    const previousDeployedCommit = await deploymentService.previousDeployedCommit(id, deployments);
 
-    return NextResponse.json({ success: true, data: { deployments, total } });
+    return NextResponse.json({ success: true, data: { deployments, total, previousDeployedCommit } });
   } catch (error) {
     return handleApiError(error);
   }
