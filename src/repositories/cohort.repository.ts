@@ -70,6 +70,8 @@ export interface ICohortRepository {
   addProject(projectId: string, userId: string, cohortId: string): Promise<boolean>;
   /** Takes the project out of this batch. False if it was not in it. */
   removeProject(cohortId: string, projectId: string): Promise<boolean>;
+  /** Moves the project from one batch to another. False if it was not in `fromCohortId`. */
+  moveProject(projectId: string, fromCohortId: string, toCohortId: string): Promise<boolean>;
   /** The accounts with these (lowercase) emails, each with its membership in this batch. */
   findAccounts(cohortId: string, emails: string[]): Promise<CohortAccount[]>;
   /**
@@ -179,6 +181,11 @@ export class CohortRepository implements ICohortRepository {
 
   async removeProject(cohortId: string, projectId: string): Promise<boolean> {
     const { count } = await prisma.project.updateMany({ where: { id: projectId, cohortId }, data: { cohortId: null } });
+    return count > 0;
+  }
+
+  async moveProject(projectId: string, fromCohortId: string, toCohortId: string): Promise<boolean> {
+    const { count } = await prisma.project.updateMany({ where: { id: projectId, cohortId: fromCohortId }, data: { cohortId: toCohortId } });
     return count > 0;
   }
 

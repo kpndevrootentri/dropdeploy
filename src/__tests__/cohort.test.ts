@@ -33,6 +33,9 @@ const MENTOR_ACCOUNTS: Record<string, { id: string; email: string; mustResetPass
 
 function setup(opts: {
   enabled?: boolean; cohort?: ReturnType<typeof cohort> | null; member?: unknown; mentor?: boolean;
+  /** Batches by id, looked up before `cohort`; null means no such batch. */
+  cohorts?: Record<string, ReturnType<typeof cohort> | null>;
+  moved?: boolean;
   added?: boolean; removed?: boolean; memberships?: unknown[]; accounts?: CohortAccount[]; members?: unknown[];
   /** Emails someone else registers between the lookup and the write. */
   raced?: string[];
@@ -42,7 +45,7 @@ function setup(opts: {
   const repo = {
     create: jest.fn(async (data: Record<string, unknown>) => ({ ...cohort(), ...data })),
     update: jest.fn(async (_id: string, data: Record<string, unknown>) => ({ ...cohort(), ...data })),
-    findById: jest.fn(async () => (opts.cohort === undefined ? cohort() : opts.cohort)),
+    findById: jest.fn(async (id: string) => (opts.cohorts && id in opts.cohorts ? opts.cohorts[id] : opts.cohort === undefined ? cohort() : opts.cohort)),
     findByJoinCode: jest.fn(async () => (opts.cohort === undefined ? cohort() : opts.cohort)),
     slugExists: jest.fn(async () => false),
     findAll: jest.fn(),
@@ -55,6 +58,7 @@ function setup(opts: {
     listProjects: jest.fn(async () => []),
     addProject: jest.fn(async () => opts.added ?? true),
     removeProject: jest.fn(async () => opts.removed ?? true),
+    moveProject: jest.fn(async () => opts.moved ?? true),
     findAccounts: jest.fn(async () => opts.accounts ?? []),
     addStudents: jest.fn(async (_cohortId: string, s: NewStudents) => {
       const created = s.invites.filter((i) => !opts.raced?.includes(i.email)).map(({ email }) => ({ id: `id-${email}`, email }));
@@ -271,6 +275,71 @@ describe('removing a project from a batch', () => {
     await expect(unknown.service.removeProject('c9', 'p1', 'admin')).rejects.toThrow('Batch not found');
     expect(unknown.repo.removeProject).not.toHaveBeenCalled();
     expect(unknown.adminActions.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('moving a project to another batch', () => {
+  const target = cohort({ id: 'c2', name: 'FSD Feb 2027' });
+  const studentThere = { role: 'STUDENT', endedAt: null };
+  const ok = { cohorts: { c2: target }, member: studentThere };
+
+  it('moves it when the owner is a current student there, and records from and to', async () => {
+    const { service, repo, adminActions } = setup(ok);
+    await expect(service.moveProject('c1', 'p1', 'c2', 'admin')).resolves.toMatchObject({ id: 'c2' });
+    expect(repo.findMember).toHaveBeenCalledWith('c2', 's1');
+    expect(repo.moveProject).toHaveBeenCalledWith('p1', 'c1', 'c2');
+    expect(adminActions.create).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'COHORT_PROJECT_MOVED', actorId: 'admin', targetId: 'c1',
+      meta: { projectId: 'p1', project: 'portfolio', from: 'c1', to: 'c2', toName: 'FSD Feb 2027' },
+    }));
+  });
+
+  it('works while batches are switched off, like removing', async () => {
+    const { service, repo } = setup({ ...ok, enabled: false });
+    await service.moveProject('c1', 'p1', 'c2', 'admin');
+    expect(repo.moveProject).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['the target is this batch', ok, 'c1', 'p1', 'already in this batch'],
+    ['this batch is unknown', { ...ok, cohorts: { ...ok.cohorts, c1: null } }, 'c2', 'p1', 'Batch not found'],
+    ['the target is unknown', { ...ok, cohorts: { c9: null } }, 'c9', 'p1', 'Target batch not found'],
+    ['the target is archived', { ...ok, cohorts: { c2: cohort({ id: 'c2', name: 'Old', archivedAt: new Date() }) } }, 'c2', 'p1', 'Old is archived'],
+    ['the project is in another batch', ok, 'c2', 'p-other', 'Project not found'],
+    ['the owner was never in the target', { ...ok, member: null }, 'c2', 'p1', 'Add the student to that batch first'],
+    ["the owner's membership there ended", { ...ok, member: { role: 'STUDENT', endedAt: new Date() } }, 'c2', 'p1', 'Add the student to that batch first'],
+    ['the owner is a mentor there, not a student', { ...ok, member: { role: 'MENTOR', endedAt: null } }, 'c2', 'p1', 'Add the student to that batch first'],
+  ])('refuses when %s, and changes and records nothing', async (_why, opts, to, projectId, message) => {
+    const { service, repo, adminActions } = setup(opts);
+    await expect(service.moveProject('c1', projectId, to, 'admin')).rejects.toThrow(message);
+    expect(repo.moveProject).not.toHaveBeenCalled();
+    expect(adminActions.create).not.toHaveBeenCalled();
+  });
+
+  it('uses 409 for refusals an admin can fix and 404 for missing things', async () => {
+    const { service } = setup({ ...ok, member: null });
+    await expect(service.moveProject('c1', 'p1', 'c2', 'admin')).rejects.toMatchObject({ statusCode: 409 });
+    await expect(service.moveProject('c1', 'p1', 'c1', 'admin')).rejects.toMatchObject({ statusCode: 409 });
+    await expect(setup({ cohorts: { c9: null } }).service.moveProject('c1', 'p1', 'c9', 'admin')).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('records nothing when someone else moved or removed it first', async () => {
+    const { service, adminActions } = setup({ ...ok, moved: false });
+    await expect(service.moveProject('c1', 'p1', 'c2', 'admin')).rejects.toThrow('Project not found');
+    expect(adminActions.create).not.toHaveBeenCalled();
+  });
+
+  it("lists as targets only the owner's other active student batches", async () => {
+    // listActiveMemberships already drops ended memberships and archived batches.
+    const memberships = [
+      { cohortId: 'c1', role: 'STUDENT', cohort: cohort() },
+      { cohortId: 'c2', role: 'STUDENT', cohort: target },
+      { cohortId: 'c3', role: 'MENTOR', cohort: cohort({ id: 'c3' }) },
+    ];
+    const { service, repo } = setup({ memberships });
+    await expect(service.moveTargets('c1', 'p1')).resolves.toEqual([target]);
+    expect(repo.listActiveMemberships).toHaveBeenCalledWith('s1');
+    await expect(service.moveTargets('c1', 'p-other')).rejects.toThrow('Project not found');
   });
 });
 

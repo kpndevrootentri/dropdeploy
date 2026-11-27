@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useCallback, useEffect, useState } from 'react';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Archive, ArchiveRestore, ArrowLeft, FolderGit2, Link2, RefreshCw, UserPlus, Users } from 'lucide-react';
@@ -36,6 +36,15 @@ interface Detail {
   };
   members: Member[];
   projects: Array<{ id: string; name: string; user: { email: string; name: string | null } }>;
+}
+
+type Project = Detail['projects'][number];
+
+/** The fields of GET /api/admin/cohorts/[cohortId]/projects/[projectId] the move picker uses. */
+interface BatchOption {
+  id: string;
+  name: string;
+  program: string;
 }
 
 type MemberFilter = 'all' | 'students' | 'mentors' | 'left';
@@ -91,6 +100,13 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
   const [dialog, setDialog] = useState<'join' | 'mentor' | 'students' | null>(null);
   // Null until loaded, and left null if loading fails: the email field still works on its own.
   const [platformUsers, setPlatformUsers] = useState<PlatformUser[] | null>(null);
+  const [moving, setMoving] = useState<Project | null>(null);
+  const [moveTo, setMoveTo] = useState('');
+  // The batches the server would accept for this project, fetched each time the move dialog opens; null while loading.
+  const [batches, setBatches] = useState<BatchOption[] | null>(null);
+  const [batchesError, setBatchesError] = useState<string | null>(null);
+  // Counts opens, so the answer for a dialog that was closed and reopened meanwhile is dropped.
+  const moveRequest = useRef(0);
 
   const load = useCallback(() => adminRequest<Detail>(`/api/admin/cohorts/${cohortId}`).then(setDetail), [cohortId]);
 
@@ -138,6 +154,17 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
     if (platformUsers === null) {
       adminRequest<PlatformUser[]>('/api/admin/users').then(setPlatformUsers).catch(() => { /* fall back to typing an email */ });
     }
+  };
+
+  const openMoveDialog = (p: Project): void => {
+    const request = ++moveRequest.current;
+    setMoving(p);
+    setMoveTo('');
+    setBatches(null);
+    setBatchesError(null);
+    adminRequest<BatchOption[]>(`/api/admin/cohorts/${cohortId}/projects/${p.id}`)
+      .then((d) => { if (request === moveRequest.current) setBatches(d); })
+      .catch((e: Error) => { if (request === moveRequest.current) setBatchesError(e.message); });
   };
 
   const toggleArchive = (): void => {
@@ -306,6 +333,9 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
                     {p.user.name && <div className="text-xs text-muted-foreground">{p.user.email}</div>}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right">
+                    <Button variant="ghost" size="sm" disabled={acting} onClick={() => openMoveDialog(p)} className="text-muted-foreground">
+                      Move to batch…
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -363,6 +393,51 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
               <RefreshCw className="mr-1 h-3.5 w-3.5" aria-hidden />New link
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!moving} onOpenChange={(open) => { if (!open) setMoving(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="mb-4">
+            <DialogTitle>Move to another batch</DialogTitle>
+            <DialogDescription>
+              Moves {moving?.name} out of {cohort.name}. Only batches its owner is a current student in are listed. Deployments and the site are not touched.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!moving) return;
+              const to = batches?.find((b) => b.id === moveTo);
+              void run(
+                () => adminRequest(`/api/admin/cohorts/${cohortId}/projects/${moving.id}`, { method: 'PATCH', body: { toCohortId: moveTo } }),
+                `Moved ${moving.name} to ${to?.name ?? 'the other batch'}`,
+              ).then((ok) => { if (ok) setMoving(null); });
+            }}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="move-target">Batch</Label>
+              <select
+                id="move-target"
+                required
+                disabled={!batches}
+                value={moveTo}
+                onChange={(e) => setMoveTo(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+              >
+                <option value="">
+                  {batchesError ? 'Could not load batches' : !batches ? 'Loading batches…' : batches.length ? 'Choose a batch…' : 'Its owner is not a student in any other batch'}
+                </option>
+                {batches?.map((b) => <option key={b.id} value={b.id}>{b.name} · {b.program}</option>)}
+              </select>
+              {batchesError && <p className="text-sm text-destructive" role="alert">{batchesError}</p>}
+            </div>
+            <DialogFooter className="gap-2">
+              <Button type="button" variant="outline" onClick={() => setMoving(null)}>Cancel</Button>
+              <Button type="submit" disabled={acting || !moveTo}>{acting ? 'Moving…' : 'Move'}</Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

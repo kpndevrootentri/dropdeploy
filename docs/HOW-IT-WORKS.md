@@ -256,6 +256,10 @@ Students join a batch with its join link, or an admin or a mentor of the batch a
 
 Mentors also see the join link while joining is open, and their students, marked "Hasn't set a password" until they accept their invite or replace a password an admin set. Every add is in the audit log as `COHORT_STUDENTS_ADDED`, with emails only.
 
+### 4.7 Batches: moving a project
+
+On a batch's admin page, each project has **Move to batch…**: pick one of the other live batches its owner is a current student in (listed by `GET /api/admin/cohorts/:cohortId/projects/:projectId`; the move is `PATCH` on the same path with `{ toCohortId }`, admins only). Only the project's batch changes; deployments and the site are untouched, and the old batch's mentors lose access on their next request. The owner must already be a current student in the target batch, otherwise the move is refused with 409 ("Add the student to that batch first"). An archived target and the batch the project is already in are refused with 409 too (moving to the same batch is never a silent no-op). Moves work while batches are switched off, like removing a project, and are in the audit log as `COHORT_PROJECT_MOVED` with `from` and `to` batch ids.
+
 ---
 
 ## 5. Deployment Pipeline
