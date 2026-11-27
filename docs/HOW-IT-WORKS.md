@@ -377,11 +377,13 @@ Updates `buildStep` to `BUILDING_IMAGE`. Based on `project.type`, one of the fol
 
 > **Note:** `nextjs-config-patcher.ts` adjusts Next.js config for standalone output when needed.
 
+**Repository Dockerfile.** When an admin has set `allowRepoDockerfile` on the project and the repo root has a regular `Dockerfile`, no template is used. The worker scans it during SCANNING (`src/services/docker/repo-dockerfile.ts`): `ADD`, `ONBUILD` and `# escape=` fail the deploy. It then builds the file as is, with base images always pulled, and labels the image `dropdeploy.dockerfile=repo`. A labelled image is never served as static files; its container runs as uid 10001 on its one EXPOSEd TCP port, with `PORT` set and 512 MB of memory. The label, not the project flag, decides this, so a rollback keeps the rules. With a Dockerfile in the repo but no flag, the build log says the template was used.
+
 ### Step 6: Build Docker image
 
 **File:** `src/services/docker/docker.service.ts` -- `buildImage()`
 
-1. Writes the Dockerfile into the cloned repo directory.
+1. Writes the Dockerfile into the cloned repo directory (not for a repository Dockerfile; see Step 5).
 2. Builds via `dockerode` with tag `dropdeploy/<slug>:latest`.
 3. Follows the build stream and checks for errors in each output chunk.
 4. Verifies the image exists via `docker.getImage(tag).inspect()`.
@@ -666,6 +668,7 @@ flowchart LR
 | `POST` | `/api/admin/projects/:projectId/stop` | Stop container |
 | `GET` | `/api/admin/projects/:projectId/container` | Container status |
 | `POST` | `/api/admin/projects/:projectId/transfer` | Transfer project to another user |
+| `PATCH` | `/api/admin/projects/:projectId/dockerfile` | `{ allowed }`: build the project from its repository's own Dockerfile from the next deploy (audited) |
 | `GET` | `/api/admin/analytics` | Platform-wide analytics (users, deployments, traffic, showcase, events); `?days=7\|14\|30\|90`, default 14 |
 | `GET` | `/api/admin/stats` | User and project totals for the admin overview |
 | `GET` | `/api/admin/users/export` | All users as CSV (no password hashes or tokens), with their current batches; `?cohortId=` for one batch's members |

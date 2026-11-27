@@ -29,6 +29,8 @@ export interface IProjectRepository {
   transferOwner(id: string, newUserId: string): Promise<Project>;
   /** Records that the live container was stopped (a date) or started again (null). */
   setStoppedAt(id: string, stoppedAt: Date | null): Promise<void>;
+  /** Admin-only switch: build from the repository's own Dockerfile. */
+  setAllowRepoDockerfile(id: string, allowed: boolean): Promise<void>;
   /** Enable auto-deploy and persist the GitHub hook id + encrypted webhook secret. */
   setWebhookConfig(id: string, data: { githubHookId: string; webhookSecretEnc: string; webhookSecretIv: string; webhookSecretTag: string }): Promise<Project>;
   /** Disable auto-deploy and clear all webhook fields. */
@@ -122,6 +124,10 @@ export class ProjectRepository implements IProjectRepository {
 
   async setStoppedAt(id: string, stoppedAt: Date | null): Promise<void> {
     await prisma.project.update({ where: { id }, data: { stoppedAt } });
+  }
+
+  async setAllowRepoDockerfile(id: string, allowed: boolean): Promise<void> {
+    await prisma.project.update({ where: { id }, data: { allowRepoDockerfile: allowed } });
   }
 
   async setWebhookConfig(

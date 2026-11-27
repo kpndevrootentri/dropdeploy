@@ -28,6 +28,7 @@ export interface AdminProjectDetails {
   usage: ContainerUsage | null;
   /** Set when the worker could not be asked for usage; the rest still loads. */
   usageError: string | null;
+  allowRepoDockerfile: boolean;
 }
 
 /** Per-item outcome of a cleanup run or bulk action. */
@@ -96,6 +97,7 @@ export class AdminToolsService {
       domains: domains.map(({ id, hostname, status, isPrimary }) => ({ id, hostname, status, isPrimary })),
       usage: usage.value,
       usageError: usage.error,
+      allowRepoDockerfile: project.allowRepoDockerfile,
     };
   }
 
