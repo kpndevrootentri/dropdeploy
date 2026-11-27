@@ -16,7 +16,7 @@ const WEBHOOK_PATH = '/api/webhooks/github';
 export interface IWebhookService {
   enableAutoDeploy(projectId: string, userId: string): Promise<Project>;
   disableAutoDeploy(projectId: string, userId: string): Promise<Project>;
-  findProjectsForPush(repoFullName: string, branch: string): Promise<Project[]>;
+  findProjectsForPush(repoFullName: string, branch: string): Promise<(Project & { user: { role: string } })[]>;
   getSecret(project: Project): string | null;
 }
 
@@ -103,7 +103,7 @@ export class WebhookService implements IWebhookService {
    * repo+branch can back multiple projects, so this returns every match. Projects
    * with an unparseable githubUrl are skipped defensively.
    */
-  async findProjectsForPush(repoFullName: string, branch: string): Promise<Project[]> {
+  async findProjectsForPush(repoFullName: string, branch: string): Promise<(Project & { user: { role: string } })[]> {
     const target = repoFullName.toLowerCase();
     const candidates = await this.projectRepo.findAutoDeployByBranch(branch);
     return candidates.filter((p) => {

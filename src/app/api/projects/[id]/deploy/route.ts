@@ -3,6 +3,7 @@ import { getSession } from '@/lib/get-session';
 import { deploymentService } from '@/services/deployment';
 import { handleApiError } from '@/lib/api-error';
 import { auditLogRepository } from '@/repositories/audit-log.repository';
+import { checkDeployRateLimit } from '@/lib/rate-limit';
 
 /**
  * POST /api/projects/:id/deploy – create deployment (e.g. for GITHUB projects).
@@ -13,6 +14,8 @@ export async function POST(
 ): Promise<NextResponse<unknown>> {
   try {
     const session = await getSession(req);
+    const limited = checkDeployRateLimit(session);
+    if (limited) return limited;
     const { id: projectId } = await params;
 
     const { deployment, queued } = await deploymentService.createDeployment(projectId, session.userId);

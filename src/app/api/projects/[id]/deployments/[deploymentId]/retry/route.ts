@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/get-session';
 import { deploymentService } from '@/services/deployment';
 import { handleApiError } from '@/lib/api-error';
+import { checkDeployRateLimit } from '@/lib/rate-limit';
 
 /**
  * POST /api/projects/:id/deployments/:deploymentId/retry
@@ -13,6 +14,8 @@ export async function POST(
 ): Promise<NextResponse<unknown>> {
   try {
     const session = await getSession(req);
+    const limited = checkDeployRateLimit(session);
+    if (limited) return limited;
     const { deploymentId } = await params;
 
     const deployment = await deploymentService.retryFailedDeployment(deploymentId, session.userId);
