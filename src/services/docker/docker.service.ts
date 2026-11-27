@@ -19,11 +19,18 @@ import type { DanglingImage, LabelledContainer } from '@/lib/docker-ops';
 import {
   DOCKERFILE_TEMPLATES,
   CONTAINER_PORTS,
+  DJANGO_SETTINGS,
+  DJANGO_SETTINGS_FILE,
+  DJANGO_WSGI,
+  DJANGO_WSGI_FILE,
   WORDPRESS_CONFIG,
   WORDPRESS_CONFIG_FILE,
+  type DjangoEntry,
   type DockerfileProjectType,
+  djangoDockerfile,
   injectBuildArgs,
 } from './dockerfile.templates';
+import { findDjangoEntry } from './django-entry';
 import { patchNextConfig } from './nextjs-config-patcher';
 import { redact } from '@/services/deployment/failure-reason';
 import { readRepoFile, writeRepoFile } from '@/lib/repo-fs';
@@ -120,8 +127,10 @@ export class DockerService {
   /**
    * Returns Dockerfile content for the given project type.
    * For NEXTJS projects, injects ARG/ENV lines for NEXT_PUBLIC_* build args.
+   * A Django project runs on gunicorn when manage.py names its settings module, else on runserver.
    */
-  getDockerfileForProject(project: Project, buildArgKeys: string[] = []): string {
+  getDockerfileForProject(project: Project, buildArgKeys: string[] = [], django: DjangoEntry | null = null): string {
+    if (project.type === 'DJANGO' && django) return djangoDockerfile(django);
     let key: keyof typeof DOCKERFILE_TEMPLATES =
       project.type in DOCKERFILE_TEMPLATES ? project.type as keyof typeof DOCKERFILE_TEMPLATES : 'STATIC';
     if (project.type === 'NEXTJS' && project.useStaticHosting) {
@@ -145,14 +154,23 @@ export class DockerService {
   ): Promise<string> {
     const imageName = `dropdeploy/${project.slug}:latest`;
     const dockerfilePath = path.join(contextPath, 'Dockerfile');
-    const dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs));
+    const django = project.type === 'DJANGO' ? await findDjangoEntry(contextPath, onLog) : null;
+    if (project.type === 'DJANGO' && !django) {
+      log.warn('No Django settings module found; using runserver', { slug: project.slug });
+      onLog?.('Could not find the settings module: manage.py needs os.environ.setdefault("DJANGO_SETTINGS_MODULE", "<package>.settings"), without assigning the variable elsewhere or changing sys.path, and that module must sit under the repository root. The site runs on manage.py runserver instead of gunicorn.\n');
+    }
+    const dockerfile = this.getDockerfileForProject(project, Object.keys(buildArgs), django);
     await writeRepoFile(dockerfilePath, dockerfile);
     if (project.type === 'WORDPRESS') {
       await writeRepoFile(path.join(contextPath, WORDPRESS_CONFIG_FILE), WORDPRESS_CONFIG);
     }
+    if (django) {
+      await writeRepoFile(path.join(contextPath, DJANGO_SETTINGS_FILE), DJANGO_SETTINGS);
+      await writeRepoFile(path.join(contextPath, DJANGO_WSGI_FILE), DJANGO_WSGI);
+    }
 
     // Write .dockerignore to keep .env files and .git out of the image
-    await this.writeDockerignore(contextPath);
+    await this.writeDockerignore(contextPath, django ? [DJANGO_SETTINGS_FILE, DJANGO_WSGI_FILE] : []);
 
     // Patch Next.js config to skip lint/type errors during build;
     // also inject output: 'export' for static builds so the out/ dir is generated
@@ -420,10 +438,12 @@ export class DockerService {
    * Always appended, never skipped when already present: later lines win in
    * .dockerignore, so a repo line such as `!.env*` must not come after ours.
    * The clone is reset and cleaned before every build, so this cannot pile up.
+   * For the same reason `keep` (files the platform wrote that the image needs)
+   * is re-included last, after any repo rule that would exclude it.
    */
-  private async writeDockerignore(contextPath: string): Promise<void> {
+  private async writeDockerignore(contextPath: string, keep: string[] = []): Promise<void> {
     const ignorePath = path.join(contextPath, '.dockerignore');
-    const platformRules = '\n# Entrify: keep secrets and git history out of the image\n.env*\n.git\n';
+    const platformRules = '\n# Entrify: keep secrets and git history out of the image\n.env*\n.git\n' + keep.map((file) => `!${file}\n`).join('');
     const existing = await readRepoFile(ignorePath);
     await writeRepoFile(ignorePath, existing === null ? platformRules.trimStart() : existing + platformRules);
   }

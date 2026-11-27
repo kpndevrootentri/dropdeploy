@@ -40,7 +40,7 @@ Four ways; each gives the page its own URL in seconds. Limits: 50 MB and 500 fil
 - [Static HTML](https://entrify.site/docs/frameworks/static): Plain HTML, CSS and JavaScript served by Nginx.
 - [React](https://entrify.site/docs/frameworks/react), [Vue](https://entrify.site/docs/frameworks/vue), [Svelte](https://entrify.site/docs/frameworks/svelte): Built with Vite and served as static files by Nginx.
 - [Node.js](https://entrify.site/docs/frameworks/nodejs): `npm install --omit=dev` + `npm start`. Requires a `start` script in `package.json`.
-- [Django](https://entrify.site/docs/frameworks/django): `pip install -r requirements.txt` + `manage.py runserver 0.0.0.0:8000`.
+- [Django](https://entrify.site/docs/frameworks/django): `pip install -r requirements.txt` + `collectstatic` + gunicorn, with WhiteNoise serving static files (falls back to `manage.py runserver` when manage.py doesn't name a settings module importable from the repo root, or changes sys.path).
 - [FastAPI](https://entrify.site/docs/frameworks/fastapi) / [Flask](https://entrify.site/docs/frameworks/flask): Python ASGI/WSGI apps with pip-based installs.
 - [Go](https://entrify.site/docs/frameworks/go), [Rust](https://entrify.site/docs/frameworks/rust), [Java / Spring Boot](https://entrify.site/docs/frameworks/java), [WordPress](https://entrify.site/docs/frameworks/wordpress): Compiled or packaged in Docker; see each page for requirements.
 

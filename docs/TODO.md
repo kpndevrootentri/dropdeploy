@@ -212,7 +212,8 @@ Found on 2026-11-26 by checking `main` and the production host.
 
 ### Deploys and running sites
 
-- [ ] Run Django on gunicorn instead of `manage.py runserver` (Flask already uses gunicorn)
+- [x] Run Django on gunicorn instead of `manage.py runserver` (Flask already uses gunicorn). Static files are collected at build and again at every container start, and served by WhiteNoise; a project whose manage.py doesn't name a settings module importable from the repo root, or changes sys.path, keeps runserver.
+- [ ] Flask: install `'gunicorn>=21'` like the Django template. A requirements.txt pinning gunicorn 20.x satisfies the current `gunicorn` extra, and 20.x crashes on python:3.13-slim (no `pkg_resources`).
 - [x] Show students and mentors why a build failed (`buildStep`, or a short reason field). The step it stopped at plus a capped, env-redacted `failureReason`, on the project page, the mentor batch page and admin Projects.
 - [x] Make redeploy-all skip sites an admin stopped. `stoppedAt` now exists; see the `ponytail:` comment in `redeploy-plan.ts`. (Done: the preview lists them as "Stopped by an admin; restart it first".)
 - [ ] WebSocket support through the proxy (it strips `Upgrade`)
@@ -231,6 +232,6 @@ High impact, achievable in a single session:
 | # | Item | What to do |
 |---|------|-----------|
 | 1 | **Docker BuildKit** | Set `DOCKER_BUILDKIT=1` in worker env for faster builds (currently stripping BuildKit directives for classic builder compat) |
-| 2 | **Django on gunicorn** | Copy the Flask template's gunicorn setup into the Django template |
+| 2 | ~~**Django on gunicorn**~~ (done) | Copy the Flask template's gunicorn setup into the Django template |
 | 3 | **Skip stopped sites in redeploy-all** | Add `stoppedAt` to `RedeployCandidate` and skip it in `redeploy-plan.ts` |
 | 4 | **Backup cron** | Check the daily cron for `scripts/backup.sh` on the production host |

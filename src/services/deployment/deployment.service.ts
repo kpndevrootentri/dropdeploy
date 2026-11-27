@@ -7,7 +7,7 @@ import { dockerService, type DockerService } from '@/services/docker';
 import { liveContainerName, candidateContainerName } from '@/services/docker/docker.service';
 import { PLATFORM_RESOURCE_SLUGS } from '@/lib/reserved-slugs';
 import { gitService, type IGitService, type GitCredentials } from '@/services/git';
-import { isPublicBuildEnv, WORDPRESS_CONFIG_FILE } from '@/services/docker/dockerfile.templates';
+import { DJANGO_SETTINGS_FILE, DJANGO_WSGI_FILE, isPublicBuildEnv, WORDPRESS_CONFIG_FILE } from '@/services/docker/dockerfile.templates';
 import { startsPrivate } from '@/types/project.types';
 import { envVarService, type EnvironmentVariableService } from '@/services/env-var';
 import { gitProviderService } from '@/services/git-provider';
@@ -620,7 +620,7 @@ export class DeploymentService {
    * after Docker build to prevent secrets lingering on disk.
    */
   private async cleanBuildArtifacts(workDir: string): Promise<void> {
-    const filesToClean = ['Dockerfile', '.dockerignore', WORDPRESS_CONFIG_FILE];
+    const filesToClean = ['Dockerfile', '.dockerignore', WORDPRESS_CONFIG_FILE, DJANGO_SETTINGS_FILE, DJANGO_WSGI_FILE];
     for (const file of filesToClean) {
       try {
         // A tenant's clone: untraced, or Turbopack walks every repo in projects/.
