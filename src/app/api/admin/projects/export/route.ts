@@ -9,15 +9,17 @@ import { getDeployedProjectUrl } from '@/lib/project-url';
 /**
  * GET /api/admin/projects/export – every project as CSV (contributor only).
  * Columns are picked one by one, so secrets on the project row never reach the file.
+ * New columns go at the end, so spreadsheets built on the old order keep working.
+ * `?cohortId=` limits it to one batch's projects.
  */
 export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
   try {
     const session = await getSession(req);
     requireContributor(session);
-    const projects = await adminService.listAllProjects();
+    const projects = await adminService.listAllProjects({ cohortId: req.nextUrl.searchParams.get('cohortId') || undefined });
     return csvResponse(
       'projects',
-      ['name', 'slug', 'owner', 'type', 'source', 'last_deploy_status', 'last_deploy_at', 'url', 'created_at'],
+      ['name', 'slug', 'owner', 'type', 'source', 'last_deploy_status', 'last_deploy_at', 'url', 'created_at', 'batch'],
       projects.map((p) => {
         const last = p.deployments[0];
         const url = last?.status === 'DEPLOYED' ? getDeployedProjectUrl(p.slug) : '';
@@ -31,6 +33,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<unknown>> {
           last?.createdAt ?? '',
           url && !url.startsWith('http') ? `https://${url}` : url,
           p.createdAt,
+          p.cohort?.name ?? '',
         ];
       }),
     );

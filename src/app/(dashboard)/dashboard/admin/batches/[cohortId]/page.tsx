@@ -221,6 +221,10 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
             <Button variant="outline" size="sm" onClick={openMentorDialog}>
               <UserPlus className="mr-1 h-4 w-4" aria-hidden />Add mentor
             </Button>
+            {/* Current members only, like the counts above. */}
+            <Button variant="outline" size="sm" asChild>
+              <a href={`/api/admin/users/export?cohortId=${cohortId}`} download>Export CSV</a>
+            </Button>
             {!cohort.archivedAt && (
               <Button size="sm" onClick={() => setDialog('students')}>
                 <Users className="mr-1 h-4 w-4" aria-hidden />Add students
@@ -312,7 +316,12 @@ export default function AdminBatchPage({ params }: { params: Promise<{ cohortId:
       </section>
 
       <section className="space-y-3" aria-labelledby="projects-heading">
-        <h3 id="projects-heading" className="text-base font-semibold">Projects</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 id="projects-heading" className="text-base font-semibold">Projects</h3>
+          <Button variant="outline" size="sm" asChild>
+            <a href={`/api/admin/projects/export?cohortId=${cohortId}`} download>Export CSV</a>
+          </Button>
+        </div>
         <div className="relative overflow-x-auto rounded-lg border">
           {/* relative: keeps the sr-only caption inside the scroll box, so phones get no page-wide scroll. */}
           <table className="w-full text-sm border-collapse">

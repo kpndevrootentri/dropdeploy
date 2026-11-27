@@ -360,6 +360,48 @@ describe('the switch', () => {
   });
 });
 
+describe('the /explore batch filter', () => {
+  const mentor = { userId: 'm1', role: 'USER' };
+  const memberships = [
+    { role: 'MENTOR', cohort: cohort({ id: 'c1', name: 'FSD Jan 2027' }) },
+    { role: 'STUDENT', cohort: cohort({ id: 'c2', name: 'Data Feb 2027' }) },
+  ];
+
+  it('gives signed-out visitors no batches and drops their filter without a lookup', async () => {
+    const { service, repo } = setup({ memberships });
+    expect(await service.exploreFilter(null, 'c1')).toEqual({ cohorts: [], cohortId: undefined });
+    expect(repo.findAll).not.toHaveBeenCalled();
+    expect(repo.listActiveMemberships).not.toHaveBeenCalled();
+  });
+
+  it('gives a student no batches, not even their own, and drops their filter', async () => {
+    const { service } = setup({ memberships: [memberships[1]] });
+    expect(await service.exploreFilter(student, 'c2')).toEqual({ cohorts: [], cohortId: undefined });
+  });
+
+  it('gives admins every batch and keeps only a batch that exists', async () => {
+    const { service, repo } = setup();
+    repo.findAll.mockResolvedValue([cohort(), cohort({ id: 'c3', name: 'Old batch', archivedAt: new Date() })]);
+    expect(await service.exploreFilter(admin, 'c3')).toEqual({
+      cohorts: [{ id: 'c1', name: 'FSD Jan 2027' }, { id: 'c3', name: 'Old batch' }],
+      cohortId: 'c3',
+    });
+    expect((await service.exploreFilter(admin, 'missing')).cohortId).toBeUndefined();
+  });
+
+  it('gives a mentor only the batches they mentor now, never one they study in', async () => {
+    const { service } = setup({ memberships });
+    expect(await service.exploreFilter(mentor, 'c1')).toEqual({ cohorts: [{ id: 'c1', name: 'FSD Jan 2027' }], cohortId: 'c1' });
+    expect((await service.exploreFilter(mentor, 'c2')).cohortId).toBeUndefined();
+    expect((await service.exploreFilter(mentor, 'missing')).cohortId).toBeUndefined();
+  });
+
+  it('gives mentors nothing while batches are off', async () => {
+    const { service } = setup({ enabled: false, memberships });
+    expect(await service.exploreFilter(mentor, 'c1')).toEqual({ cohorts: [], cohortId: undefined });
+  });
+});
+
 describe('what mentors can read', () => {
   it('shows the batch to its mentors and to admins, and a 404 to anyone else', async () => {
     await expect(setup({ mentor: true }).service.listProjects('c1', { userId: 'm1', role: 'USER' })).resolves.toEqual([]);

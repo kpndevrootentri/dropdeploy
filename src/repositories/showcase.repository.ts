@@ -26,6 +26,8 @@ export interface FindPublishedOptions {
   take?: number;
   tag?: string;
   q?: string;
+  /** Only projects in this batch. Callers check the viewer may see it (CohortService.exploreFilter). */
+  cohortId?: string;
 }
 
 export interface PagedShowcase {
@@ -102,10 +104,11 @@ export class ShowcaseRepository implements IShowcaseRepository {
     return { ...raw, project: { ...raw.project, user: { handle: raw.project.user.email.split('@')[0] } } };
   }
 
-  async findPublished({ skip = 0, take = 12, tag, q }: FindPublishedOptions = {}): Promise<PagedShowcase> {
+  async findPublished({ skip = 0, take = 12, tag, q, cohortId }: FindPublishedOptions = {}): Promise<PagedShowcase> {
     const where = {
       isPublished: true,
       ...(tag ? { tags: { has: tag } } : {}),
+      ...(cohortId ? { project: { cohortId } } : {}),
       ...(q ? {
         OR: [
           { shortDescription: { contains: q, mode: 'insensitive' as const } },

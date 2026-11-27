@@ -218,7 +218,7 @@ Found on 2026-11-26 by checking `main` and the production host.
 
 ### Students and batches
 
-- [ ] Filter `/explore` by batch, and add a batch column to the CSV exports
+- [x] Filter `/explore` by batch, and add a batch column to the CSV exports (admins see every batch, mentors their own; `?cohortId=` on both exports)
 - [x] Move a project between batches (admin batch page → Move to batch…; owner must be a current student there)
 
 ---
