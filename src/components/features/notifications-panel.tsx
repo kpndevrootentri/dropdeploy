@@ -107,9 +107,12 @@ export function NotificationsPanel({ projectId }: { projectId: string }): React.
         {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
 
         {hooks === null ? (
-          <div className="flex justify-center py-4">
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          </div>
+          // A failed load shows its error above instead of a spinner that never stops.
+          !error && (
+            <div className="flex justify-center py-4">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          )
         ) : hooks.length === 0 ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Bell className="h-4 w-4" /> No notifications yet.
