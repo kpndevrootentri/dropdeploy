@@ -9,7 +9,7 @@ import { getTokenFromCookie, setAuthCookie, setAdminRestoreCookie } from '@/lib/
 
 /**
  * POST /api/admin/users/[userId]/impersonate – view the dashboard as this user, read-only, for 30 minutes (contributor only).
- * The admin's own session is kept aside in a host-only cookie that only the exit route receives.
+ * The admin's own session is kept aside in a host-only `admin-session` cookie scoped to /api/auth (exit restores it, logout revokes it).
  */
 export async function POST(
   req: NextRequest,

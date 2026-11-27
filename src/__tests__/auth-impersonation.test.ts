@@ -21,7 +21,7 @@ function makeUser(overrides: Partial<User>): User {
 describe('AuthService view-as-user sessions', () => {
   let users: Map<string, User>;
   const repo = { findById: async (id: string) => users.get(id) ?? null } as unknown as IUserRepository;
-  const auth = new AuthService(repo, { jwtSecret: 'x'.repeat(32), jwtExpiresIn: '7d' });
+  const auth = new AuthService(repo, { jwtSecret: 'x'.repeat(32), jwtExpiresIn: '7d' }, undefined, { add: async () => {}, has: async () => false });
 
   beforeEach(() => {
     users = new Map([

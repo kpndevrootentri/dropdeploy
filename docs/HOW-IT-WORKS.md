@@ -184,7 +184,7 @@ sequenceDiagram
     P->>P: redirect to /dashboard
 ```
 
-Login follows the same flow but verifies the password instead of creating a user. Logout clears the session and site-view cookies via `POST /api/auth/logout`.
+Login follows the same flow but verifies the password instead of creating a user. Logout (`POST /api/auth/logout`) revokes the session's token server-side, then clears the session and site-view cookies (see §9).
 
 ### 4.2 Project Creation
 
@@ -590,7 +590,7 @@ flowchart LR
 - Private sites, static or container, are served `Cache-Control: private, no-cache`, overriding the tenant's own caching headers. Every load revalidates through the gate, which runs before any 304, so nothing is served from a cache past it, and unchanged files are still not downloaded again.
 - **Middleware** (`src/middleware.ts`) protects `/dashboard/*` routes.
 - Session endpoint: `GET /api/auth/session`.
-- Logout: `POST /api/auth/logout` clears the cookie.
+- Logout: `POST /api/auth/logout` revokes this session and clears the cookies. Every session JWT carries a random `jti` (the site-view token copies it). Logout, and leaving "view as user", put that `jti` in Redis (`revoked-session:<jti>`) until the token would expire; `verifySession` and `verifySiteSession` reject it. The user's other sessions stay signed in. Logging out while viewing as a user also revokes the admin's own session from the `admin-session` cookie. If Redis is reconnecting, or does not answer within 500 ms, the check fails open (accepts the token) and logs an error. Tokens issued before the `jti` existed can't be revoked this way and work until they expire.
 
 ### Authorization
 
@@ -609,7 +609,7 @@ flowchart LR
 | `POST` | `/api/auth/register` | Create account |
 | `POST` | `/api/auth/login` | Login (sets httpOnly cookie) |
 | `POST` | `/api/auth/token` | CLI login — returns JWT in response body (no cookie) |
-| `POST` | `/api/auth/logout` | Logout (clear cookie) |
+| `POST` | `/api/auth/logout` | Logout (revoke this session's token, clear cookies) |
 | `GET` | `/api/auth/session` | Validate current session |
 | `GET` | `/api/auth/github/connect` | Start GitHub OAuth flow |
 | `GET` | `/api/auth/github/callback` | GitHub OAuth callback |
@@ -668,12 +668,12 @@ flowchart LR
 
 ### View as user
 
-An admin can open the dashboard as a non-admin user to see what they see. The session is a 30-minute JWT for the user carrying `imp` (the admin's id) and `itv` (the admin's `tokenVersion`); the admin's own token waits in the `admin-restore` cookie (httpOnly, host-only, path `/api/auth/impersonation/exit`).
+An admin can open the dashboard as a non-admin user to see what they see. The session is a 30-minute JWT for the user carrying `imp` (the admin's id) and `itv` (the admin's `tokenVersion`); the admin's own token waits in the `admin-session` cookie (httpOnly, host-only, path `/api/auth`). Exit revokes the view token; logout while viewing revokes both.
 
 - **Read-only:** `getSession` — which every authenticated API route calls — refuses anything but GET/HEAD, plus `/api/admin/*`, the GitHub/GitLab OAuth routes and repo listing even for GET. The proxy keeps the session off `/dashboard/admin`.
 - **Ends early** when the admin is demoted or signed out everywhere, or the user becomes an admin (`verifySession` re-checks both users).
 - **Never** for another admin or yourself.
-- **Exit** restores the saved session only if it is a live admin session and the current view is still valid and belongs to that admin; otherwise the admin is signed out and signs in again. A tenant site can plant or evict parent-domain cookies but not the host-only session, so the view is what vouches for the restore cookie.
+- **Exit** restores the saved session only if it is a live admin session and the current view is still valid and belongs to that admin; otherwise the admin is signed out, the saved session is revoked, and they sign in again. A tenant site can plant or evict parent-domain cookies but not the host-only session, so the view is what vouches for the restore cookie.
 - Start and exit set the `site-view` cookie with the session, so private sites are always viewed as the same user the dashboard shows.
 - Start and exit are recorded as `admin.impersonate.start` / `admin.impersonate.exit` platform events.
 

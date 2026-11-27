@@ -28,7 +28,7 @@ describe('AuthService.verifySession', () => {
       return stored;
     },
   } as unknown as IUserRepository;
-  const auth = new AuthService(repo, { jwtSecret: 'x'.repeat(32), jwtExpiresIn: '1h' });
+  const auth = new AuthService(repo, { jwtSecret: 'x'.repeat(32), jwtExpiresIn: '1h' }, undefined, { add: async () => {}, has: async () => false });
 
   beforeEach(async () => {
     const bcrypt = await import('bcryptjs');

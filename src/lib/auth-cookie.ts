@@ -28,11 +28,13 @@ const PLATFORM_COOKIES = new Set([LEGACY_AUTH_COOKIE, '__Host-auth-token', SITE_
 
 /**
  * Holds an admin's own session while they view the dashboard as another user.
- * Host-only and scoped to the exit route, so no tenant subdomain and no other
- * route ever receives it.
+ * Host-only and scoped to `/api/auth`, so no tenant subdomain and no route
+ * outside auth receives it; exit restores it and logout revokes it.
+ * Renamed from `admin-restore` (scoped to the exit route) so a copy left at the
+ * old path is never read again and can't collide with this one.
  */
-export const ADMIN_RESTORE_COOKIE = 'admin-restore';
-export const IMPERSONATION_EXIT_PATH = '/api/auth/impersonation/exit';
+export const ADMIN_RESTORE_COOKIE = 'admin-session';
+const ADMIN_RESTORE_PATH = '/api/auth';
 
 /** 7 days in seconds */
 const DEFAULT_MAX_AGE = 7 * 24 * 60 * 60;
@@ -79,7 +81,7 @@ export function setAdminRestoreCookie(response: NextResponse, token: string, max
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
     maxAge: maxAgeSeconds,
-    path: IMPERSONATION_EXIT_PATH,
+    path: ADMIN_RESTORE_PATH,
   });
 }
 
