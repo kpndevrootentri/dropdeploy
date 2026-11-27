@@ -121,6 +121,11 @@ that `.env`.
 
 ## 3. Rehearse on alternate ports
 
+This section is for the first cutover, while nginx holds the real ports. Once
+Caddy is the live edge, `docker compose up`/`down` here would replace and then
+remove it: rehearse in a separate container instead (deployment.md, "Static
+files through the Caddy edge", step 2).
+
 Temporarily change the two site addresses in the Caddyfile from `:443` to
 `:8443` and `:80` to `:8080`, then:
 

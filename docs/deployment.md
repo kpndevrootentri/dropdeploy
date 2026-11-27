@@ -664,6 +664,41 @@ pm2 status
 
 ---
 
+## Static files through the Caddy edge
+
+With Caddy as the edge (`infra/caddy/`, see [nginx-to-caddy-cutover.md](./nginx-to-caddy-cutover.md)), Caddy sends the bytes of static tenant files. The app still resolves the path, runs the private-site gate and sets `Cache-Control`, then returns an empty 200 that names the file in `X-Entrify-Static-File`. Caddy's `file_server` sends the file with `Content-Length`, Range (206) and its own ETag and 304s, which a Next route handler cannot do. The app only hands a file off when `X-Entrify-Static-Edge` equals its `INTERNAL_EDGE_TOKEN`, the shared secret the edge already holds for the TLS ask. Caddy sets that header on every request, and the app never forwards it to a container. With no token configured, or any other value, the app streams the file itself as before. Deploy the app before the edge.
+
+To enable it:
+
+1. Work in the edge's own directory, the one with the live `.env`, `Caddyfile`, `docker-compose.caddy.yml` and `sites/` ([§2 of the cutover doc](./nginx-to-caddy-cutover.md#2-configure)), not in the repo's `infra/caddy/`. Add `STATIC_SITES_DIR` to its `.env`: the absolute path of the app's `STATIC_SERVE_DIR` (read it from the app's `.env`). `docker compose` refuses to start without it.
+2. Rehearse in a separate container, never with `docker compose`: the compose file pins `container_name: dropdeploy-caddy`, so `up` would replace the live edge with the rehearsal and `down` would remove it. Copy the new `infra/caddy/Caddyfile` there as `Caddyfile.rehearsal`. In the copy, add `http_port 8080`, `https_port 8443` and `admin off` to the global options block, and change the `:443 {` and `:80 {` site addresses to `:8443 {` and `:8080 {`. Miss none of them: Caddy opens its ports with `SO_REUSEPORT`, so a second Caddy on the host network that keeps `:443`, `:80` or the admin port `2019` shares it with the live edge and silently takes part of its traffic. Then:
+
+   ```bash
+   docker run --rm -d --name caddy-rehearsal --network host --env-file .env \
+     -v "$PWD/Caddyfile.rehearsal:/etc/caddy/Caddyfile:ro" -v "$PWD/sites:/etc/caddy/sites:ro" \
+     -v /etc/letsencrypt:/etc/letsencrypt:ro -v "<STATIC_SITES_DIR>:/srv/static-sites:ro" \
+     caddy:2-alpine
+   curl -skI --resolve <static-slug>.<BASE_DOMAIN>:8443:127.0.0.1 https://<static-slug>.<BASE_DOMAIN>:8443/<image>
+   docker rm -f caddy-rehearsal
+   ```
+
+   The curl should show `Content-Length`, `Accept-Ranges` and an `ETag`. The rehearsal has no `caddy_data` volume, so it never touches the live certificates or ACME account. `docker run --env-file` reads values literally: the `.env` needs unquoted values and every variable the compose file would default (`APP_UPSTREAM`, `WILDCARD_CERT`, `WILDCARD_KEY`).
+3. Copy the new `Caddyfile` and `docker-compose.caddy.yml` from `infra/caddy/` into the edge's directory (keep its `sites/`), then recreate the container there: `docker compose -f docker-compose.caddy.yml up -d --force-recreate`. A new volume needs a recreate, so `caddy reload` is not enough. Every site and the dashboard drop for a few seconds; certificates stay in `caddy_data`.
+4. Check:
+   - `docker exec dropdeploy-caddy ls /srv/static-sites` lists the site folders. A wrong path turns every static file into an empty 404.
+   - `curl -sI https://<static-slug>.<BASE_DOMAIN>/<image>` shows `Content-Length`, `Accept-Ranges` and `ETag`. `curl -r 0-99` gives 206, and repeating the request with `If-None-Match: <etag>` gives 304.
+   - A private static site without the site-view cookie gives the 401 page.
+   - A static site on a custom domain loads. An SPA deep link gives `index.html` with 200. A missing page on a site with a `404.html` gives that page with 404.
+   - A container site is unchanged.
+
+   Run these checks again after every Next upgrade. Jest calls the route directly, so it would not notice if Next changed how it sends custom headers or empty bodies.
+
+Rollback: remove the `header_up X-Entrify-Static-Edge {$INTERNAL_EDGE_TOKEN}` line from the Caddyfile and recreate the container. The app goes back to streaming every file.
+
+Limits: responses that Caddy's `encode` compresses (HTML, CSS, JS, JSON, SVG, and also TTF fonts and `.ico` icons) still stream without `Content-Length` unless they are only a few KB compressed. Other images, video, WOFF/WOFF2 fonts, PDFs and archives always get it. ETags change format, so each browser downloads each file once more after the switch.
+
+---
+
 ## Maintenance
 
 ### Docker cleanup (run weekly via cron)

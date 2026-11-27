@@ -1,15 +1,17 @@
-# DropDeploy edge — TLS termination only.
+# DropDeploy edge — TLS termination, and the bytes of static tenant files.
 #
 # This file terminates TLS and hands every request to the Next.js app with the
 # original Host header intact. It deliberately does NOT route to containers:
 # `src/proxy.ts` is the single authoritative router, and it is where the
 # private-URL gate and the ProxyHit analytics live. An edge that proxied a
 # tenant hostname straight to a container port would silently bypass both.
+# Static sites are no exception: the app decides which file answers a request,
+# and only then hands that file back here to send (see `handle_response` below).
 #
 # Placeholders to substitute before use:
 #   {$BASE_DOMAIN}          e.g. entrify.site (the dashboard; tenants are <slug>.entrify.site)
 #   {$APP_UPSTREAM}         e.g. 127.0.0.1:3000   ← check the real port
-#   {$INTERNAL_EDGE_TOKEN}  the shared secret from the app's env
+#   {$INTERNAL_EDGE_TOKEN}  the shared secret from the app's env (TLS ask, static-file hand-off)
 #   {$ACME_EMAIL}           contact address for Let's Encrypt
 #   {$WILDCARD_CERT} / {$WILDCARD_KEY}  paths to the existing certbot wildcard
 
@@ -65,11 +67,40 @@
 		header_up Host {host}
 		header_up X-Real-IP {remote_host}
 		header_up X-Forwarded-Proto {scheme}
+		# Tells the app this edge can send static files itself. The shared
+		# secret, not a fixed value, so no client or other proxy can switch the
+		# hand-off on; overwrites any value the client sent. The app never
+		# forwards it to a container, and hands nothing off without the token.
+		header_up X-Entrify-Static-Edge {$INTERNAL_EDGE_TOKEN}
 
 		# Deployed apps stream logs (SSE on /logs/stream) and may hold
 		# long-lived connections. Without this, Caddy buffers and the stream
 		# arrives in chunks or not at all.
 		flush_interval -1
+
+		# Static tenant files. The app still resolves the path (SPA fallback,
+		# .html routes, dotfile block), runs the private-site gate and sets
+		# Cache-Control, then answers with an empty 200 that names the file.
+		# file_server sends it with Content-Length (unless `encode` compresses
+		# it), Range, Last-Modified and conditional requests, which a Next route
+		# handler cannot. The app strips this header from container responses,
+		# so a tenant app cannot name another site's files.
+		@static_file {
+			status 200
+			header X-Entrify-Static-File *
+		}
+		handle_response @static_file {
+			# The app's STATIC_SERVE_DIR, mounted read-only (docker-compose.caddy.yml).
+			root * /srv/static-sites
+			rewrite * {rp.header.X-Entrify-Static-File}
+			copy_response_headers {
+				include Cache-Control Content-Type
+			}
+			file_server {
+				# The app already chose the file; no trailing-slash redirects.
+				disable_canonical_uris
+			}
+		}
 	}
 
 	encode zstd gzip

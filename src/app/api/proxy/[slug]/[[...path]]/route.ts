@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { splitCookiesString } from 'next/dist/server/web/utils';
 import { prisma } from '@/lib/prisma';
 import * as nodePath from 'path';
-import { serveStaticFile } from '@/lib/static-serve';
+import { serveStaticFile, STATIC_FILE_HEADER } from '@/lib/static-serve';
 import { getSiteToken, isAuthSetCookie, withoutAuthCookie } from '@/lib/auth-cookie';
 import { getConfig } from '@/lib/config';
 import { mayServeTenant } from '@/lib/platform-host';
 import { publicLocation } from '@/lib/upstream-location';
+import { secretMatches } from '@/lib/secret-matches';
 import { projectAccessService } from '@/services/project-access';
 import { authService } from '@/services/auth';
 
@@ -50,7 +51,15 @@ const STRIP_RESPONSE = new Set([
   'content-length',
   // `cookies` would wipe every cookie on BASE_DOMAIN, the dashboard session and other tenants' included.
   'clear-site-data',
+  // The edge would send whichever static file it names, another site's private files included.
+  STATIC_FILE_HEADER,
 ]);
+
+/**
+ * Caddy sets this to INTERNAL_EDGE_TOKEN on every request it proxies (infra/caddy/Caddyfile),
+ * overwriting any client value: it may then send static files itself. Never forwarded to a container.
+ */
+const STATIC_EDGE_HEADER = 'x-entrify-static-edge';
 
 /**
  * A private site's responses are never reused without asking us: every load
@@ -305,15 +314,19 @@ async function handler(
   const targetPath = path.length > 0 ? `/${path.join('/')}${trailingSlash}` : '/';
 
   if (deployment.servingMethod === 'STATIC_FILES') {
-    const { STATIC_SERVE_DIR, NEXT_PUBLIC_APP_URL } = getConfig();
+    const { STATIC_SERVE_DIR, NEXT_PUBLIC_APP_URL, INTERNAL_EDGE_TOKEN } = getConfig();
     const serveDir = nodePath.join(STATIC_SERVE_DIR, slug);
     // Path rewriting is only needed in localhost dev where the site is served under
     // /api/proxy/{slug}/. In production the site owns its own subdomain so absolute
     // paths (/_next/static/...) resolve correctly without any rewriting.
     const isLocalDev = NODE_ENV !== 'production' && !!NEXT_PUBLIC_APP_URL?.includes('localhost');
+    // Off without a configured token: then no client and no other proxy can switch it on.
+    const handOff = !!INTERNAL_EDGE_TOKEN && ['GET', 'HEAD'].includes(request.method)
+      && secretMatches(request.headers.get(STATIC_EDGE_HEADER), INTERNAL_EDGE_TOKEN);
     const response = await serveStaticFile(serveDir, targetPath, {
       slug: isLocalDev ? slug : undefined,
       ifNoneMatch: request.headers.get('if-none-match'),
+      edgeRoot: handOff ? STATIC_SERVE_DIR : undefined,
     });
     if (!response) {
       return NextResponse.json(
@@ -344,14 +357,14 @@ async function handler(
 
   const targetUrl = `http://127.0.0.1:${deployment.containerPort}${targetPath}${request.nextUrl.search}`;
 
-  // Build forwarded headers — strip hop-by-hop, host and accept-encoding.
+  // Build forwarded headers — strip hop-by-hop, host, accept-encoding and the edge token.
   // Cookies are forwarded so apps can keep their own sessions, minus the
   // platform's session and site-view cookies: they are the visitor's Entrify
   // tokens and must never reach tenant code.
   const forwardHeaders = new Headers();
   for (const [key, value] of request.headers.entries()) {
     const k = key.toLowerCase();
-    if (!HOP_BY_HOP.has(k) && k !== 'host' && k !== 'accept-encoding' && k !== 'cookie') {
+    if (!HOP_BY_HOP.has(k) && k !== 'host' && k !== 'accept-encoding' && k !== 'cookie' && k !== STATIC_EDGE_HEADER) {
       forwardHeaders.set(key, value);
     }
   }

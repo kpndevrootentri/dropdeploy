@@ -24,6 +24,10 @@ services:
       # Caddy only reads them. /etc/letsencrypt/live/* are symlinks into
       # ../archive/, so the whole directory has to be mounted, not just live/.
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      # The app's STATIC_SERVE_DIR (absolute path), for the static-file hand-off
+      # in the Caddyfile. The whole folder, not one site: a deploy publishes a
+      # site by renaming its folder, which a per-site mount would never see.
+      - ${STATIC_SITES_DIR:?set STATIC_SITES_DIR in caddy/.env to the app's STATIC_SERVE_DIR}:/srv/static-sites:ro
       # Certificates and ACME account state MUST be durable. On a fresh volume
       # Caddy re-orders every certificate it previously held, which is the
       # fastest way to exhaust the Let's Encrypt weekly quota.

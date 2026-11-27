@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { splitCookiesString } from 'next/dist/server/web/utils';
 import * as jose from 'jose';
 import { authService as auth } from '@/services/auth';
-import { GET } from '@/app/api/proxy/[slug]/[[...path]]/route';
+import { GET, HEAD, POST } from '@/app/api/proxy/[slug]/[[...path]]/route';
+import { getConfig } from '@/lib/config';
 
 const findFirst = jest.fn();
 const canView = jest.fn();
@@ -18,18 +19,24 @@ jest.mock('@/lib/prisma', () => ({
   },
 }));
 
-jest.mock('@/lib/config', () => ({
-  getConfig: () => ({ BASE_DOMAIN: 'app.test', NODE_ENV: 'production', STATIC_SERVE_DIR: '/srv/static-sites' }),
-}));
+jest.mock('@/lib/config', () => {
+  const config = { BASE_DOMAIN: 'app.test', NODE_ENV: 'production', STATIC_SERVE_DIR: '/srv/static-sites', INTERNAL_EDGE_TOKEN: 'edge-token-0123456789abcdef' };
+  return { getConfig: () => config };
+});
+const EDGE_TOKEN = getConfig().INTERNAL_EDGE_TOKEN!;
 
-// A static file as serveStaticFile sends it for a public site, with its conditional 304.
-const mockServeStaticFile = jest.fn(async (_dir: string, _path: string, opts: { ifNoneMatch?: string | null }) =>
-  opts.ifNoneMatch === '"v1"'
+type StaticOpts = { ifNoneMatch?: string | null; edgeRoot?: string };
+// A static file as serveStaticFile sends it for a public site, with its conditional 304, or handed to the edge.
+const mockServeStaticFile = jest.fn(async (_dir: string, _path: string, opts: StaticOpts) =>
+  opts.edgeRoot
+    ? new NextResponse(null, { headers: { 'X-Entrify-Static-File': '/shop/index.html', 'Cache-Control': 'no-cache' } })
+    : opts.ifNoneMatch === '"v1"'
     ? new NextResponse(null, { status: 304, headers: { ETag: '"v1"', 'Cache-Control': 'public, max-age=31536000, immutable' } })
     : new NextResponse('file', { headers: { ETag: '"v1"', 'Cache-Control': 'public, max-age=31536000, immutable' } }),
 );
 jest.mock('@/lib/static-serve', () => ({
-  serveStaticFile: (dir: string, path: string, opts: { ifNoneMatch?: string | null }) => mockServeStaticFile(dir, path, opts),
+  STATIC_FILE_HEADER: jest.requireActual('@/lib/static-serve').STATIC_FILE_HEADER,
+  serveStaticFile: (dir: string, path: string, opts: StaticOpts) => mockServeStaticFile(dir, path, opts),
 }));
 
 jest.mock('@/services/project-access', () => ({ projectAccessService: { canView: (...args: unknown[]) => canView(...args) } }));
@@ -76,6 +83,7 @@ describe('private site gate', () => {
       project: { id: 'p1', isPrivate: true, userId: 'u1', cohortId: 'c1' },
     });
     canView.mockResolvedValue(true);
+    getConfig().INTERNAL_EDGE_TOKEN = EDGE_TOKEN;
     global.fetch = upstream as unknown as typeof fetch;
   });
 
@@ -208,6 +216,22 @@ describe('private site gate', () => {
     expect(res.headers.get('x-tenant')).toBe('kept');
   });
 
+  it("strips a tenant's X-Entrify-Static-File, which would make the edge send any site's files", async () => {
+    upstream.mockResolvedValueOnce(new Response('site', { status: 200, headers: { 'X-Entrify-Static-File': '/other/secret.png', 'X-Tenant': 'kept' } }));
+    const { site } = await mentorTokens();
+    const res = await open(`site-view=${site}`, { 'x-entrify-static-edge': EDGE_TOKEN });
+    expect(res.headers.get('x-entrify-static-file')).toBeNull();
+    expect(res.headers.get('x-tenant')).toBe('kept');
+  });
+
+  it('never passes the edge token on to the tenant app', async () => {
+    const { site } = await mentorTokens();
+    await open(`site-view=${site}`, { 'x-entrify-static-edge': EDGE_TOKEN, 'x-tenant-in': 'kept' });
+    const forwarded = new Headers(upstream.mock.calls[0][1]?.headers);
+    expect(forwarded.get('x-entrify-static-edge')).toBeNull();
+    expect(forwarded.get('x-tenant-in')).toBe('kept');
+  });
+
   it('marks a private container response private, no-cache, whatever the tenant sent', async () => {
     upstream.mockResolvedValueOnce(new Response('site', { status: 200, headers: { 'Cache-Control': 'public, max-age=600' } }));
     const { site } = await mentorTokens();
@@ -256,6 +280,38 @@ describe('private site gate', () => {
     const revalidated = await open(`site-view=${site}`, etag);
     expect(revalidated.status).toBe(304);
     expect(revalidated.headers.get('cache-control')).toBe('private, no-cache');
+  });
+
+  it('hands a static file to the edge only for the configured edge token, and only for GET and HEAD', async () => {
+    staticSite(false);
+    const edge = { 'x-entrify-static-edge': EDGE_TOKEN };
+    const call = (handler: typeof GET, method: string, headers: Record<string, string>) =>
+      handler(
+        new NextRequest('https://shop.app.test/', { method, headers: { host: 'shop.app.test', ...headers } }),
+        { params: Promise.resolve({ slug: 'shop', path: [] }) },
+      );
+    await call(GET, 'GET', edge);
+    await call(HEAD, 'HEAD', edge);
+    await call(POST, 'POST', edge);
+    await call(GET, 'GET', {});
+    await call(GET, 'GET', { 'x-entrify-static-edge': '1' });
+    await call(GET, 'GET', { 'x-entrify-static-edge': `${EDGE_TOKEN}x` });
+    getConfig().INTERNAL_EDGE_TOKEN = undefined;
+    await call(GET, 'GET', edge);
+    expect(mockServeStaticFile.mock.calls.map(([, , opts]) => opts.edgeRoot))
+      .toEqual(['/srv/static-sites', '/srv/static-sites', undefined, undefined, undefined, undefined, undefined]);
+  });
+
+  it('runs the gate before the hand-off, and marks the handed-off file private, no-cache', async () => {
+    const { site } = await mentorTokens();
+    staticSite(true);
+    const edge = { 'x-entrify-static-edge': EDGE_TOKEN };
+    expect((await open(undefined, edge)).status).toBe(401);
+    expect(mockServeStaticFile).not.toHaveBeenCalled();
+
+    const res = await open(`site-view=${site}`, edge);
+    expect(res.headers.get('x-entrify-static-file')).toBe('/shop/index.html');
+    expect(res.headers.get('cache-control')).toBe('private, no-cache');
   });
 
   it('denies a conditional request to a private container site before it reaches the container', async () => {

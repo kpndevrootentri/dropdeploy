@@ -200,6 +200,7 @@ Found on 2026-11-26 by checking `main` and the production host.
 - [ ] Check that the daily backup cron runs on the production host, and keep a copy off the server
 - [ ] Retire `en3.wtf`: remove `sites/legacy-domain.caddy` and the CLI fallback in `plugin/src/auth.ts`. Its DNS is already gone, and its certificate expires 2026-12-03.
 - [ ] Remove unused Docker images (about 10 GB reclaimable)
+- [ ] Mount the static-sites folder into the Caddy container and enable the static hand-off (see docs/deployment.md)
 
 ### Email
 
@@ -208,7 +209,7 @@ Found on 2026-11-26 by checking `main` and the production host.
 ### Dependencies
 
 - [x] Upgrade `next` to 16.4.6 and `zod` to 4.6.7 for the security advisories (#49)
-- [ ] Static tenant files lost `Content-Length` on Next 16.4.5+. Serve static sites from Caddy `file_server` if file sizes matter.
+- [x] Static tenant files lost `Content-Length` on Next 16.4.5+. Serve static sites from Caddy `file_server` if file sizes matter. (The app still picks and gates the file, then Caddy sends it with `Content-Length`, Range and 304s. Compressed HTML/CSS/JS over a few KB still stream without a length. Inert until the ops step under Reliability and operations.)
 
 ### Deploys and running sites
 
