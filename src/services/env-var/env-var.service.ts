@@ -3,7 +3,8 @@ import { envVarRepository, type IEnvironmentVariableRepository } from '@/reposit
 import { auditLogRepository, type IAuditLogRepository } from '@/repositories/audit-log.repository';
 import { encryptionService, type IEncryptionService } from '@/services/encryption';
 import { createLogger } from '@/lib/logger';
-import { ConflictError, NotFoundError } from '@/lib/errors';
+import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors';
+import { MAX_ENV_VARS_PER_PROJECT } from '@/validators/env-var.validator';
 import type { CreateEnvVarDto, UpdateEnvVarDto, EnvVarResponse } from '@/types/env-var.types';
 
 const log = createLogger('env-var-service');
@@ -28,6 +29,9 @@ export class EnvironmentVariableService {
         `Environment variable "${dto.key}" already exists for ${environment}`,
       );
     }
+    if ((await this.envVarRepo.countByProjectId(projectId)) >= MAX_ENV_VARS_PER_PROJECT) {
+      throw new ValidationError(`A project can hold at most ${MAX_ENV_VARS_PER_PROJECT} variables`);
+    }
 
     const encrypted = this.encryption.encrypt(dto.value);
 
@@ -44,6 +48,48 @@ export class EnvironmentVariableService {
     }
 
     return this.toResponse(envVar);
+  }
+
+  /**
+   * Sets many variables in one transaction (a pasted or uploaded .env file), overwriting the keys
+   * that already exist in `environment`. Logged per key like single creates and updates, in one insert.
+   */
+  async bulkSet(
+    projectId: string,
+    variables: { key: string; value: string }[],
+    environment: EnvEnvironment,
+    userId?: string,
+  ): Promise<{ created: string[]; updated: string[] }> {
+    const rows = await this.envVarRepo.findByProjectId(projectId);
+    const existing = new Set(rows.filter((v) => v.environment === environment).map((v) => v.key));
+    const keys = variables.map((v) => v.key);
+    const created = keys.filter((key) => !existing.has(key));
+    const updated = keys.filter((key) => existing.has(key));
+    // Only new keys count, so a project already over the cap can still overwrite its values.
+    if (created.length > 0 && rows.length + created.length > MAX_ENV_VARS_PER_PROJECT) {
+      throw new ValidationError(
+        `A project can hold at most ${MAX_ENV_VARS_PER_PROJECT} variables; it has ${rows.length} and this file would add ${created.length}`,
+      );
+    }
+
+    await this.envVarRepo.upsertMany(
+      projectId,
+      variables.map(({ key, value }) => ({ key, environment, ...this.encryption.encrypt(value) })),
+    );
+
+    if (userId) {
+      try {
+        // One insert, not one per key: 200 separate inserts would queue on the shared connection pool.
+        await this.auditLog.createMany([
+          ...created.map((targetKey) => ({ action: 'ENV_CREATED', targetKey, userId, projectId })),
+          ...updated.map((targetKey) => ({ action: 'ENV_UPDATED', targetKey, userId, projectId })),
+        ]);
+      } catch (err) {
+        // Audit logging should never block the main operation
+        log.error('Failed to write audit log', { action: 'ENV_BULK_SET', error: String(err) });
+      }
+    }
+    return { created, updated };
   }
 
   async listByProject(projectId: string): Promise<EnvVarResponse[]> {

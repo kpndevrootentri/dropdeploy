@@ -22,6 +22,7 @@ export interface IEnvironmentVariableRepository {
     environment: EnvEnvironment,
   ): Promise<EnvironmentVariable[]>;
   findById(id: string): Promise<EnvironmentVariable | null>;
+  countByProjectId(projectId: string): Promise<number>;
   findByProjectKeyEnv(
     projectId: string,
     key: string,
@@ -29,6 +30,8 @@ export interface IEnvironmentVariableRepository {
   ): Promise<EnvironmentVariable | null>;
   create(projectId: string, data: CreateEnvVarData): Promise<EnvironmentVariable>;
   update(id: string, data: UpdateEnvVarData): Promise<EnvironmentVariable>;
+  /** Creates or overwrites every row in one transaction: all are written or none. */
+  upsertMany(projectId: string, rows: CreateEnvVarData[]): Promise<void>;
   delete(id: string): Promise<void>;
   deleteByProjectId(projectId: string): Promise<void>;
 }
@@ -58,6 +61,10 @@ export class EnvironmentVariableRepository implements IEnvironmentVariableReposi
     return prisma.environmentVariable.findUnique({ where: { id } });
   }
 
+  async countByProjectId(projectId: string): Promise<number> {
+    return prisma.environmentVariable.count({ where: { projectId } });
+  }
+
   async findByProjectKeyEnv(
     projectId: string,
     key: string,
@@ -79,6 +86,18 @@ export class EnvironmentVariableRepository implements IEnvironmentVariableReposi
       where: { id },
       data,
     });
+  }
+
+  async upsertMany(projectId: string, rows: CreateEnvVarData[]): Promise<void> {
+    await prisma.$transaction(
+      rows.map(({ key, environment, ...secret }) =>
+        prisma.environmentVariable.upsert({
+          where: { projectId_key_environment: { projectId, key, environment } },
+          create: { projectId, key, environment, ...secret },
+          update: secret,
+        }),
+      ),
+    );
   }
 
   async delete(id: string): Promise<void> {

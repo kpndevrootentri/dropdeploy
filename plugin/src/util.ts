@@ -18,27 +18,52 @@ export class CliError extends Error {
   }
 }
 
+/** Index of the `"` that closes a double-quoted value, or -1. A backslash escapes the next character. */
+function closingQuote(s: string): number {
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '\\') i++;
+    else if (s[i] === '"') return i;
+  }
+  return -1;
+}
+
 /**
- * Parses .env text into [key, value] pairs, in file order.
- * `export ` prefixes, blank lines and comments are skipped; one pair of
- * surrounding quotes is removed, and `\n` in a double-quoted value is a newline.
+ * Parses .env text into [key, value] pairs, in file order. Same rules as the dashboard's
+ * src/lib/dotenv.ts, so a file means the same in both: `export ` prefixes, blank lines and
+ * comments are skipped; single quotes are literal; double quotes may span lines and turn
+ * `\n`, `\"` and `\\` into a newline, a quote and a backslash; an unquoted value ends at ` #`.
+ * Lines that are not a valid `KEY=VALUE` are skipped; an unclosed double quote throws.
  *
  * @example parseDotenv('A=1\n# note\nexport B="x y"') // [['A', '1'], ['B', 'x y']]
  */
 export function parseDotenv(text: string): Array<[string, string]> {
   const pairs: Array<[string, string]> = [];
-  for (const raw of text.split(/\r?\n/)) {
-    const match = raw.trim().match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i].trimStart();
+    if (!raw || raw.startsWith('#')) continue;
+    const match = raw.match(/^(?:export\s+)?([^\s=]+)\s*=([\s\S]*)$/);
     if (!match) continue;
-    let value = match[2];
-    const quote = value[0];
-    if ((quote === '"' || quote === "'") && value.length >= 2 && value.endsWith(quote)) {
-      value = value.slice(1, -1);
-      if (quote === '"') value = value.replace(/\\n/g, '\n');
+    const [, key, rest] = match;
+    const quoted = rest.trimStart();
+    let value: string;
+    if (quoted.startsWith('"')) {
+      // One line at a time, joined once at the end: growing one string and rescanning it is quadratic.
+      const parts = [quoted.slice(1)];
+      let end = closingQuote(parts[0]);
+      while (end < 0 && i + 1 < lines.length) {
+        parts.push(lines[++i]);
+        end = closingQuote(parts[parts.length - 1]);
+      }
+      if (end < 0) throw new CliError(`The double-quoted value of ${key} is never closed`, 'INVALID_ENV_FILE', EXIT.NEEDS_INPUT);
+      parts[parts.length - 1] = parts[parts.length - 1].slice(0, end);
+      value = parts.join('\n').replace(/\\(["\\n])/g, (_, c: string) => (c === 'n' ? '\n' : c));
+    } else if (quoted.startsWith("'") && quoted.indexOf("'", 1) > 0) {
+      value = quoted.slice(1, quoted.indexOf("'", 1));
     } else {
-      value = value.replace(/\s+#.*$/, ''); // trailing comment on an unquoted value
+      value = rest.replace(/\s#[\s\S]*$/, '').trim();
     }
-    pairs.push([match[1], value]);
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) pairs.push([key, value]);
   }
   return pairs;
 }

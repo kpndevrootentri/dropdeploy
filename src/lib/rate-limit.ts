@@ -7,6 +7,7 @@ interface RateLimitEntry {
 
 const ENV_VAR_WINDOW_MS = 60_000; // 1 minute
 const ENV_VAR_MAX_REQUESTS = 60; // 60 requests per minute per user
+const ENV_VAR_IMPORT_MAX = 600; // 600 variables imported from .env files per minute per user
 
 const WEBHOOK_WINDOW_MS = 60_000; // 1 minute
 const WEBHOOK_MAX_REQUESTS = 60; // 60 deliveries per minute per source
@@ -92,6 +93,14 @@ export function holdRateLimit(
 /** Rate limit env var API endpoints — 60 req/min/user. */
 export function checkEnvVarRateLimit(userId: string): NextResponse | null {
   return checkRateLimit(`env-var:${userId}`, { windowMs: ENV_VAR_WINDOW_MS, max: ENV_VAR_MAX_REQUESTS });
+}
+
+/**
+ * Rate limit .env imports by the variables they write — 600/min/user. Each one is an encrypted
+ * upsert and an audit row. A key of its own, so an import does not use up the panel's list refresh.
+ */
+export function checkEnvVarImportRateLimit(userId: string, count: number): NextResponse | null {
+  return checkRateLimit(`env-var-import:${userId}`, { windowMs: ENV_VAR_WINDOW_MS, max: ENV_VAR_IMPORT_MAX }, count);
 }
 
 /** Rate limit the public webhook endpoint — 60 deliveries/min keyed by source (IP/repo). */
